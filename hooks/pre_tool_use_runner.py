@@ -6,6 +6,7 @@ PERFORMANCE: ~35ms for 24 hooks vs ~400ms for individual processes (10x faster)
 
 HOOKS INDEX (by priority):
   ORCHESTRATION (0-5):
+    2  self_heal_enforcer  - Block unrelated work until framework errors fixed
     3  exploration_cache   - Return cached exploration results
     3  parallel_bead_delegation - Force parallel Task agents for multiple open beads
     4  parallel_nudge      - Nudge sequential Task spawns → parallel + background
@@ -511,6 +512,84 @@ def check_read_cache(data: dict, state: SessionState) -> HookResult:
             )
     except Exception:
         pass
+
+
+# =============================================================================
+# SELF-HEAL ENFORCER (Priority 2) - Framework must fix itself first
+# =============================================================================
+
+
+@register_hook("self_heal_enforcer", None, priority=2)
+def check_self_heal_enforcer(data: dict, state: SessionState) -> HookResult:
+    """
+    Block unrelated work when framework self-heal is required.
+
+    TRIGGER: When a tool fails on .claude/ paths, self_heal_required is set.
+    BEHAVIOR:
+      - Attempts 1-2: Nudge toward fixing the framework error
+      - Attempt 3: Hard block with escalation to user
+    ALLOWED: Read, Grep, Glob (investigation), and operations on .claude/ paths
+    BYPASS: SUDO clears self-heal requirement
+    """
+    if not getattr(state, "self_heal_required", False):
+        return HookResult.approve()
+
+    # SUDO bypass - clear self-heal and continue
+    from synapse_core import check_sudo_in_transcript
+
+    transcript_path = data.get("transcript_path", "")
+    if check_sudo_in_transcript(transcript_path):
+        state.self_heal_required = False
+        state.self_heal_target = ""
+        state.self_heal_error = ""
+        state.self_heal_attempts = 0
+        return HookResult.approve()
+
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Always allow investigation tools
+    if tool_name in ("Read", "Grep", "Glob", "LS"):
+        return HookResult.approve()
+
+    # Always allow operations targeting .claude/ (self-heal attempts)
+    target_path = ""
+    if tool_name == "Edit":
+        target_path = tool_input.get("file_path", "")
+    elif tool_name == "Write":
+        target_path = tool_input.get("file_path", "")
+    elif tool_name == "Bash":
+        target_path = tool_input.get("command", "")
+
+    if ".claude/" in target_path or ".claude\\" in target_path:
+        # Track attempt
+        state.self_heal_attempts = getattr(state, "self_heal_attempts", 0) + 1
+        return HookResult.approve()
+
+    # Unrelated work - escalate based on attempts
+    attempts = getattr(state, "self_heal_attempts", 0)
+    target = getattr(state, "self_heal_target", "unknown")
+    error = getattr(state, "self_heal_error", "unknown error")
+    max_attempts = getattr(state, "self_heal_max_attempts", 3)
+
+    if attempts >= max_attempts:
+        # Hard block - escalate to user
+        return HookResult.deny(
+            f"**🚨 SELF-HEAL BLOCKED** (attempt {attempts}/{max_attempts})\n"
+            f"Framework error in `{target}` must be fixed first.\n"
+            f"Error: {error[:100]}\n\n"
+            f"**Options:**\n"
+            f"1. Fix the error in .claude/ files\n"
+            f"2. Say **SUDO** to bypass and continue\n"
+            f"3. Ask user for help diagnosing the issue"
+        )
+
+    # Soft nudge - remind but allow
+    return HookResult.approve(
+        f"⚠️ **SELF-HEAL PENDING** (attempt {attempts + 1}/{max_attempts})\n"
+        f"Framework error: `{target}` - {error[:80]}\n"
+        f"Fix .claude/ error before continuing other work."
+    )
 
 
 # =============================================================================

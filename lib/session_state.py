@@ -313,6 +313,21 @@ class SessionState:
     # Bead enforcement tracking
     bead_enforcement_blocks: int = 0  # Cascade detection for bd failures
 
+    # ==========================================================================
+    # SELF-HEALING ENFORCEMENT (v3.10) - Framework must fix itself
+    # ==========================================================================
+
+    # Framework error tracking (errors in .claude/ paths)
+    framework_errors: list = field(default_factory=list)  # [{path, error, turn}]
+    framework_error_turn: int = 0  # Turn when last framework error occurred
+
+    # Self-heal state machine
+    self_heal_required: bool = False  # Blocks other work until fix attempted
+    self_heal_target: str = ""  # Path/component that needs fixing
+    self_heal_error: str = ""  # Error message that triggered self-heal
+    self_heal_attempts: int = 0  # Fix attempts for current error
+    self_heal_max_attempts: int = 3  # After this, escalate to user
+
 
 # =============================================================================
 # STATE MANAGEMENT

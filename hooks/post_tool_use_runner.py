@@ -251,6 +251,38 @@ def extract_test_failures(output: str) -> list[dict]:
     return failures[:5]
 
 
+def _trigger_self_heal(state: SessionState, target: str, error: str) -> None:
+    """Trigger self-heal mode for framework errors.
+
+    Called when a tool fails on a .claude/ path. Sets state to require
+    self-healing before continuing other work.
+    """
+    # Record the framework error
+    if not hasattr(state, "framework_errors"):
+        state.framework_errors = []
+    state.framework_errors.append(
+        {"path": target, "error": error[:200], "turn": state.turn_count}
+    )
+    # Keep only last 10
+    state.framework_errors = state.framework_errors[-10:]
+    state.framework_error_turn = state.turn_count
+
+    # Only trigger self-heal if not already in progress
+    if not getattr(state, "self_heal_required", False):
+        state.self_heal_required = True
+        state.self_heal_target = target
+        state.self_heal_error = error[:200]
+        state.self_heal_attempts = 0
+
+
+def _clear_self_heal(state: SessionState) -> None:
+    """Clear self-heal state after successful fix."""
+    state.self_heal_required = False
+    state.self_heal_target = ""
+    state.self_heal_error = ""
+    state.self_heal_attempts = 0
+
+
 def extract_todos_from_content(content: str, filepath: str) -> list[dict]:
     """Extract TODO/FIXME items from code content."""
     todos = []
@@ -476,6 +508,9 @@ def check_state_updater(
                         new_def = new_func_lines.get(func_name)
                         if new_def is None or old_def != new_def:
                             add_pending_integration_grep(state, func_name, filepath)
+            # SELF-HEAL: Clear if successful edit on framework files
+            if getattr(state, "self_heal_required", False) and ".claude/" in filepath:
+                _clear_self_heal(state)
 
     elif tool_name == "Write":
         filepath = tool_input.get("file_path", "")
@@ -557,6 +592,19 @@ def check_state_updater(
             if not success:
                 track_error(state, error_type, output[:500])
                 track_failure(state, approach_sig)
+
+                # SELF-HEAL: Detect framework errors (errors in .claude/ paths)
+                if ".claude/" in command or ".claude\\" in command:
+                    _trigger_self_heal(
+                        state,
+                        target=command.split()[0] if command.split() else "bash",
+                        error=output[:200],
+                    )
+
+        # SELF-HEAL: Clear if successful operation on framework files
+        if success and getattr(state, "self_heal_required", False):
+            if ".claude/" in command or ".claude\\" in command:
+                _clear_self_heal(state)
 
         if success and state.errors_unresolved:
             reset_failures(state)
