@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
 The Void Hunter: Scans code for missing functionality, stubs, and logical gaps.
+
+Uses AST-aware detection to avoid false positives from pattern definitions.
 """
 
+import ast
 import sys
 import os
 import re
@@ -23,26 +26,174 @@ else:
 sys.path.insert(0, os.path.join(_project_root, ".claude", "lib"))
 from core import setup_script, finalize, logger, handle_debug  # noqa: E402
 
-# Stub patterns to detect incomplete code
-STUB_PATTERNS = [
-    (r"#\s*TODO", "TODO comment"),
-    (r"#\s*FIXME", "FIXME comment"),
-    (r"def\s+\w+\([^)]*\):\s*pass\s*$", "Function stub (pass)"),
-    (r"def\s+\w+\([^)]*\):\s*\.\.\.\s*$", "Function stub (...)"),
-    (r"raise\s+NotImplementedError", "NotImplementedError"),
-    (r"return\s+None\s*#.*stub", "Stub return"),
-]
+
+def _is_inside_string_literal(line: str, pattern: str) -> bool:
+    """Check if pattern appears inside a string literal (crude heuristic)."""
+    # Find where the pattern matches
+    match = re.search(pattern, line, re.IGNORECASE)
+    if not match:
+        return False
+
+    pos = match.start()
+
+    # Check if there's an opening quote before the pattern
+    # that suggests it's inside a string
+    before = line[:pos]
+
+    # Count unescaped quotes - odd count means we're inside a string
+    # This is a heuristic, not perfect
+    single_quotes = len(re.findall(r"(?<!\\)'", before))
+    double_quotes = len(re.findall(r'(?<!\\)"', before))
+
+    # Also check for byte string prefixes
+    if re.search(r'[bBrRfF]?["\'][^"\']*$', before):
+        return True
+
+    # Check for common patterns that indicate string definitions
+    string_def_patterns = [
+        r'=\s*["\[]',  # Assignment to string or list
+        r'["\'],\s*$',  # Trailing comma after string
+        r'\(["\']',  # Function call with string arg
+        r':\s*["\']',  # Dict value
+    ]
+    for pat in string_def_patterns:
+        if re.search(pat, before):
+            return True
+
+    return (single_quotes % 2 == 1) or (double_quotes % 2 == 1)
 
 
-def hunt_stubs(file_path):
-    """Scan a file for stub patterns."""
+def hunt_stubs_ast(file_path: str) -> list[dict]:
+    """Use AST to find real stub patterns (not string literals)."""
+    stubs = []
+
+    try:
+        with open(file_path, "r") as f:
+            source = f.read()
+            lines = source.splitlines()
+
+        tree = ast.parse(source, filename=file_path)
+    except SyntaxError:
+        # Fall back to regex for non-parseable files
+        return hunt_stubs_regex(file_path)
+    except Exception as e:
+        logger.error(f"Failed to parse {file_path}: {e}")
+        return []
+
+    for node in ast.walk(tree):
+        # Find raise NotImplementedError
+        if isinstance(node, ast.Raise):
+            if node.exc:
+                exc = node.exc
+                # raise NotImplementedError or raise NotImplementedError(...)
+                if isinstance(exc, ast.Name) and exc.id == "NotImplementedError":
+                    stubs.append(
+                        {
+                            "line": node.lineno,
+                            "type": "NotImplementedError",
+                            "content": lines[node.lineno - 1].strip()
+                            if node.lineno <= len(lines)
+                            else "",
+                        }
+                    )
+                elif isinstance(exc, ast.Call):
+                    if (
+                        isinstance(exc.func, ast.Name)
+                        and exc.func.id == "NotImplementedError"
+                    ):
+                        stubs.append(
+                            {
+                                "line": node.lineno,
+                                "type": "NotImplementedError",
+                                "content": lines[node.lineno - 1].strip()
+                                if node.lineno <= len(lines)
+                                else "",
+                            }
+                        )
+
+        # Find function stubs: def foo(): pass or def foo(): ...
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if len(node.body) == 1:
+                body = node.body[0]
+                # pass statement
+                if isinstance(body, ast.Pass):
+                    stubs.append(
+                        {
+                            "line": node.lineno,
+                            "type": "Function stub (pass)",
+                            "content": lines[node.lineno - 1].strip()
+                            if node.lineno <= len(lines)
+                            else "",
+                        }
+                    )
+                # Ellipsis (...)
+                elif isinstance(body, ast.Expr) and isinstance(
+                    body.value, ast.Constant
+                ):
+                    if body.value.value is ...:
+                        stubs.append(
+                            {
+                                "line": node.lineno,
+                                "type": "Function stub (...)",
+                                "content": lines[node.lineno - 1].strip()
+                                if node.lineno <= len(lines)
+                                else "",
+                            }
+                        )
+
+    # Also check for TODO/FIXME comments (not in AST, use regex with heuristics)
+    for line_num, line in enumerate(lines, 1):
+        # Skip if line looks like it's defining patterns
+        if "PATTERN" in line.upper() or "STUB_" in line.upper():
+            continue
+
+        for pattern, desc in [
+            (r"#\s*TODO(?:\s|:|$)", "TODO comment"),
+            (r"#\s*FIXME(?:\s|:|$)", "FIXME comment"),
+        ]:
+            if re.search(pattern, line, re.IGNORECASE):
+                # Make sure it's a real comment, not inside a string
+                if not _is_inside_string_literal(line, pattern):
+                    # Extra check: the # must not be inside quotes
+                    hash_pos = line.find("#")
+                    if hash_pos >= 0:
+                        before_hash = line[:hash_pos]
+                        # Simple check: balanced quotes before #
+                        if (
+                            before_hash.count('"') % 2 == 0
+                            and before_hash.count("'") % 2 == 0
+                        ):
+                            stubs.append(
+                                {
+                                    "line": line_num,
+                                    "type": desc,
+                                    "content": line.strip(),
+                                }
+                            )
+                            break  # Only report once per line
+
+    return stubs
+
+
+def hunt_stubs_regex(file_path: str) -> list[dict]:
+    """Fallback regex-based stub detection for non-Python files."""
     stubs_found = []
+    patterns = [
+        (r"#\s*TODO(?:\s|:|$)", "TODO comment"),
+        (r"#\s*FIXME(?:\s|:|$)", "FIXME comment"),
+        (r"def\s+\w+\([^)]*\):\s*pass\s*$", "Function stub (pass)"),
+        (r"def\s+\w+\([^)]*\):\s*\.\.\.\s*$", "Function stub (...)"),
+        (r"^\s*raise\s+NotImplementedError", "NotImplementedError"),
+    ]
 
     try:
         with open(file_path, "r") as f:
             for line_num, line in enumerate(f, 1):
-                for pattern, description in STUB_PATTERNS:
+                for pattern, description in patterns:
                     if re.search(pattern, line, re.IGNORECASE):
+                        # Skip obvious string definitions
+                        if _is_inside_string_literal(line, pattern):
+                            continue
                         stubs_found.append(
                             {
                                 "line": line_num,
@@ -50,11 +201,20 @@ def hunt_stubs(file_path):
                                 "content": line.strip(),
                             }
                         )
+                        break  # Only one match per line
     except Exception as e:
         logger.error(f"Failed to scan {file_path}: {e}")
         return []
 
     return stubs_found
+
+
+def hunt_stubs(file_path: str) -> list[dict]:
+    """Scan a file for stub patterns using AST-aware detection."""
+    if file_path.endswith(".py"):
+        return hunt_stubs_ast(file_path)
+    else:
+        return hunt_stubs_regex(file_path)
 
 
 def analyze_gaps_via_oracle(file_path, model):
