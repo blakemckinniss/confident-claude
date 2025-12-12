@@ -23,6 +23,21 @@ STUB_PATTERNS = [
 
 STUB_STRINGS = ["# TODO", "# FIXME", "raise NotImplementedError", "pass  #"]
 
+# Byte patterns for binary file scanning (used by stop hooks)
+STUB_BYTE_PATTERNS = [
+    b"# TODO",
+    b"# FIXME",
+    b"TODO",
+    b"FIXME",
+    b"NotImplementedError",
+    b"raise NotImplementedError",
+    b"pass  #",
+    b"...  #",
+    b"...",  # Python ellipsis stub
+    b"stub",
+    b"STUB",
+]
+
 
 def has_stub_pattern(content: str) -> bool:
     """Check if content contains stub/incomplete code patterns."""

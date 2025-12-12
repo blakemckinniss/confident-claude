@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from session_state import load_state, save_state, SessionState
+from _patterns import STUB_BYTE_PATTERNS, CODE_EXTENSIONS
 
 # =============================================================================
 # HOOK RESULT TYPE
@@ -109,18 +110,6 @@ DISMISSAL_SCAN_BYTES = 20000
 
 # Limits
 MAX_CREATED_FILES_SCAN = 10
-
-# Stub patterns
-STUB_PATTERNS = [
-    b"# TODO",
-    b"# FIXME",
-    b"NotImplementedError",
-    b"raise NotImplementedError",
-    b"pass  #",
-    b"...  #",
-]
-
-CODE_EXTENSIONS = {".py", ".js", ".ts", ".tsx", ".rs", ".go", ".java"}
 
 # Dismissal patterns
 DISMISSAL_PATTERNS = [
@@ -466,7 +455,7 @@ def check_stubs(data: dict, state: SessionState) -> HookResult:
 
         try:
             content = path.read_bytes()
-            stubs = [p.decode() for p in STUB_PATTERNS if p in content]
+            stubs = [p.decode() for p in STUB_BYTE_PATTERNS if p in content]
             if stubs:
                 warnings.append(f"  • `{path.name}`: {', '.join(stubs[:2])}")
         except (OSError, PermissionError):

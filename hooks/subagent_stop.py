@@ -19,15 +19,7 @@ from pathlib import Path
 
 from session_state import load_state
 from synapse_core import get_session_blocks, clear_session_blocks
-
-STUB_PATTERNS = [
-    b'TODO',
-    b'FIXME',
-    b'NotImplementedError',
-    b'pass  #',
-]
-
-CODE_EXTENSIONS = {'.py', '.js', '.ts', '.tsx', '.rs', '.go', '.java'}
+from _patterns import STUB_BYTE_PATTERNS, CODE_EXTENSIONS
 
 
 def check_stubs_in_created_files(state) -> list[str]:
@@ -41,7 +33,7 @@ def check_stubs_in_created_files(state) -> list[str]:
 
         try:
             content = path.read_bytes()
-            stubs = [p.decode() for p in STUB_PATTERNS if p in content]
+            stubs = [p.decode() for p in STUB_BYTE_PATTERNS if p in content]
             if stubs:
                 warnings.append(f"  • `{path.name}`: {', '.join(stubs[:2])}")
         except (OSError, PermissionError):

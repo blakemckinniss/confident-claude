@@ -24,15 +24,20 @@ from datetime import datetime
 
 # Import the state machine
 from session_state import (
-    load_state, save_state, get_session_summary,
+    load_state,
+    save_state,
+    get_session_summary,
     MEMORY_DIR,
-    prepare_handoff, complete_feature, extract_work_from_errors,
+    prepare_handoff,
+    complete_feature,
+    extract_work_from_errors,
 )
 
 # Import project-aware state management
 try:
     from project_detector import get_current_project
     from project_state import get_project_memory_dir
+
     PROJECT_AWARE = True
 except ImportError:
     PROJECT_AWARE = False
@@ -41,7 +46,9 @@ except ImportError:
 # CONFIGURATION
 # =============================================================================
 
-SCRATCH_DIR = Path(__file__).resolve().parent.parent / "tmp"  # .claude/hooks -> .claude -> .claude/tmp
+SCRATCH_DIR = (
+    Path(__file__).resolve().parent.parent / "tmp"
+)  # .claude/hooks -> .claude -> .claude/tmp
 LESSONS_FILE = MEMORY_DIR / "__lessons.md"
 SESSION_LOG_FILE = MEMORY_DIR / "session_log.jsonl"
 
@@ -71,6 +78,7 @@ def _get_project_handoff_file() -> Path:
             pass
     return HANDOFF_FILE
 
+
 # Files in .claude/tmp/ older than this get cleaned (in seconds)
 SCRATCH_CLEANUP_AGE = 86400  # 24 hours
 
@@ -81,6 +89,7 @@ LESSON_EDIT_THRESHOLD = 3
 # PATTERN EXTRACTION
 # =============================================================================
 
+
 def check_abandoned_creations(state) -> list[dict]:
     """Check for files created this session that may have stubs/TODOs."""
     warnings = []
@@ -88,17 +97,8 @@ def check_abandoned_creations(state) -> list[dict]:
     if not state.files_created:
         return warnings
 
-    # Patterns indicating incomplete work
-    STUB_PATTERNS = [
-        b'TODO',
-        b'FIXME',
-        b'NotImplementedError',
-        b'pass  #',
-        b'raise NotImplementedError',
-        b'...',  # Python ellipsis stub
-        b'stub',
-        b'STUB',
-    ]
+    # Import centralized patterns
+    from _patterns import STUB_BYTE_PATTERNS
 
     for filepath in state.files_created:
         path = Path(filepath)
@@ -106,22 +106,24 @@ def check_abandoned_creations(state) -> list[dict]:
             continue
 
         # Skip non-code files
-        if path.suffix not in {'.py', '.js', '.ts', '.rs', '.go', '.java'}:
+        if path.suffix not in {".py", ".js", ".ts", ".rs", ".go", ".java"}:
             continue
 
         try:
             content = path.read_bytes()
             found_stubs = []
-            for pattern in STUB_PATTERNS:
+            for pattern in STUB_BYTE_PATTERNS:
                 if pattern in content:
                     found_stubs.append(pattern.decode())
 
             if found_stubs:
-                warnings.append({
-                    "file": filepath,
-                    "name": path.name,
-                    "stubs": found_stubs[:3],  # Limit to 3
-                })
+                warnings.append(
+                    {
+                        "file": filepath,
+                        "name": path.name,
+                        "stubs": found_stubs[:3],  # Limit to 3
+                    }
+                )
         except (OSError, PermissionError):
             pass
 
@@ -150,11 +152,13 @@ def extract_lessons(state) -> list[dict]:
     abandoned = check_abandoned_creations(state)
     if abandoned:
         files = [a["name"] for a in abandoned]
-        lessons.append({
-            "type": "abandoned_stubs",
-            "files": files,
-            "insight": f"⚠️ ABANDONED WORK: {', '.join(files)} contain stubs/TODOs",
-        })
+        lessons.append(
+            {
+                "type": "abandoned_stubs",
+                "files": files,
+                "insight": f"⚠️ ABANDONED WORK: {', '.join(files)} contain stubs/TODOs",
+            }
+        )
 
     return lessons
 
@@ -185,19 +189,19 @@ def persist_lessons(lessons: list[dict]):
 
         # === DEDUPLICATION ===
         # Extract recent insights (last 50 lines) to check for duplicates
-        recent_lines = existing.split('\n')[-50:]
+        recent_lines = existing.split("\n")[-50:]
         recent_insights = set()
         for line in recent_lines:
-            if line.startswith('- ['):
+            if line.startswith("- ["):
                 # Extract the insight text after the type tag
-                parts = line.split('] ', 1)
+                parts = line.split("] ", 1)
                 if len(parts) > 1:
                     recent_insights.add(parts[1].strip().lower())
 
         # Filter out duplicate lessons
         new_lessons = []
         for lesson in lessons:
-            insight_lower = lesson['insight'].lower()
+            insight_lower = lesson["insight"].lower()
             if insight_lower not in recent_insights:
                 new_lessons.append(lesson)
                 recent_insights.add(insight_lower)
@@ -215,7 +219,7 @@ def persist_lessons(lessons: list[dict]):
         needs_header = "## Session Lessons" not in existing
 
         # Write atomically
-        with open(LESSONS_FILE, 'a') as f:
+        with open(LESSONS_FILE, "a") as f:
             if needs_header:
                 f.write("\n\n## Session Lessons\n")
             f.write(new_content)
@@ -295,6 +299,7 @@ def cleanup_session_env() -> int:
 # SESSION LOG
 # =============================================================================
 
+
 def log_session(state, lessons: list[dict]):
     """Append session summary to log file."""
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
@@ -304,13 +309,14 @@ def log_session(state, lessons: list[dict]):
     summary["lessons_count"] = len(lessons)
     summary["timestamp"] = datetime.now().isoformat()
 
-    with open(SESSION_LOG_FILE, 'a') as f:
+    with open(SESSION_LOG_FILE, "a") as f:
         f.write(json.dumps(summary) + "\n")
 
 
 # =============================================================================
 # AUTONOMOUS AGENT: PROGRESS & HANDOFF PERSISTENCE
 # =============================================================================
+
 
 def _atomic_json_write(filepath: Path, data: dict):
     """Write JSON atomically with file locking to prevent corruption.
@@ -326,9 +332,9 @@ def _atomic_json_write(filepath: Path, data: dict):
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
         # Write to temp file first
-        fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix='.json')
+        fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".json")
         try:
-            with os.fdopen(fd, 'w') as f:
+            with os.fdopen(fd, "w") as f:
                 json.dump(data, f, indent=2, default=str)
             os.replace(tmp_path, filepath)  # Atomic on POSIX
         except Exception:
@@ -378,7 +384,9 @@ def save_progress(state):
         "last_updated": datetime.now().isoformat(),
         "session_id": state.session_id,
         "entries": existing,
-        "work_queue": [w for w in state.work_queue if w.get("status") == "pending"][:20],
+        "work_queue": [w for w in state.work_queue if w.get("status") == "pending"][
+            :20
+        ],
     }
 
     _atomic_json_write(progress_file, progress_data)
@@ -419,6 +427,7 @@ def save_handoff(state):
 # =============================================================================
 # MAIN
 # =============================================================================
+
 
 def main():
     """SessionEnd hook entry point."""
