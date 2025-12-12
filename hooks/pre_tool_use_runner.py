@@ -778,16 +778,23 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     """
     Enforce bead tracking for substantive work.
 
-    BLOCKS Edit/Write on project files without an in_progress bead.
-    Skips: .claude/ paths, tmp files, config files.
+    HARD BLOCKS Edit/Write on project files without an in_progress bead.
+
+    SAFEGUARDS:
+    - Grace period: First 2 turns of session get nudge, not block
+    - Trivial files: README, CHANGELOG, docs skip blocking
+    - Cascade protection: If bd binary fails, degrade to nudge
+    - Small edits: Single-line changes get nudge, not block
+    - SUDO bypass always available
     """
+    tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
     if not file_path:
         return HookResult.approve()
 
-    # Skip framework/config paths - always allowed
+    # === SKIP PATTERNS (always allowed) ===
     skip_patterns = [
         r"\.claude/",
         r"\.git/",
@@ -796,23 +803,158 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
         r"package-lock\.json",
         r"\.lock$",
         r"node_modules/",
+        r"__pycache__/",
     ]
     if any(re.search(p, file_path) for p in skip_patterns):
         return HookResult.approve()
 
-    # Check for in_progress beads
+    # === TRIVIAL FILE PATTERNS (nudge only, no block) ===
+    trivial_patterns = [
+        r"README",
+        r"CHANGELOG",
+        r"LICENSE",
+        r"\.md$",  # Markdown docs
+        r"\.txt$",  # Plain text
+        r"\.json$",  # Config files
+        r"\.ya?ml$",  # YAML config
+        r"\.toml$",  # TOML config
+    ]
+    is_trivial = any(re.search(p, file_path, re.IGNORECASE) for p in trivial_patterns)
+
+    # === SMALL EDIT CHECK (for Edit tool) ===
+    is_small_edit = False
+    if tool_name == "Edit":
+        old_string = tool_input.get("old_string", "")
+        new_string = tool_input.get("new_string", "")
+        # Small edit = less than 5 lines changed
+        old_lines = len(old_string.split("\n"))
+        new_lines = len(new_string.split("\n"))
+        is_small_edit = max(old_lines, new_lines) <= 5
+
+    # === GRACE PERIOD (first 2 turns) ===
+    is_grace_period = state.turn_count <= 2
+
+    # === CHECK FOR IN_PROGRESS BEADS ===
     in_progress = _get_in_progress_beads(state)
 
-    if not in_progress:
-        # No active bead - nudge to create one
+    if in_progress:
+        return HookResult.approve()
+
+    # No active bead - determine enforcement level
+    # Track enforcement attempts for cascade detection
+    if not hasattr(state, "bead_enforcement_blocks"):
+        state.bead_enforcement_blocks = 0
+
+    # === DEGRADED MODE (bd binary failed or cascade) ===
+    open_beads = _get_open_beads(state)
+    bd_failed = open_beads == [] and state.bead_enforcement_blocks >= 3
+
+    if bd_failed:
+        # bd might be broken - degrade to nudge
         return HookResult.approve(
-            "⚠️ **BEAD REQUIRED**: No in_progress bead. Before editing project files:\n"
-            '1. `bd create --title="..." --type=task|bug|feature`\n'
-            "2. `bd update <id> --status=in_progress`\n"
-            "Or say SUDO to bypass."
+            "⚠️ **BEAD TRACKING**: Consider `bd create` for tracking. "
+            "(Degraded mode - bd may be unavailable)"
         )
 
-    return HookResult.approve()
+    # === SOFT ENFORCEMENT (nudge only) ===
+    if is_grace_period or is_trivial or is_small_edit:
+        return HookResult.approve(
+            "💡 **BEAD RECOMMENDED**: No in_progress bead. Consider:\n"
+            '`bd create --title="..." && bd update <id> --status=in_progress`'
+        )
+
+    # === HARD BLOCK ===
+    state.bead_enforcement_blocks = state.bead_enforcement_blocks + 1
+
+    return HookResult.deny(
+        "🚫 **BEAD REQUIRED**: Cannot edit project files without tracking.\n\n"
+        "**Quick start:**\n"
+        '```bash\nbd create --title="<what you\'re doing>" --type=task\n'
+        "bd update <id> --status=in_progress\n```\n\n"
+        "**Bypass:** Say SUDO to skip this check.\n"
+        "**Why:** Beads enable parallel agent delegation and session continuity."
+    )
+
+
+def _get_independent_beads(state: SessionState) -> list:
+    """
+    Get beads that can be worked in parallel (no blockers).
+
+    FILTERS:
+    - Status: open or in_progress only
+    - Dependencies: No unresolved blockers
+    - Recency: Updated in last 24 hours preferred
+    - Limit: Max 4 for parallel work
+    """
+    import subprocess
+    from datetime import datetime
+
+    beads = _get_open_beads(state)
+    if not beads:
+        return []
+
+    # Get blocked beads to exclude
+    blocked_ids = set()
+    try:
+        result = subprocess.run(
+            ["bd", "blocked", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            blocked = json.loads(result.stdout)
+            blocked_ids = {b.get("id") for b in blocked}
+    except Exception:
+        pass
+
+    # Filter to independent beads
+    independent = [b for b in beads if b.get("id") not in blocked_ids]
+
+    # Sort by recency (updated_at or created_at)
+    def get_timestamp(b):
+        ts = b.get("updated_at") or b.get("created_at") or ""
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            return datetime.min
+
+    independent.sort(key=get_timestamp, reverse=True)
+
+    # Cap at 4 for parallel work
+    return independent[:4]
+
+
+def _generate_parallel_task_calls(beads: list) -> str:
+    """Generate copy-pasteable parallel Task invocation structure."""
+    if not beads:
+        return ""
+
+    lines = ["**Suggested parallel Task calls** (spawn ALL in one message):"]
+    lines.append("```")
+
+    for i, b in enumerate(beads, 1):
+        bead_id = b.get("id", "???")[:16]
+        title = b.get("title", "untitled")[:50]
+        bead_type = b.get("type", "task")
+
+        lines.append(f"# Task {i}: {title}")
+        lines.append("Task(")
+        lines.append('    subagent_type="general-purpose",')
+        lines.append(f'    description="Work on {bead_type}: {title[:30]}",')
+        lines.append(f'    prompt="Work on bead `{bead_id}`: {title}. ')
+        lines.append(
+            f"            First run `bd update {bead_id} --status=in_progress`, "
+        )
+        lines.append(
+            f'            then complete the work, then `bd close {bead_id}`.",'
+        )
+        lines.append(")")
+        if i < len(beads):
+            lines.append("")
+
+    lines.append("```")
+    return "\n".join(lines)
 
 
 @register_hook("parallel_bead_delegation", "Task", priority=3)
@@ -820,8 +962,12 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     """
     Force parallel Task delegation when multiple beads are open.
 
-    PATTERN: If 2+ beads open, nudge to spawn parallel agents for each.
-    BLOCKING: After 3+ sequential single-agent patterns with multiple beads available.
+    SAFEGUARDS:
+    - Dependency check: Only suggests independent beads (no blockers)
+    - Max 4 agents: Prevents overwhelming parallelism
+    - Recency filter: Prioritizes recently updated beads
+    - Generated structure: Provides copy-pasteable Task calls
+    - Sequential detection: Escalates after repeated single-Task patterns
     """
     tool_input = data.get("tool_input", {})
 
@@ -829,14 +975,14 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     if tool_input.get("run_in_background") or tool_input.get("resume"):
         return HookResult.approve()
 
-    # Get open beads
-    open_beads = _get_open_beads(state)
-    open_count = len(open_beads)
+    # Get independent beads (filtered for parallel work)
+    independent_beads = _get_independent_beads(state)
+    bead_count = len(independent_beads)
 
-    if open_count < 2:
+    if bead_count < 2:
         return HookResult.approve()
 
-    # Multiple beads open - check if we're being sequential
+    # Multiple independent beads - check sequential pattern
     current_turn = state.turn_count
 
     # Track this spawn
@@ -845,20 +991,43 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
         state.last_task_turn = current_turn
     state.task_spawns_this_turn += 1
 
-    # First Task this turn with multiple beads - strong nudge
-    if state.task_spawns_this_turn == 1:
-        bead_list = ", ".join(
-            f"`{b.get('id', '?')[:12]}` ({b.get('title', '?')[:30]})"
-            for b in open_beads[:4]
-        )
-        return HookResult.approve(
-            f"⚡ **PARALLEL BEADS**: {open_count} beads open: {bead_list}\n"
-            f"Spawn {open_count} Task agents in ONE message to work them in parallel.\n"
-            "Each agent can `bd update <id> --status=in_progress` and work independently."
-        )
+    # Already spawning multiple this turn - good behavior
+    if state.task_spawns_this_turn > 1:
+        return HookResult.approve()
 
-    # Already spawning multiple - good
-    return HookResult.approve()
+    # First Task this turn with multiple beads available
+    # Track sequential single-task pattern for escalation
+    if not hasattr(state, "sequential_single_task_with_beads"):
+        state.sequential_single_task_with_beads = 0
+
+    state.sequential_single_task_with_beads += 1
+
+    # Generate the parallel task structure
+    task_structure = _generate_parallel_task_calls(independent_beads)
+
+    # Escalate based on pattern persistence
+    if state.sequential_single_task_with_beads >= 3:
+        # HARD BLOCK after 3+ sequential singles with beads available
+        return HookResult.deny(
+            f"🚫 **PARALLEL REQUIRED**: {bead_count} independent beads available.\n\n"
+            "You've spawned single Tasks 3+ times with parallel work available.\n"
+            "Spawn multiple Task agents in ONE message.\n\n"
+            f"{task_structure}\n\n"
+            "**Bypass:** Say SUDO or use `run_in_background: true`"
+        )
+    elif state.sequential_single_task_with_beads >= 2:
+        # Strong nudge at 2
+        return HookResult.approve(
+            f"⚡ **PARALLEL BEADS**: {bead_count} independent beads ready for parallel work.\n\n"
+            f"{task_structure}"
+        )
+    else:
+        # Soft nudge at 1
+        bead_list = ", ".join(f"`{b.get('id', '?')[:12]}`" for b in independent_beads)
+        return HookResult.approve(
+            f"💡 **Parallel opportunity**: {bead_count} beads available: {bead_list}\n"
+            "Consider spawning multiple Task agents in one message."
+        )
 
 
 @register_hook("recursion_guard", "Edit|Write|Bash", priority=5)
