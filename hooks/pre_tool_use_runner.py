@@ -1315,7 +1315,7 @@ def check_research_gate(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("import_gate", "Write", priority=92)
 def check_import_gate(data: dict, state: SessionState) -> HookResult:
-    """Warn about potentially missing imports."""
+    """Warn about potentially missing imports (AST-based)."""
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
     content = tool_input.get("content", "")
@@ -1323,30 +1323,10 @@ def check_import_gate(data: dict, state: SessionState) -> HookResult:
     if not file_path.endswith(".py") or not content:
         return HookResult.approve()
 
-    # Extract imports
-    imports = re.findall(r"^(?:from\s+(\w+)|import\s+(\w+))", content, re.MULTILINE)
-    libs = {m[0] or m[1] for m in imports if m[0] or m[1]}
+    # AST-based import extraction (handles all import forms, ignores strings/comments)
+    from _ast_utils import extract_non_stdlib_imports
 
-    # Check if non-stdlib imports exist
-    STDLIB = {
-        "os",
-        "sys",
-        "json",
-        "re",
-        "pathlib",
-        "typing",
-        "dataclasses",
-        "collections",
-        "itertools",
-        "functools",
-        "contextlib",
-        "datetime",
-        "time",
-        "logging",
-        "subprocess",
-    }
-
-    third_party = libs - STDLIB
+    third_party = extract_non_stdlib_imports(content)
     if third_party:
         return HookResult.approve(
             f"📦 Third-party imports: {', '.join(sorted(third_party)[:5])} - ensure installed."
