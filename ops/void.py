@@ -2,6 +2,7 @@
 """
 The Void Hunter: Scans code for missing functionality, stubs, and logical gaps.
 """
+
 import sys
 import os
 import re
@@ -140,17 +141,34 @@ Be thorough. Be pedantic. The goal is to find what SHOULD be there but ISN'T."""
         return None
 
 
+def collect_python_files(target: str) -> list[str]:
+    """Collect Python files from target (file or directory)."""
+    from pathlib import Path
+
+    target_path = Path(target)
+
+    if target_path.is_file():
+        if target_path.suffix == ".py":
+            return [str(target_path)]
+        else:
+            return []
+    elif target_path.is_dir():
+        return [str(f) for f in target_path.rglob("*.py") if f.is_file()]
+    else:
+        return []
+
+
 def main():
     parser = setup_script(
         "The Void Hunter: Scans code for missing functionality, stubs, and logical gaps."
     )
 
     # Custom arguments
-    parser.add_argument("target", help="Python file to scan for gaps")
+    parser.add_argument("target", help="Python file or directory to scan for gaps")
     parser.add_argument(
         "--model",
         default="google/gemini-3-pro-preview",
-        help="OpenRouter model for gap analysis (default: gemini-2.0-flash-thinking)",
+        help="OpenRouter model for gap analysis (default: gemini-3-pro-preview)",
     )
     parser.add_argument(
         "--stub-only",
@@ -161,37 +179,56 @@ def main():
     args = parser.parse_args()
     handle_debug(args)
 
-    logger.info(f"Scanning {args.target} for voids...")
-
     if not os.path.exists(args.target):
-        logger.error(f"File not found: {args.target}")
+        logger.error(f"Target not found: {args.target}")
         finalize(success=False)
 
-    if not args.target.endswith(".py"):
-        logger.error("Only Python files are supported")
+    # Collect Python files
+    py_files = collect_python_files(args.target)
+
+    if not py_files:
+        logger.error(f"No Python files found in: {args.target}")
         finalize(success=False)
+
+    logger.info(f"Scanning {len(py_files)} Python file(s) for voids...")
+
+    total_stubs = 0
+    files_with_stubs = []
 
     try:
-        # Phase 1: Stub Hunting
+        # Phase 1: Stub Hunting (all files)
         logger.info("🔍 Phase 1: Stub Hunting")
-        stubs = hunt_stubs(args.target)
 
-        if stubs:
+        for py_file in py_files:
+            stubs = hunt_stubs(py_file)
+            if stubs:
+                total_stubs += len(stubs)
+                files_with_stubs.append((py_file, stubs))
+
+        if files_with_stubs:
             print("\n" + "=" * 70)
             print("🚨 STUBS DETECTED")
             print("=" * 70)
-            for stub in stubs:
-                print(f"  Line {stub['line']}: {stub['type']}")
-                print(f"    → {stub['content']}")
-            print("=" * 70)
-            print(f"Total stubs: {len(stubs)}\n")
+            for file_path, stubs in files_with_stubs:
+                rel_path = (
+                    os.path.relpath(file_path, args.target)
+                    if os.path.isdir(args.target)
+                    else os.path.basename(file_path)
+                )
+                print(f"\n📄 {rel_path}")
+                for stub in stubs:
+                    print(f"  Line {stub['line']}: {stub['type']}")
+                    print(f"    → {stub['content']}")
+            print("\n" + "=" * 70)
+            print(f"Total: {total_stubs} stub(s) in {len(files_with_stubs)} file(s)")
+            print("=" * 70 + "\n")
         else:
             logger.info("✅ No stubs detected")
 
-        # Phase 2: Logical Gap Analysis (unless --stub-only)
-        if not args.stub_only:
+        # Phase 2: Logical Gap Analysis (single file only, unless --stub-only)
+        if not args.stub_only and len(py_files) == 1:
             logger.info("🔍 Phase 2: Logical Gap Analysis")
-            gap_analysis = analyze_gaps_via_oracle(args.target, args.model)
+            gap_analysis = analyze_gaps_via_oracle(py_files[0], args.model)
 
             if gap_analysis:
                 print("\n" + "=" * 70)
@@ -201,16 +238,19 @@ def main():
                 print("=" * 70 + "\n")
             else:
                 logger.warning("⚠️  Oracle analysis failed")
+        elif not args.stub_only and len(py_files) > 1:
+            logger.info(
+                "ℹ️  Skipping Oracle analysis for multi-file scan (use single file for deep analysis)"
+            )
 
         # Summary
-        has_issues = len(stubs) > 0
-        if has_issues:
+        if total_stubs > 0:
             logger.warning(
-                f"⚠️  Completeness check FAILED: {len(stubs)} stub(s) detected"
+                f"⚠️  Completeness check FAILED: {total_stubs} stub(s) in {len(files_with_stubs)} file(s)"
             )
             finalize(success=False)
         else:
-            logger.info("✅ Completeness check PASSED")
+            logger.info(f"✅ Completeness check PASSED ({len(py_files)} files scanned)")
 
     except Exception as e:
         logger.error(f"Operation failed: {e}")
