@@ -7,8 +7,10 @@ PERFORMANCE: ~35ms for 24 hooks vs ~400ms for individual processes (10x faster)
 HOOKS INDEX (by priority):
   ORCHESTRATION (0-5):
     3  exploration_cache   - Return cached exploration results
+    3  parallel_bead_delegation - Force parallel Task agents for multiple open beads
     4  parallel_nudge      - Nudge sequential Task spawns → parallel + background
     4  beads_parallel      - Nudge sequential bd commands → batch/parallel
+    4  bead_enforcement    - Require in_progress bead before Edit/Write
 
   SAFETY (5-20):
     5  recursion_guard     - Block nested .claude/.claude paths
@@ -724,6 +726,138 @@ def check_beads_parallel(data: dict, state: SessionState) -> HookResult:
                 "Run them in parallel Bash calls in one message, or use Task agents with run_in_background."
             )
 
+    return HookResult.approve()
+
+
+# =============================================================================
+# BEAD-ENFORCED PARALLEL WORKFLOW
+# =============================================================================
+
+# Cache for bd queries (avoid repeated subprocess calls)
+_BD_CACHE: dict = {}
+_BD_CACHE_TURN: int = 0
+
+
+def _get_open_beads(state: SessionState) -> list:
+    """Get open beads, cached per turn."""
+    global _BD_CACHE, _BD_CACHE_TURN
+
+    current_turn = state.turn_count
+    if _BD_CACHE_TURN == current_turn and "open_beads" in _BD_CACHE:
+        return _BD_CACHE.get("open_beads", [])
+
+    # Cache miss - query bd
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["bd", "list", "--status=open,in_progress", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            beads = json.loads(result.stdout) if result.stdout.strip() else []
+            _BD_CACHE = {"open_beads": beads}
+            _BD_CACHE_TURN = current_turn
+            return beads
+    except Exception:
+        pass
+
+    return []
+
+
+def _get_in_progress_beads(state: SessionState) -> list:
+    """Get beads currently being worked on."""
+    beads = _get_open_beads(state)
+    return [b for b in beads if b.get("status") == "in_progress"]
+
+
+@register_hook("bead_enforcement", "Edit|Write", priority=4)
+def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
+    """
+    Enforce bead tracking for substantive work.
+
+    BLOCKS Edit/Write on project files without an in_progress bead.
+    Skips: .claude/ paths, tmp files, config files.
+    """
+    tool_input = data.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
+
+    if not file_path:
+        return HookResult.approve()
+
+    # Skip framework/config paths - always allowed
+    skip_patterns = [
+        r"\.claude/",
+        r"\.git/",
+        r"/tmp/",
+        r"\.env",
+        r"package-lock\.json",
+        r"\.lock$",
+        r"node_modules/",
+    ]
+    if any(re.search(p, file_path) for p in skip_patterns):
+        return HookResult.approve()
+
+    # Check for in_progress beads
+    in_progress = _get_in_progress_beads(state)
+
+    if not in_progress:
+        # No active bead - nudge to create one
+        return HookResult.approve(
+            "⚠️ **BEAD REQUIRED**: No in_progress bead. Before editing project files:\n"
+            '1. `bd create --title="..." --type=task|bug|feature`\n'
+            "2. `bd update <id> --status=in_progress`\n"
+            "Or say SUDO to bypass."
+        )
+
+    return HookResult.approve()
+
+
+@register_hook("parallel_bead_delegation", "Task", priority=3)
+def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResult:
+    """
+    Force parallel Task delegation when multiple beads are open.
+
+    PATTERN: If 2+ beads open, nudge to spawn parallel agents for each.
+    BLOCKING: After 3+ sequential single-agent patterns with multiple beads available.
+    """
+    tool_input = data.get("tool_input", {})
+
+    # Skip if already running in background or resuming
+    if tool_input.get("run_in_background") or tool_input.get("resume"):
+        return HookResult.approve()
+
+    # Get open beads
+    open_beads = _get_open_beads(state)
+    open_count = len(open_beads)
+
+    if open_count < 2:
+        return HookResult.approve()
+
+    # Multiple beads open - check if we're being sequential
+    current_turn = state.turn_count
+
+    # Track this spawn
+    if state.last_task_turn != current_turn:
+        state.task_spawns_this_turn = 0
+        state.last_task_turn = current_turn
+    state.task_spawns_this_turn += 1
+
+    # First Task this turn with multiple beads - strong nudge
+    if state.task_spawns_this_turn == 1:
+        bead_list = ", ".join(
+            f"`{b.get('id', '?')[:12]}` ({b.get('title', '?')[:30]})"
+            for b in open_beads[:4]
+        )
+        return HookResult.approve(
+            f"⚡ **PARALLEL BEADS**: {open_count} beads open: {bead_list}\n"
+            f"Spawn {open_count} Task agents in ONE message to work them in parallel.\n"
+            "Each agent can `bd update <id> --status=in_progress` and work independently."
+        )
+
+    # Already spawning multiple - good
     return HookResult.approve()
 
 
