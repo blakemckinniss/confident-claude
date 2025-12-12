@@ -5,7 +5,7 @@
       "repo": "thedotmack/claude-mem"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/thedotmack",
-    "lastUpdated": "2025-12-12T21:58:09.715Z"
+    "lastUpdated": "2025-12-12T22:06:28.438Z"
   },
   "claude-code-plugins": {
     "source": {
@@ -21,7 +21,7 @@
       "url": "https://github.com/wshobson/agents.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows",
-    "lastUpdated": "2025-12-12T21:57:18.011Z"
+    "lastUpdated": "2025-12-12T22:08:08.164Z"
   },
   "repomix": {
     "source": {
@@ -29,7 +29,7 @@
       "url": "https://github.com/yamadashy/repomix.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/repomix",
-    "lastUpdated": "2025-12-12T21:58:53.138Z"
+    "lastUpdated": "2025-12-12T22:07:00.082Z"
   },
   "claude-code-templates": {
     "source": {
