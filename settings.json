@@ -1,7 +1,8 @@
 {
   "enabledPlugins": {
     "claude-mem@thedotmack": true,
-    "hookify@claude-code-plugins": true
+    "hookify@claude-code-plugins": true,
+    "unit-testing@claude-code-workflows": true
   },
   "env": {
     "MAX_THINKING_TOKENS": "32000"
