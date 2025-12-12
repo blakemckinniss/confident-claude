@@ -7,7 +7,8 @@ PERFORMANCE: ~35ms for 24 hooks vs ~400ms for individual processes (10x faster)
 HOOKS INDEX (by priority):
   ORCHESTRATION (0-5):
     3  exploration_cache   - Return cached exploration results
-    4  parallel_nudge      - Nudge sequential Task spawns → parallel
+    4  parallel_nudge      - Nudge sequential Task spawns → parallel + background
+    4  beads_parallel      - Nudge sequential bd commands → batch/parallel
 
   SAFETY (5-20):
     5  recursion_guard     - Block nested .claude/.claude paths
@@ -588,74 +589,139 @@ def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
 @register_hook("parallel_nudge", "Task", priority=4)
 def check_parallel_nudge(data: dict, state: SessionState) -> HookResult:
     """
-    Nudge sequential Task spawns toward parallel execution.
+    Nudge sequential Task spawns toward parallel execution + background promotion.
 
-    Detects when Claude spawns single Tasks sequentially (wait for one, spawn next)
-    instead of spawning multiple independent Tasks in one message.
-
-    ARCHITECTURE:
-    - Track Task spawns per turn
-    - Detect consecutive single-Task turns
-    - After 2+ sequential singles, inject strong nudge
-    - After 3+, escalate to blocking reminder
+    PATTERNS DETECTED:
+    1. Sequential single Tasks → nudge to spawn multiple in one message
+    2. Long-running agent types → suggest run_in_background=true
+    3. Track background tasks for later check-in reminders
     """
     tool_input = data.get("tool_input", {})
     prompt = tool_input.get("prompt", "")
+    subagent_type = tool_input.get("subagent_type", "").lower()
 
     # Skip resume operations (continuing existing work)
     if tool_input.get("resume"):
         return HookResult.approve()
 
-    # Skip background tasks (already async)
+    # Track background tasks
     if tool_input.get("run_in_background"):
+        # Record for later check-in reminder
+        if not hasattr(state, "background_tasks"):
+            state.background_tasks = []
+        state.background_tasks = (
+            state.background_tasks
+            + [{"type": subagent_type, "prompt": prompt[:50], "turn": state.turn_count}]
+        )[-5:]
         return HookResult.approve()
 
     current_turn = state.turn_count
+    messages = []
 
+    # === BACKGROUND PROMOTION ===
+    # Agent types that benefit from background execution
+    long_running_agents = {
+        "explore": "exploring large codebases",
+        "plan": "generating detailed plans",
+        "code-reviewer": "comprehensive code review",
+        "deep-security": "security audits",
+        "scout": "codebase exploration",
+    }
+    if subagent_type in long_running_agents:
+        messages.append(
+            f"💡 **Background opportunity**: {subagent_type} agents can run with "
+            f"`run_in_background: true` - continue working while it runs, check with TaskOutput later."
+        )
+
+    # === SEQUENTIAL TASK DETECTION ===
     # Reset counter if new turn
     if state.last_task_turn != current_turn:
-        # Check if previous turn had only 1 Task spawn
         if state.last_task_turn > 0 and state.task_spawns_this_turn == 1:
             state.consecutive_single_tasks += 1
         elif state.task_spawns_this_turn > 1:
-            # Multiple tasks in one turn = good parallel behavior
             state.consecutive_single_tasks = 0
-
         state.task_spawns_this_turn = 0
         state.last_task_turn = current_turn
 
-    # Increment spawn count for this turn
     state.task_spawns_this_turn += 1
 
-    # Track recent prompts for similarity detection
+    # Track recent prompts
     if prompt:
         state.task_prompts_recent = (state.task_prompts_recent + [prompt[:100]])[-5:]
 
-    # Detect if multiple similar tasks could be parallelized
-    # Skip nudge if this is the first Task this turn (could still add more)
+    # Multiple tasks this turn = good parallel behavior
     if state.task_spawns_this_turn > 1:
-        # Already spawning multiple this turn - good!
         state.consecutive_single_tasks = 0
-        return HookResult.approve()
+        return (
+            HookResult.approve("\n".join(messages))
+            if messages
+            else HookResult.approve()
+        )
 
-    # Check for sequential single-Task pattern
+    # Sequential single-Task pattern
     if state.consecutive_single_tasks >= 2:
         state.parallel_nudge_count += 1
-
-        # Escalate messaging based on pattern persistence
         if state.consecutive_single_tasks >= 3:
-            # Strong nudge after 3+ sequential singles
-            return HookResult.approve(
-                "⚡ **PARALLEL AGENT PATTERN**: You've spawned 3+ Tasks sequentially. "
-                "For independent subtasks, spawn ALL in ONE message using multiple Task tool calls. "
-                "This runs agents concurrently instead of waiting for each to complete.\n"
-                "Example: Instead of Task→wait→Task→wait→Task, send one message with 3 Task calls."
+            messages.insert(
+                0,
+                "⚡ **PARALLEL AGENTS**: 3+ sequential Tasks detected. "
+                "Spawn ALL independent Tasks in ONE message for concurrent execution.",
             )
         else:
-            # Softer nudge at 2 sequential
+            messages.insert(
+                0,
+                "💡 **Parallel opportunity**: Multiple independent Tasks? Spawn them all in one message.",
+            )
+
+    return HookResult.approve("\n".join(messages)) if messages else HookResult.approve()
+
+
+@register_hook("beads_parallel", "Bash", priority=4)
+def check_beads_parallel(data: dict, state: SessionState) -> HookResult:
+    """
+    Nudge sequential beads (bd) commands toward parallel execution.
+
+    PATTERN: Multiple bd create/update/close commands should be batched or parallelized.
+    """
+    tool_input = data.get("tool_input", {})
+    command = tool_input.get("command", "")
+
+    # Only care about beads commands
+    if not re.search(r"\bbd\s+(create|update|close|dep)", command):
+        return HookResult.approve()
+
+    # Track beads commands
+    if not hasattr(state, "recent_beads_commands"):
+        state.recent_beads_commands = []
+
+    current_turn = state.turn_count
+
+    # Clean old entries (older than 3 turns)
+    state.recent_beads_commands = [
+        cmd
+        for cmd in state.recent_beads_commands
+        if current_turn - cmd.get("turn", 0) <= 3
+    ]
+
+    # Check for sequential beads pattern
+    recent_count = len(state.recent_beads_commands)
+
+    # Record this command
+    state.recent_beads_commands.append({"cmd": command[:50], "turn": current_turn})
+
+    # Nudge after 2+ recent beads commands
+    if recent_count >= 2:
+        # Check if these could be batched
+        if "bd close" in command:
             return HookResult.approve(
-                "💡 **Parallelization opportunity**: If you have multiple independent Tasks, "
-                "spawn them all in a single message for concurrent execution."
+                "⚡ **BEADS BATCH**: Multiple bd commands detected. "
+                "`bd close` supports multiple IDs: `bd close id1 id2 id3`. "
+                "Batch operations are faster than sequential."
+            )
+        elif "bd create" in command:
+            return HookResult.approve(
+                "⚡ **BEADS PARALLEL**: Multiple bd create commands? "
+                "Run them in parallel Bash calls in one message, or use Task agents with run_in_background."
             )
 
     return HookResult.approve()

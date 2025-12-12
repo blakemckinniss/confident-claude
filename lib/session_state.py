@@ -304,6 +304,12 @@ class SessionState:
     )  # Last 5 Task prompts (for similarity)
     parallel_nudge_count: int = 0  # Times we've nudged for parallelization
 
+    # Background task tracking (for check-in reminders)
+    background_tasks: list = field(default_factory=list)  # [{type, prompt, turn}]
+
+    # Beads command batching
+    recent_beads_commands: list = field(default_factory=list)  # [{cmd, turn}]
+
 
 # =============================================================================
 # STATE MANAGEMENT
