@@ -1177,6 +1177,20 @@ def check_proactive_nudge(data: dict, state: SessionState) -> HookResult:
         funcs = [p["function"] for p in state.pending_integration_greps[:2]]
         suggestions.append(f"🔗 Grep callers for: {funcs}")
 
+    # Background tasks pending
+    if hasattr(state, "background_tasks") and state.background_tasks:
+        # Filter to tasks from last 10 turns
+        recent_bg = [
+            t
+            for t in state.background_tasks
+            if state.turn_count - t.get("turn", 0) <= 10
+        ]
+        if recent_bg:
+            types = [t.get("type", "agent")[:15] for t in recent_bg[:2]]
+            suggestions.append(
+                f"⏳ Background agents running: {types} - check with `TaskOutput`"
+            )
+
     if not suggestions:
         return HookResult.allow()
 
