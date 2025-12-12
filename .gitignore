@@ -30,3 +30,14 @@ debug/
 .DS_Store
 Thumbs.db
 plugins/marketplaces/
+
+# Session data (ephemeral)
+todos/
+shell-snapshots/
+session-env/
+projects/
+backups/
+statsig/
+
+# IDE integration
+ide/
