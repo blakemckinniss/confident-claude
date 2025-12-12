@@ -261,6 +261,129 @@ def extract_non_stdlib_imports(content: str) -> set[str]:
     return all_imports - STDLIB_MODULES
 
 
+def extract_calls(content: str) -> tuple[set[str], set[str]]:
+    """
+    Extract function and method calls via AST.
+
+    Returns (class_calls, method_calls):
+    - class_calls: PascalCase names like MyClass(), Exception(), etc.
+    - method_calls: Method/function names like .append(), print(), etc.
+
+    More accurate than regex - ignores strings, comments, and variable names.
+    """
+    tree = _parse_python(content)
+    if not tree:
+        return set(), set()
+
+    class_calls = set()
+    method_calls = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                name = node.func.id
+                # PascalCase heuristic: starts with uppercase
+                if name[0].isupper():
+                    class_calls.add(name)
+                else:
+                    method_calls.add(name)
+            elif isinstance(node.func, ast.Attribute):
+                # Method call like obj.method()
+                method_calls.add(node.func.attr)
+
+    return class_calls, method_calls
+
+
+def extract_all_calls(content: str) -> set[str]:
+    """Extract all function/method call names (combined set)."""
+    class_calls, method_calls = extract_calls(content)
+    return class_calls | method_calls
+
+
+# Common builtins to filter from epistemic checks
+BUILTIN_CALLS = frozenset(
+    {
+        "True",
+        "False",
+        "None",
+        "Exception",
+        "BaseException",
+        "Error",
+        "print",
+        "len",
+        "str",
+        "int",
+        "float",
+        "bool",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "range",
+        "enumerate",
+        "zip",
+        "map",
+        "filter",
+        "sorted",
+        "reversed",
+        "open",
+        "input",
+        "type",
+        "isinstance",
+        "issubclass",
+        "hasattr",
+        "getattr",
+        "setattr",
+        "sum",
+        "min",
+        "max",
+        "abs",
+        "round",
+        "pow",
+        "divmod",
+        "any",
+        "all",
+        "iter",
+        "next",
+        "repr",
+        "hash",
+        "id",
+        "hex",
+        "bin",
+        "oct",
+        "ord",
+        "chr",
+        "format",
+        "vars",
+        "dir",
+        "help",
+        "callable",
+        "eval",
+        "exec",
+        "compile",
+        "globals",
+        "locals",
+        "super",
+        "object",
+        "classmethod",
+        "staticmethod",
+        "property",
+        "slice",
+        "complex",
+        "bytes",
+        "bytearray",
+        "memoryview",
+        "frozenset",
+    }
+)
+
+
+def extract_non_builtin_calls(content: str) -> set[str]:
+    """Extract calls that aren't Python builtins."""
+    all_calls = extract_all_calls(content)
+    return {c for c in all_calls if c not in BUILTIN_CALLS and len(c) > 2}
+
+
 def clear_cache():
     """Clear the AST parse cache."""
     _parse_python.cache_clear()

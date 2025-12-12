@@ -1214,12 +1214,16 @@ def check_security_claim_gate(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("epistemic_boundary", "Edit|Write", priority=85)
 def check_epistemic_boundary(data: dict, state: SessionState) -> HookResult:
-    """Catch claims not backed by session evidence."""
+    """Catch claims not backed by session evidence (AST-based)."""
 
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
     if ".claude/tmp/" in file_path or ".claude/memory" in file_path:
+        return HookResult.approve()
+
+    # Only use AST for Python files
+    if not file_path.endswith(".py"):
         return HookResult.approve()
 
     code = tool_input.get("new_string", "") or tool_input.get("content", "")
@@ -1228,25 +1232,10 @@ def check_epistemic_boundary(data: dict, state: SessionState) -> HookResult:
 
     files_read = state.files_read or []
 
-    # Extract function/class calls
-    calls = set(re.findall(r"\b([A-Z][A-Za-z0-9]+)\s*\(", code))  # PascalCase calls
-    calls.update(re.findall(r"\.([a-z_][a-z0-9_]+)\s*\(", code))  # method calls
+    # AST-based call extraction (ignores strings/comments, more accurate)
+    from _ast_utils import extract_non_builtin_calls
 
-    # Filter common builtins
-    SKIP = {
-        "True",
-        "False",
-        "None",
-        "Exception",
-        "Error",
-        "print",
-        "len",
-        "str",
-        "int",
-        "list",
-        "dict",
-    }
-    calls = {c for c in calls if c not in SKIP and len(c) > 3}
+    calls = extract_non_builtin_calls(code)
 
     if not calls:
         return HookResult.approve()
