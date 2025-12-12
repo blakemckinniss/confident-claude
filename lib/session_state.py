@@ -312,9 +312,6 @@ class SessionState:
 
     # Bead enforcement tracking
     bead_enforcement_blocks: int = 0  # Cascade detection for bd failures
-    sequential_single_task_with_beads: int = (
-        0  # Sequential Task spawns with beads available
-    )
 
 
 # =============================================================================

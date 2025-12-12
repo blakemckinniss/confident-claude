@@ -838,6 +838,9 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     in_progress = _get_in_progress_beads(state)
 
     if in_progress:
+        # Reset enforcement counter - user is tracking work properly
+        if hasattr(state, "bead_enforcement_blocks"):
+            state.bead_enforcement_blocks = 0
         return HookResult.approve()
 
     # No active bead - determine enforcement level
@@ -967,7 +970,10 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     - Max 4 agents: Prevents overwhelming parallelism
     - Recency filter: Prioritizes recently updated beads
     - Generated structure: Provides copy-pasteable Task calls
-    - Sequential detection: Escalates after repeated single-Task patterns
+    - Sequential detection: Uses shared counter with parallel_nudge
+
+    NOTE: Does NOT update task_spawns_this_turn - parallel_nudge handles that.
+    Uses consecutive_single_tasks for escalation (shared counter).
     """
     tool_input = data.get("tool_input", {})
 
@@ -982,34 +988,15 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     if bead_count < 2:
         return HookResult.approve()
 
-    # Multiple independent beads - check sequential pattern
-    current_turn = state.turn_count
-
-    # Track this spawn
-    if state.last_task_turn != current_turn:
-        state.task_spawns_this_turn = 0
-        state.last_task_turn = current_turn
-    state.task_spawns_this_turn += 1
-
-    # Already spawning multiple this turn - good behavior!
-    # Reset escalation counter as reward for parallel pattern
-    if state.task_spawns_this_turn > 1:
-        if hasattr(state, "sequential_single_task_with_beads"):
-            state.sequential_single_task_with_beads = 0
-        return HookResult.approve()
-
-    # First Task this turn with multiple beads available
-    # Track sequential single-task pattern for escalation
-    if not hasattr(state, "sequential_single_task_with_beads"):
-        state.sequential_single_task_with_beads = 0
-
-    state.sequential_single_task_with_beads += 1
+    # Use shared counter - consecutive_single_tasks tracks sequential single-Task turns
+    # This counter is managed by parallel_nudge (priority 4); we just read and escalate
 
     # Generate the parallel task structure
     task_structure = _generate_parallel_task_calls(independent_beads)
 
-    # Escalate based on pattern persistence
-    if state.sequential_single_task_with_beads >= 3:
+    # Escalate based on shared sequential pattern counter
+    # Note: parallel_nudge (priority 4) runs after us and updates the counter
+    if state.consecutive_single_tasks >= 3:
         # HARD BLOCK after 3+ sequential singles with beads available
         return HookResult.deny(
             f"🚫 **PARALLEL REQUIRED**: {bead_count} independent beads available.\n\n"
@@ -1018,19 +1005,21 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
             f"{task_structure}\n\n"
             "**Bypass:** Say SUDO or use `run_in_background: true`"
         )
-    elif state.sequential_single_task_with_beads >= 2:
+    elif state.consecutive_single_tasks >= 2:
         # Strong nudge at 2
         return HookResult.approve(
             f"⚡ **PARALLEL BEADS**: {bead_count} independent beads ready for parallel work.\n\n"
             f"{task_structure}"
         )
-    else:
-        # Soft nudge at 1
+    elif bead_count >= 2:
+        # Soft nudge when beads available (regardless of sequential count)
         bead_list = ", ".join(f"`{b.get('id', '?')[:12]}`" for b in independent_beads)
         return HookResult.approve(
             f"💡 **Parallel opportunity**: {bead_count} beads available: {bead_list}\n"
             "Consider spawning multiple Task agents in one message."
         )
+
+    return HookResult.approve()
 
 
 @register_hook("recursion_guard", "Edit|Write|Bash", priority=5)
