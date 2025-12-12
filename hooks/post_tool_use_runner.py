@@ -473,6 +473,19 @@ def check_state_updater(
     # Process by tool type
     if tool_name == "Read":
         filepath = tool_input.get("file_path", "")
+        # SELF-HEAL: Detect Read failures on framework files
+        read_error = result.get("error", "") or ""
+        if not read_error and isinstance(result, dict):
+            output = result.get("output", "")
+            if isinstance(output, str) and (
+                "no such file" in output.lower()[:100]
+                or "permission denied" in output.lower()[:100]
+                or "not found" in output.lower()[:100]
+            ):
+                read_error = output[:200]
+        if read_error and filepath and ".claude/" in filepath:
+            _trigger_self_heal(state, target=filepath, error=read_error)
+
         if filepath:
             track_file_read(state, filepath)
             add_domain_signal(state, filepath)
