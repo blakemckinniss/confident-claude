@@ -493,6 +493,18 @@ def check_state_updater(
 
     elif tool_name == "Edit":
         filepath = tool_input.get("file_path", "")
+        # SELF-HEAL: Detect Edit failures on framework files
+        edit_error = result.get("error", "") or ""
+        if not edit_error and isinstance(result, dict):
+            # Check for error indicators in output
+            output = result.get("output", "")
+            if isinstance(output, str) and (
+                "error" in output.lower()[:100] or "failed" in output.lower()[:100]
+            ):
+                edit_error = output[:200]
+        if edit_error and filepath and ".claude/" in filepath:
+            _trigger_self_heal(state, target=filepath, error=edit_error)
+
         if filepath:
             track_file_edit(state, filepath)
             track_feature_file(state, filepath)
@@ -508,12 +520,27 @@ def check_state_updater(
                         new_def = new_func_lines.get(func_name)
                         if new_def is None or old_def != new_def:
                             add_pending_integration_grep(state, func_name, filepath)
-            # SELF-HEAL: Clear if successful edit on framework files
-            if getattr(state, "self_heal_required", False) and ".claude/" in filepath:
+            # SELF-HEAL: Clear if successful edit on framework files (no error)
+            if (
+                not edit_error
+                and getattr(state, "self_heal_required", False)
+                and ".claude/" in filepath
+            ):
                 _clear_self_heal(state)
 
     elif tool_name == "Write":
         filepath = tool_input.get("file_path", "")
+        # SELF-HEAL: Detect Write failures on framework files
+        write_error = result.get("error", "") or ""
+        if not write_error and isinstance(result, dict):
+            output = result.get("output", "")
+            if isinstance(output, str) and (
+                "error" in output.lower()[:100] or "failed" in output.lower()[:100]
+            ):
+                write_error = output[:200]
+        if write_error and filepath and ".claude/" in filepath:
+            _trigger_self_heal(state, target=filepath, error=write_error)
+
         if filepath:
             is_new_file = filepath not in state.files_read
             if is_new_file:
@@ -530,6 +557,13 @@ def check_state_updater(
                     if stubs:
                         fname = Path(filepath).name
                         warning = f"⚠️ STUB DETECTED in new file `{fname}`: {', '.join(stubs)}\n   Remember to complete before session ends!"
+            # SELF-HEAL: Clear if successful write on framework files
+            if (
+                not write_error
+                and getattr(state, "self_heal_required", False)
+                and ".claude/" in filepath
+            ):
+                _clear_self_heal(state)
 
     elif tool_name == "Bash":
         command = tool_input.get("command", "")
