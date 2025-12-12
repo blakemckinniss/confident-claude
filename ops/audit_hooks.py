@@ -345,6 +345,15 @@ class HookAuditor:
                     match = re.search(r"\.claude/hooks/([\w.-]+\.py)", cmd)
                     if match:
                         registered.add(match.group(1))
+
+        # Also check statusLine config (official Claude Code feature)
+        status_line = settings.get("statusLine", {})
+        if isinstance(status_line, dict):
+            cmd = status_line.get("command", "")
+            match = re.search(r"\.claude/hooks/([\w.-]+\.py)", cmd)
+            if match:
+                registered.add(match.group(1))
+
         return registered
 
     def get_all_hook_files(self) -> set:
