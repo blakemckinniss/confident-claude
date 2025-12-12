@@ -21,7 +21,7 @@
       "url": "https://github.com/wshobson/agents.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows",
-    "lastUpdated": "2025-12-12T22:08:08.164Z"
+    "lastUpdated": "2025-12-12T22:32:01.984Z"
   },
   "repomix": {
     "source": {
@@ -29,7 +29,7 @@
       "url": "https://github.com/yamadashy/repomix.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/repomix",
-    "lastUpdated": "2025-12-12T22:19:56.193Z"
+    "lastUpdated": "2025-12-12T22:31:36.481Z"
   },
   "claude-code-templates": {
     "source": {
