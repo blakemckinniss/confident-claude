@@ -141,21 +141,7 @@ _JS_MUTATION_PATTERNS = [
     ),
 ]
 
-# Python mutation patterns
-_PY_MUTATION_PATTERNS = [
-    (
-        re.compile(r"def\s+\w+\s*\([^)]*=\s*\[\s*\]"),
-        "Mutable default [] - use None and set in body",
-    ),
-    (
-        re.compile(r"def\s+\w+\s*\([^)]*=\s*\{\s*\}"),
-        "Mutable default {{}} - use None and set in body",
-    ),
-    (
-        re.compile(r"def\s+\w+\s*\([^)]*=\s*set\s*\(\s*\)"),
-        "Mutable default set() - use None and set in body",
-    ),
-]
+# Python mutation patterns - now AST-based in _ast_utils.find_mutable_defaults()
 
 # Spread operator check for JS mutation guard
 _SPREAD_CHECK = re.compile(r"\[\.\.\.\w+\]\s*$")
@@ -994,9 +980,14 @@ def check_state_mutations(
                     warnings.append(msg.format("method"))
 
     elif is_py:
-        for pattern, msg in _PY_MUTATION_PATTERNS:
-            if pattern.search(code):
-                warnings.append(msg)
+        # AST-based mutable default detection (more accurate than regex)
+        from _ast_utils import find_mutable_defaults
+
+        mutable_issues = find_mutable_defaults(code)
+        for func_name, line, mtype in mutable_issues[:2]:
+            warnings.append(
+                f"Mutable default {mtype} in {func_name}() - use None and set in body"
+            )
 
     if warnings:
         mutation_cooldown.reset()

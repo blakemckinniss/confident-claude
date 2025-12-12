@@ -384,6 +384,62 @@ def extract_non_builtin_calls(content: str) -> set[str]:
     return {c for c in all_calls if c not in BUILTIN_CALLS and len(c) > 2}
 
 
+def find_mutable_defaults(content: str) -> list[tuple[str, int, str]]:
+    """
+    Find functions with mutable default arguments via AST.
+
+    Returns list of (function_name, line_number, mutable_type) tuples.
+    Detects: [], {}, set(), list(), dict()
+
+    More accurate than regex - handles multiline signatures, nested defaults.
+    """
+    tree = _parse_python(content)
+    if not tree:
+        return []
+
+    issues = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # Check positional defaults
+            for default in node.args.defaults:
+                mutable_type = _get_mutable_type(default)
+                if mutable_type:
+                    issues.append((node.name, node.lineno, mutable_type))
+                    break  # One warning per function
+
+            # Check keyword-only defaults
+            if not any(node.name == i[0] for i in issues):  # Skip if already flagged
+                for default in node.args.kw_defaults:
+                    if default is not None:
+                        mutable_type = _get_mutable_type(default)
+                        if mutable_type:
+                            issues.append((node.name, node.lineno, mutable_type))
+                            break
+
+    return issues
+
+
+def _get_mutable_type(node: ast.expr) -> str | None:
+    """Check if an AST node represents a mutable default value."""
+    if isinstance(node, ast.List):
+        return "[]"
+    elif isinstance(node, ast.Dict):
+        return "{}"
+    elif isinstance(node, ast.Set):
+        return "set literal"
+    elif isinstance(node, ast.Call):
+        # Check for list(), dict(), set() calls
+        if isinstance(node.func, ast.Name):
+            if node.func.id in ("list", "dict", "set"):
+                return f"{node.func.id}()"
+    return None
+
+
+def has_mutable_defaults(content: str) -> bool:
+    """Quick check if code has any mutable defaults."""
+    return len(find_mutable_defaults(content)) > 0
+
+
 def clear_cache():
     """Clear the AST parse cache."""
     _parse_python.cache_clear()
