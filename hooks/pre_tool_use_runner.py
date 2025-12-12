@@ -991,8 +991,11 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
         state.last_task_turn = current_turn
     state.task_spawns_this_turn += 1
 
-    # Already spawning multiple this turn - good behavior
+    # Already spawning multiple this turn - good behavior!
+    # Reset escalation counter as reward for parallel pattern
     if state.task_spawns_this_turn > 1:
+        if hasattr(state, "sequential_single_task_with_beads"):
+            state.sequential_single_task_with_beads = 0
         return HookResult.approve()
 
     # First Task this turn with multiple beads available
