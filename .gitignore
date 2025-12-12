@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 cache/
 .cache/
+.ruff_cache/
 
 # Credentials and secrets
 .credentials.json
@@ -21,6 +22,8 @@ cache/
 history.jsonl
 file-history/
 debug/
+downloads/
+telemetry/
 
 # Large/generated files
 *.log
@@ -29,15 +32,29 @@ debug/
 # OS files
 .DS_Store
 Thumbs.db
+
+# External plugins (separate repos)
 plugins/marketplaces/
 
-# Session data (ephemeral)
+# Ephemeral session state
 todos/
 shell-snapshots/
 session-env/
 projects/
 backups/
 statsig/
-
-# IDE integration
 ide/
+
+# Lock files (never version control)
+*.lock
+
+# Memory ephemeral state (regenerable/session-specific)
+memory/.file_index.json
+memory/session_log.jsonl
+memory/session_state_v3.json
+memory/*_cooldown.json
+memory/*_state.json
+memory/assumption_ledger_last.json
+memory/counterfactual_cooldowns.json
+memory/thinking_coach_last.json
+memory/block_log.jsonl
