@@ -110,12 +110,8 @@ Memory system architecture: SessionStart loads last 10 lessons, synapse_fire.py 
 The Epistemological Protocol (19th protocol) enforces confidence calibration - start at 0%, earn the right to code through evidence (read +10%, research +20%, probe +30%, verify +40%). Prevents Dunning-Kruger hallucinations.
 
 
-### 2025-11-20 21:25
-The Epistemological Protocol (19th protocol) complete with automatic enforcement via hooks. detect_low_confidence.py warns at <71%, confidence_gate.py blocks production writes. State persisted in confidence_state.json. Evidence gains: read +10%, research +20%, probe +30%, verify +40%. Prevents Dunning-Kruger hallucinations by forcing progression through Ignorance → Hypothesis → Certainty tiers.
-
-
-### 2025-11-20 21:32
-Reinforcement Learning Layer added to Epistemological Protocol. 16 positive actions (agent delegation +25% vs manual +20%), 10 negative actions (modify_unexamined -40% worst). Automatic via detect_confidence_penalty.py (UserPromptSubmit) and detect_confidence_reward.py (PostToolUse). Psychology: Operant conditioning + loss aversion + goal gradient + progress feedback. Carrot = production access. Stick = confidence loss. Creates intrinsic motivation to delegate to agents, run protocols, gather evidence, avoid shortcuts.
+### 2025-11-20 21:25 (ARCHIVED)
+~~Epistemological Protocol hooks were removed in Dec 2025 cleanup. The tier system remains in lib/epistemology.py but automatic enforcement hooks (detect_low_confidence.py, confidence_gate.py, detect_confidence_penalty.py, detect_confidence_reward.py) were deleted as they added complexity without demonstrated value.~~
 
 
 ### 2025-11-21 16:17
@@ -212,11 +208,9 @@ Post-edit validation is critical: py_compile only checks SYNTAX, not imports. Fo
 **Lesson:** NEVER use config values (timeouts, limits, thresholds) as proxies for actual performance. Config = constraint, not measurement. Measure or ask - don't guess.
 
 ### 2025-11-26 13:28
-- [abandoned_stubs] ⚠️ ABANDONED WORK: script_nudge.py, stop_cleanup.py contain stubs/TODOs
 
 
 ### 2025-11-28 16:16
-- [abandoned_stubs] ⚠️ ABANDONED WORK: subagent_stop.py, deferral_gate.py contain stubs/TODOs
 
 ### 2025-12-01 08:21
 [block-reflection:commit_gate, unknown] [lesson learned]' (clears from Stop reflection)\n- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"}
@@ -231,46 +225,31 @@ Post-edit validation is critical: py_compile only checks SYNTAX, not imports. Fo
 ## Session Lessons
 
 ### 2025-12-07 09:34
-- [abandoned_stubs] ⚠️ ABANDONED WORK: test_housekeeping.py, housekeeping.py contain stubs/TODOs
 
 ### 2025-12-07 09:46
-- [abandoned_stubs] ⚠️ ABANDONED WORK: test_housekeeping.py, housekeeping.py contain stubs/TODOs
 
 ### 2025-12-07 09:58
-- [abandoned_stubs] ⚠️ ABANDONED WORK: test_housekeeping.py, housekeeping.py contain stubs/TODOs
 
 ### 2025-12-07 11:00
-- [abandoned_stubs] ⚠️ ABANDONED WORK: command_awareness.py contain stubs/TODOs
 
 ### 2025-12-08 18:44
-- [abandoned_stubs] ⚠️ ABANDONED WORK: enemy-rank-system.ts, vault-system.ts, ego-item-system.ts, transmogrification-system.ts, sustained-ability-system.ts, race-system.ts contain stubs/TODOs
 
 ### 2025-12-08 23:18
-- [abandoned_stubs] ⚠️ ABANDONED WORK: stubs.ts, debug.ts contain stubs/TODOs
 
 ### 2025-12-08 23:19
-- [abandoned_stubs] ⚠️ ABANDONED WORK: stubs.ts, debug.ts contain stubs/TODOs
 
 ### 2025-12-08 23:33
-- [abandoned_stubs] ⚠️ ABANDONED WORK: stubs.ts, debug.ts contain stubs/TODOs
 
 ### 2025-12-08 23:33
-- [abandoned_stubs] ⚠️ ABANDONED WORK: stubs.ts, debug.ts contain stubs/TODOs
 
 ### 2025-12-09 19:32
-- [abandoned_stubs] ⚠️ ABANDONED WORK: pre_tool_use_runner.py, post_tool_use_runner.py contain stubs/TODOs
 
 ### 2025-12-09 19:40
-- [abandoned_stubs] ⚠️ ABANDONED WORK: pre_tool_use_runner.py, post_tool_use_runner.py, user_prompt_submit_runner.py contain stubs/TODOs
 
 ### 2025-12-09 19:42
-- [abandoned_stubs] ⚠️ ABANDONED WORK: pre_tool_use_runner.py, post_tool_use_runner.py, user_prompt_submit_runner.py, stop_runner.py contain stubs/TODOs
 
 ### 2025-12-09 23:18
-- [abandoned_stubs] ⚠️ ABANDONED WORK: compress_session.py contain stubs/TODOs
 
 ### 2025-12-10 16:27
-- [abandoned_stubs] ⚠️ ABANDONED WORK: fixtures.ts, game-mechanics-ledger.test.ts, game-reducer.test.ts, ai-integration.test.ts contain stubs/TODOs
 
 ### 2025-12-12 01:45
-- [abandoned_stubs] ⚠️ ABANDONED WORK: skill-check.test.ts, save-system.test.ts, item-execution.test.ts, transmogrification-system.test.ts contain stubs/TODOs
