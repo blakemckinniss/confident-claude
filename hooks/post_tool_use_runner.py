@@ -1227,11 +1227,12 @@ def check_scratch_enforcer(
     if not tool_name:
         return HookResult.none()
 
-    # Load scratch state
-    scratch_state = runner_state.get(
-        "scratch_state",
-        {"tool_counts": {}, "last_reset": time.time(), "suggestions_given": []},
-    )
+    # Load scratch state with safe key access
+    scratch_state = runner_state.get("scratch_state", {})
+    # Ensure all required keys exist (handles partial data from old versions)
+    scratch_state.setdefault("tool_counts", {})
+    scratch_state.setdefault("last_reset", time.time())
+    scratch_state.setdefault("suggestions_given", [])
 
     # Reset if window expired
     if time.time() - scratch_state.get("last_reset", 0) > REPETITION_WINDOW:
@@ -1468,11 +1469,12 @@ def check_info_gain(data: dict, state: SessionState, runner_state: dict) -> Hook
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
 
-    # Get or init info gain state
-    ig_state = runner_state.get(
-        "info_gain_state",
-        {"reads_since_progress": 0, "files_read_this_burst": [], "last_stall_warn": 0},
-    )
+    # Get or init info gain state with safe key access
+    ig_state = runner_state.get("info_gain_state", {})
+    # Ensure all required keys exist (handles partial data from old versions)
+    ig_state.setdefault("reads_since_progress", 0)
+    ig_state.setdefault("files_read_this_burst", [])
+    ig_state.setdefault("last_stall_warn", 0)
 
     if tool_name in READ_TOOLS:
         ig_state["reads_since_progress"] = ig_state.get("reads_since_progress", 0) + 1

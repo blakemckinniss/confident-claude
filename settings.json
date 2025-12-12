@@ -1,113 +1,6 @@
 {
-  "enabledPlugins": {
-    "claude-mem@thedotmack": true,
-    "hookify@claude-code-plugins": true,
-    "unit-testing@claude-code-workflows": true
-  },
   "env": {
     "MAX_THINKING_TOKENS": "32000"
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/post_tool_use_runner.py",
-            "type": "command"
-          }
-        ],
-        "matcher": ".*"
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/pre_compact.py",
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "command": "bd prime",
-            "type": "command"
-          }
-        ],
-        "matcher": ""
-      }
-    ],
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/pre_tool_use_runner.py",
-            "type": "command"
-          }
-        ],
-        "matcher": ".*"
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/session_cleanup.py",
-            "type": "command"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/session_init.py",
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "command": "bd prime",
-            "type": "command"
-          }
-        ],
-        "matcher": ""
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/stop_runner.py",
-            "type": "command"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/subagent_stop.py",
-            "type": "command"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/user_prompt_submit_runner.py",
-            "type": "command"
-          }
-        ]
-      }
-    ]
   },
   "permissions": {
     "allow": [
@@ -129,8 +22,124 @@
       "mcp__*"
     ]
   },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/post_tool_use_runner.py"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/pre_compact.py"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bd prime"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/pre_tool_use_runner.py"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/session_cleanup.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/session_init.py"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bd prime"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/stop_runner.py"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/subagent_stop.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/user_prompt_submit_runner.py"
+          }
+        ]
+      }
+    ]
+  },
   "statusLine": {
-    "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/statusline.py",
-    "type": "command"
+    "type": "command",
+    "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/statusline.py"
+  },
+  "enabledPlugins": {
+    "claude-mem@thedotmack": true,
+    "hookify@claude-code-plugins": true,
+    "unit-testing@claude-code-workflows": true,
+    "code-refactoring@claude-code-workflows": true,
+    "error-debugging@claude-code-workflows": true,
+    "context-management@claude-code-workflows": true,
+    "codebase-cleanup@claude-code-workflows": true,
+    "python-development@claude-code-workflows": true,
+    "javascript-typescript@claude-code-workflows": true,
+    "shell-scripting@claude-code-workflows": true,
+    "developer-essentials@claude-code-workflows": true,
+    "repomix-mcp@repomix": true
   }
 }

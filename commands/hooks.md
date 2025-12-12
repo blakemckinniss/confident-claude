@@ -4,4 +4,4 @@ argument-hint: [--test] [--fix] [--prune]
 allowed-tools: Bash
 ---
 
-!`$CLAUDE_PROJECT_DIR/.claude/.venv/bin/python $CLAUDE_PROJECT_DIR/.claude/ops/hooks.py $ARGUMENTS`
+!`$HOME/.claude/.venv/bin/python $HOME/.claude/ops/hooks.py $ARGUMENTS`
