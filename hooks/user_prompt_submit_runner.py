@@ -20,6 +20,7 @@ HOOKS INDEX (by priority):
     50 reminder_injector   - Custom trigger-based reminders
 
   SUGGESTIONS (75-95):
+    72 self_heal_diagnostic - Diagnostic commands when self-heal active
     75 proactive_nudge     - Actionable suggestions from state
     80 ops_nudge           - Tool suggestions (comprehensive)
     85 ops_awareness       - Script awareness (fallback)
@@ -1135,8 +1136,66 @@ def check_reminder_injector(data: dict, state: SessionState) -> HookResult:
 
 
 # =============================================================================
-# SUGGESTION HOOKS (priority 75-95)
+# SUGGESTION HOOKS (priority 72-95)
 # =============================================================================
+
+
+@register_hook("self_heal_diagnostic", priority=72)
+def check_self_heal_diagnostic(data: dict, state: SessionState) -> HookResult:
+    """Inject diagnostic guidance when self-heal mode is active.
+
+    When framework errors require self-healing, inject specific diagnostic
+    commands to help identify and fix the issue.
+    """
+    if not getattr(state, "self_heal_required", False):
+        return HookResult.allow()
+
+    target = getattr(state, "self_heal_target", "unknown")
+    error = getattr(state, "self_heal_error", "unknown error")
+    attempts = getattr(state, "self_heal_attempts", 0)
+    max_attempts = getattr(state, "self_heal_max_attempts", 3)
+
+    # Build diagnostic commands based on error type
+    diagnostics = []
+
+    # Generic diagnostics
+    diagnostics.append("ruff check ~/.claude/hooks/  # Lint all hooks")
+
+    # Path-specific diagnostics
+    if "hook" in target.lower() or "runner" in target.lower():
+        diagnostics.append(
+            "~/.claude/.venv/bin/python -c \"import sys; sys.path.insert(0, '/home/jinx/.claude/hooks'); import pre_tool_use_runner\"  # Test import"
+        )
+    if "session_state" in target.lower() or "lib" in target.lower():
+        diagnostics.append(
+            '~/.claude/.venv/bin/python -c "from session_state import load_state; print(load_state())"  # Test state'
+        )
+
+    # Error-specific diagnostics
+    if "syntax" in error.lower():
+        diagnostics.append(
+            f"~/.claude/.venv/bin/python -m py_compile {target}  # Check syntax"
+        )
+    if "import" in error.lower() or "module" in error.lower():
+        diagnostics.append("ls -la ~/.claude/hooks/*.py | head -10  # List hook files")
+        diagnostics.append(
+            "grep -l 'import.*Error' ~/.claude/hooks/*.py  # Find import issues"
+        )
+
+    lines = [
+        f"🚨 **SELF-HEAL MODE ACTIVE** (attempt {attempts}/{max_attempts})",
+        f"**Target:** `{target}`",
+        f"**Error:** {error[:100]}",
+        "",
+        "**Diagnostic commands:**",
+    ]
+    lines.extend(f"```bash\n{cmd}\n```" for cmd in diagnostics[:3])
+    lines.append("")
+    lines.append(
+        "Fix the framework error before continuing other work. Say **SUDO** to bypass."
+    )
+
+    return HookResult.allow("\n".join(lines))
 
 
 @register_hook("proactive_nudge", priority=75)
