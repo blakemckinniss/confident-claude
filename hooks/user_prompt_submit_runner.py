@@ -1653,6 +1653,23 @@ def check_work_patterns(data: dict, state: SessionState) -> HookResult:
             "MCP tools, Task agents, WebSearch, /inventory. Try first."
         )
 
+    # Parallel Opportunity - detect multi-item/multi-file work
+    # Pattern: numbered lists, "and" chains, multiple files, bulk operations
+    parallel_signals = [
+        r"\b(1\.|2\.|3\.)",  # Numbered list
+        r"\b(first|second|third|then|next|after that)\b",  # Sequential words
+        r"\b(all|each|every|multiple|several|many)\s+(file|component|test|module)",  # Bulk
+        r"\band\b.*\band\b",  # Multiple "and" (A and B and C)
+        r"[,;]\s*\w+[,;]\s*\w+",  # Comma-separated items
+    ]
+    if any(re.search(p, prompt_lower) for p in parallel_signals):
+        # Only nudge if we've had sequential patterns before
+        if state.consecutive_single_tasks >= 1 or state.parallel_nudge_count >= 1:
+            parts.append(
+                "⚡ **PARALLEL AGENTS**: Multiple items detected. "
+                "Spawn independent Task agents in ONE message, not sequentially."
+            )
+
     if not parts:
         return HookResult.allow()
 

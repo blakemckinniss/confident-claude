@@ -5,7 +5,11 @@ Composite PreToolUse Runner: Runs all PreToolUse hooks in a single process.
 PERFORMANCE: ~35ms for 24 hooks vs ~400ms for individual processes (10x faster)
 
 HOOKS INDEX (by priority):
-  SAFETY (0-20):
+  ORCHESTRATION (0-5):
+    3  exploration_cache   - Return cached exploration results
+    4  parallel_nudge      - Nudge sequential Task spawns → parallel
+
+  SAFETY (5-20):
     5  recursion_guard     - Block nested .claude/.claude paths
     10 loop_detector       - Block bash loops
     15 background_enforcer - Require background for slow commands
@@ -579,6 +583,82 @@ def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
                 return HookResult.approve(grounding.to_markdown())
         except Exception:
             pass
+
+
+@register_hook("parallel_nudge", "Task", priority=4)
+def check_parallel_nudge(data: dict, state: SessionState) -> HookResult:
+    """
+    Nudge sequential Task spawns toward parallel execution.
+
+    Detects when Claude spawns single Tasks sequentially (wait for one, spawn next)
+    instead of spawning multiple independent Tasks in one message.
+
+    ARCHITECTURE:
+    - Track Task spawns per turn
+    - Detect consecutive single-Task turns
+    - After 2+ sequential singles, inject strong nudge
+    - After 3+, escalate to blocking reminder
+    """
+    tool_input = data.get("tool_input", {})
+    prompt = tool_input.get("prompt", "")
+
+    # Skip resume operations (continuing existing work)
+    if tool_input.get("resume"):
+        return HookResult.approve()
+
+    # Skip background tasks (already async)
+    if tool_input.get("run_in_background"):
+        return HookResult.approve()
+
+    current_turn = state.turn_count
+
+    # Reset counter if new turn
+    if state.last_task_turn != current_turn:
+        # Check if previous turn had only 1 Task spawn
+        if state.last_task_turn > 0 and state.task_spawns_this_turn == 1:
+            state.consecutive_single_tasks += 1
+        elif state.task_spawns_this_turn > 1:
+            # Multiple tasks in one turn = good parallel behavior
+            state.consecutive_single_tasks = 0
+
+        state.task_spawns_this_turn = 0
+        state.last_task_turn = current_turn
+
+    # Increment spawn count for this turn
+    state.task_spawns_this_turn += 1
+
+    # Track recent prompts for similarity detection
+    if prompt:
+        state.task_prompts_recent = (state.task_prompts_recent + [prompt[:100]])[-5:]
+
+    # Detect if multiple similar tasks could be parallelized
+    # Skip nudge if this is the first Task this turn (could still add more)
+    if state.task_spawns_this_turn > 1:
+        # Already spawning multiple this turn - good!
+        state.consecutive_single_tasks = 0
+        return HookResult.approve()
+
+    # Check for sequential single-Task pattern
+    if state.consecutive_single_tasks >= 2:
+        state.parallel_nudge_count += 1
+
+        # Escalate messaging based on pattern persistence
+        if state.consecutive_single_tasks >= 3:
+            # Strong nudge after 3+ sequential singles
+            return HookResult.approve(
+                "⚡ **PARALLEL AGENT PATTERN**: You've spawned 3+ Tasks sequentially. "
+                "For independent subtasks, spawn ALL in ONE message using multiple Task tool calls. "
+                "This runs agents concurrently instead of waiting for each to complete.\n"
+                "Example: Instead of Task→wait→Task→wait→Task, send one message with 3 Task calls."
+            )
+        else:
+            # Softer nudge at 2 sequential
+            return HookResult.approve(
+                "💡 **Parallelization opportunity**: If you have multiple independent Tasks, "
+                "spawn them all in a single message for concurrent execution."
+            )
+
+    return HookResult.approve()
 
 
 @register_hook("recursion_guard", "Edit|Write|Bash", priority=5)

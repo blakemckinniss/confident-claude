@@ -289,6 +289,21 @@ class SessionState:
     handoff_next_steps: list = field(default_factory=list)  # Prioritized next actions
     handoff_blockers: list = field(default_factory=list)  # Known blockers/issues
 
+    # ==========================================================================
+    # PARALLEL AGENT ORCHESTRATION (v3.9) - Nudge sequential → parallel Task spawns
+    # ==========================================================================
+
+    # Task spawn tracking per turn (reset each turn)
+    task_spawns_this_turn: int = 0  # Count of Task tools in current turn
+    last_task_turn: int = 0  # Turn when last Task was spawned
+
+    # Sequential pattern detection
+    consecutive_single_tasks: int = 0  # Sequential turns with single Task spawn
+    task_prompts_recent: list = field(
+        default_factory=list
+    )  # Last 5 Task prompts (for similarity)
+    parallel_nudge_count: int = 0  # Times we've nudged for parallelization
+
 
 # =============================================================================
 # STATE MANAGEMENT
