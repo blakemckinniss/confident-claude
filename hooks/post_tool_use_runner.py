@@ -283,6 +283,34 @@ def _clear_self_heal(state: SessionState) -> None:
     state.self_heal_attempts = 0
 
 
+def _detect_error_in_result(
+    result: dict, keywords: tuple[str, ...] = ("error", "failed")
+) -> str:
+    """Detect errors in tool result.
+
+    Args:
+        result: Tool result dict with potential 'error' or 'output' fields
+        keywords: Error keywords to search for in output (lowercase)
+
+    Returns:
+        Error string (truncated to 200 chars) or empty string if no error
+    """
+    # Check explicit error field first
+    error = result.get("error", "") or ""
+    if error:
+        return error[:200]
+
+    # Check output for error keywords
+    if isinstance(result, dict):
+        output = result.get("output", "")
+        if isinstance(output, str):
+            output_lower = output.lower()[:150]
+            if any(kw in output_lower for kw in keywords):
+                return output[:200]
+
+    return ""
+
+
 def extract_todos_from_content(content: str, filepath: str) -> list[dict]:
     """Extract TODO/FIXME items from code content."""
     todos = []
@@ -474,15 +502,9 @@ def check_state_updater(
     if tool_name == "Read":
         filepath = tool_input.get("file_path", "")
         # SELF-HEAL: Detect Read failures on framework files
-        read_error = result.get("error", "") or ""
-        if not read_error and isinstance(result, dict):
-            output = result.get("output", "")
-            if isinstance(output, str) and (
-                "no such file" in output.lower()[:100]
-                or "permission denied" in output.lower()[:100]
-                or "not found" in output.lower()[:100]
-            ):
-                read_error = output[:200]
+        read_error = _detect_error_in_result(
+            result, keywords=("no such file", "permission denied", "not found")
+        )
         if read_error and filepath and ".claude/" in filepath:
             _trigger_self_heal(state, target=filepath, error=read_error)
 
@@ -507,14 +529,7 @@ def check_state_updater(
     elif tool_name == "Edit":
         filepath = tool_input.get("file_path", "")
         # SELF-HEAL: Detect Edit failures on framework files
-        edit_error = result.get("error", "") or ""
-        if not edit_error and isinstance(result, dict):
-            # Check for error indicators in output
-            output = result.get("output", "")
-            if isinstance(output, str) and (
-                "error" in output.lower()[:100] or "failed" in output.lower()[:100]
-            ):
-                edit_error = output[:200]
+        edit_error = _detect_error_in_result(result)
         if edit_error and filepath and ".claude/" in filepath:
             _trigger_self_heal(state, target=filepath, error=edit_error)
 
@@ -544,13 +559,7 @@ def check_state_updater(
     elif tool_name == "Write":
         filepath = tool_input.get("file_path", "")
         # SELF-HEAL: Detect Write failures on framework files
-        write_error = result.get("error", "") or ""
-        if not write_error and isinstance(result, dict):
-            output = result.get("output", "")
-            if isinstance(output, str) and (
-                "error" in output.lower()[:100] or "failed" in output.lower()[:100]
-            ):
-                write_error = output[:200]
+        write_error = _detect_error_in_result(result)
         if write_error and filepath and ".claude/" in filepath:
             _trigger_self_heal(state, target=filepath, error=write_error)
 
