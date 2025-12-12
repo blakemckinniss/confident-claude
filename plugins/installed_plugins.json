@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "plugins": {
+    "claude-mem@thedotmack": [
+      {
+        "scope": "project",
+        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.0.11",
+        "version": "7.0.11",
+        "installedAt": "2025-12-12T06:45:59.968Z",
+        "lastUpdated": "2025-12-12T06:45:59.968Z",
+        "isLocal": true,
+        "projectPath": "/home/jinx"
+      }
+    ]
+  }
+}

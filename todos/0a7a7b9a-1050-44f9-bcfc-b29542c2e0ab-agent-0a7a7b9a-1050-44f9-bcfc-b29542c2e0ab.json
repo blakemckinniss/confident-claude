@@ -1,0 +1,42 @@
+[
+  {
+    "content": "Research event emission points in codebase (combat, prophecy, deity, resource)",
+    "status": "completed",
+    "activeForm": "Researching event emission points in codebase"
+  },
+  {
+    "content": "Create ActivityLog type definitions and schema",
+    "status": "completed",
+    "activeForm": "Creating ActivityLog type definitions and schema"
+  },
+  {
+    "content": "Create activityLogPersistence.ts following Dexie patterns",
+    "status": "completed",
+    "activeForm": "Creating activityLogPersistence.ts"
+  },
+  {
+    "content": "Create activityLog.svelte.ts store with Svelte 5 runes",
+    "status": "completed",
+    "activeForm": "Creating activityLog.svelte.ts store"
+  },
+  {
+    "content": "Wire event tracking into godFavor.svelte.ts",
+    "status": "completed",
+    "activeForm": "Wiring event tracking into godFavor.svelte.ts"
+  },
+  {
+    "content": "Update GlobalActivityLog.svelte to use real store (remove fake data)",
+    "status": "completed",
+    "activeForm": "Updating GlobalActivityLog.svelte to use real store"
+  },
+  {
+    "content": "Add clear/reset functionality to activity log",
+    "status": "completed",
+    "activeForm": "Adding clear/reset functionality"
+  },
+  {
+    "content": "Test activity log with different event types",
+    "status": "in_progress",
+    "activeForm": "Testing activity log functionality"
+  }
+]

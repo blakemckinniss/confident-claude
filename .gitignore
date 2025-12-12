@@ -1,0 +1,32 @@
+# Virtual environment
+.venv/
+
+# Cache directories
+__pycache__/
+*.pyc
+cache/
+.cache/
+
+# Credentials and secrets
+.credentials.json
+*.pem
+*.key
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+
+# Session data (ephemeral)
+history.jsonl
+file-history/
+debug/
+
+# Large/generated files
+*.log
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+plugins/marketplaces/

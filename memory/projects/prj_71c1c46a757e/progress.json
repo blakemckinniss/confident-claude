@@ -1,0 +1,177 @@
+{
+  "last_updated": "2025-12-12T09:39:43.713401",
+  "session_id": "ses_1765547025",
+  "entries": [
+    {
+      "feature_id": "F1765543529",
+      "description": "continue",
+      "status": "interrupted",
+      "files": [],
+      "errors": 0,
+      "started": 1765543529.1342762,
+      "completed": 1765543633.8321812,
+      "turns": 1
+    },
+    {
+      "feature_id": "F1765543633",
+      "description": "Need to fix this,   \u23bf PostToolUse:Bash says: Plugin hook error: [2025-12-12 12:46:34.625] [ERROR] [S",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/.claude/plugins/marketplaces/thedotmack/src/shared/worker-utils.ts",
+        "/home/jinx/projects/slaytheweb/src/components/Cards.tsx"
+      ],
+      "errors": 0,
+      "started": 1765543633.8321831,
+      "completed": 1765543934.1375744,
+      "turns": 2
+    },
+    {
+      "feature_id": "F1765543934",
+      "description": "can we optimize this WSL2 Ubuntu instance for optimal Claude Code performance and utiltiy? My core W",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/.claude/hooks/pre_tool_use_runner.py",
+        "/home/jinx/.claude/config/optimize_wsl2.sh",
+        "/home/jinx/.bashrc.d/services.sh",
+        "/home/jinx/.bashrc.optimized"
+      ],
+      "errors": 0,
+      "started": 1765543934.137576,
+      "completed": 1765544498.7124553,
+      "turns": 2
+    },
+    {
+      "feature_id": "F1765544805",
+      "description": "Let nvm be the only node (requires sudo + ensures nvm loads)",
+      "status": "interrupted",
+      "files": [],
+      "errors": 0,
+      "started": 1765544805.4544992,
+      "completed": 1765544849.3941107,
+      "turns": 0
+    },
+    {
+      "feature_id": "F1765547201",
+      "description": "In CLAUDE.md you Response Format additions have been EXTREMELY helpful as they've added progressive ",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/.claude/hooks/user_prompt_submit_runner.py",
+        "/home/jinx/CLAUDE.md"
+      ],
+      "errors": 0,
+      "started": 1765547201.1088226,
+      "completed": 1765547753.7259338,
+      "turns": 5
+    },
+    {
+      "feature_id": "F1765547753",
+      "description": "Much closer; but on reward screen have the cards line up in flush in-line instead of curved view arc",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/src/styles/app.css"
+      ],
+      "errors": 0,
+      "started": 1765547753.7259362,
+      "completed": 1765547799.8466842,
+      "turns": 1
+    },
+    {
+      "feature_id": "F1765547799",
+      "description": "Keep CLAUDE.md as the detailed reference, hook as the condensed reminder",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/src/styles/app.css",
+        "/home/jinx/.claude/hooks/user_prompt_submit_runner.py",
+        "/home/jinx/CLAUDE.md"
+      ],
+      "errors": 0,
+      "started": 1765547799.8466856,
+      "completed": 1765547956.543638,
+      "turns": 2
+    },
+    {
+      "feature_id": "F1765547956",
+      "description": "Path B: Continue Migration",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/src/components/CampfireRoom.tsx",
+        "/home/jinx/projects/slaytheweb/src/components/VictoryRoom.tsx",
+        "/home/jinx/projects/slaytheweb/src/styles/card.css"
+      ],
+      "errors": 0,
+      "started": 1765547956.54364,
+      "completed": 1765549375.8503513,
+      "turns": 3
+    },
+    {
+      "feature_id": "F1765549375",
+      "description": "Can we make sure we have the optimal https://github.com/steveyegge/beads setup for Claude Code? This",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/src/styles/console.css",
+        "/home/jinx/projects/slaytheweb/src/components/GameScreen.tsx",
+        "/home/jinx/projects/slaytheweb/src/components/Console.tsx",
+        "/home/jinx/projects/slaytheweb/src/game/new-game.ts"
+      ],
+      "errors": 0,
+      "started": 1765549375.8503535,
+      "completed": 1765549977.9723516,
+      "turns": 1
+    },
+    {
+      "feature_id": "F1765549977",
+      "description": "Can we make sure Claude Code (/home/jinx/.claude) has an optimal install and setup/config of https:/",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/src/components/Overlays.tsx"
+      ],
+      "errors": 0,
+      "started": 1765549977.9723532,
+      "completed": 1765550083.9693658,
+      "turns": 1
+    },
+    {
+      "feature_id": "F1765550083",
+      "description": "Lets do P2 --> P3 then clean up debt",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/src/components/DebugUI.tsx"
+      ],
+      "errors": 0,
+      "started": 1765550083.9693677,
+      "completed": 1765550164.7143235,
+      "turns": 1
+    },
+    {
+      "feature_id": "F1765550164",
+      "description": "I need to make sure you have FULL system control; meaning you don't need to enter sudo password and ",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/src/components/DeckSelector.tsx",
+        "/home/jinx/projects/slaytheweb/app/debug/page.tsx",
+        "/home/jinx/projects/slaytheweb/app/deck-builder/page.tsx",
+        "/home/jinx/projects/slaytheweb/src/components/Menu.tsx",
+        "/home/jinx/projects/slaytheweb/src/components/GameScreen.tsx"
+      ],
+      "errors": 0,
+      "started": 1765550164.7143257,
+      "completed": 1765550247.069366,
+      "turns": 1
+    },
+    {
+      "feature_id": "F1765550247",
+      "description": "You should have FULL access to my system, meaning you don't need me to personally run sudo; if not, ",
+      "status": "interrupted",
+      "files": [
+        "/home/jinx/projects/slaytheweb/app/deck-builder/page.tsx",
+        "/home/jinx/projects/slaytheweb/src/components/CampfireRoom.tsx",
+        "/home/jinx/projects/slaytheweb/src/components/Cards.tsx"
+      ],
+      "errors": 0,
+      "started": 1765550247.0693681,
+      "completed": 1765550383.710316,
+      "turns": 0
+    }
+  ],
+  "work_queue": []
+}

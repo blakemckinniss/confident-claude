@@ -1,0 +1,52 @@
+[
+  {
+    "content": "Enhance drag-and-drop with smooth animations and visual feedback",
+    "status": "completed",
+    "activeForm": "Enhancing drag-drop"
+  },
+  {
+    "content": "Add recipe hover previews with ingredient/output details",
+    "status": "completed",
+    "activeForm": "Adding recipe previews"
+  },
+  {
+    "content": "Create entity tooltip component with full details",
+    "status": "completed",
+    "activeForm": "Creating entity tooltips"
+  },
+  {
+    "content": "Enhance GOD consultation animations with particles and effects",
+    "status": "completed",
+    "activeForm": "Enhancing GOD animations"
+  },
+  {
+    "content": "Fix reactivity warnings in EntityCard and EntityTooltip",
+    "status": "completed",
+    "activeForm": "Fixing reactivity warnings"
+  },
+  {
+    "content": "Fix CSS variable bug in ConsultationAnimation burst particles",
+    "status": "completed",
+    "activeForm": "Fixing CSS variable bug"
+  },
+  {
+    "content": "Add prefers-reduced-motion support for accessibility",
+    "status": "completed",
+    "activeForm": "Adding motion preferences"
+  },
+  {
+    "content": "Verify app loads correctly with Playwright MCP",
+    "status": "in_progress",
+    "activeForm": "Verifying app loads"
+  },
+  {
+    "content": "Test all animations with Playwright MCP",
+    "status": "pending",
+    "activeForm": "Testing animations"
+  },
+  {
+    "content": "Commit Slice 4 work",
+    "status": "pending",
+    "activeForm": "Committing changes"
+  }
+]

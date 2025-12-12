@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Add xxxs (0.15rem) and xxs-mid (0.35rem) tokens to app.css",
+    "status": "completed",
+    "activeForm": "Adding micro-spacing tokens to app.css"
+  },
+  {
+    "content": "Update migrate-spacing.sh with patterns for 0.35rem and 0.15rem",
+    "status": "completed",
+    "activeForm": "Updating migration script with new patterns"
+  },
+  {
+    "content": "Migrate 18 instances of 0.35rem to var(--spacing-xxs-mid)",
+    "status": "completed",
+    "activeForm": "Migrating 0.35rem values"
+  },
+  {
+    "content": "Migrate 5 instances of 0.15rem to var(--spacing-xxxs)",
+    "status": "completed",
+    "activeForm": "Migrating 0.15rem values"
+  },
+  {
+    "content": "Round 4 one-off fractional values to nearest standard tokens",
+    "status": "completed",
+    "activeForm": "Rounding one-off fractional values"
+  },
+  {
+    "content": "Build verification and commit final 100% completion",
+    "status": "in_progress",
+    "activeForm": "Running build verification and committing"
+  }
+]

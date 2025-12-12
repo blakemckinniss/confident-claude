@@ -1,0 +1,52 @@
+[
+  {
+    "content": "Extract attemptFlee to use-combat.tsx",
+    "status": "completed",
+    "activeForm": "Extracted attemptFlee"
+  },
+  {
+    "content": "Extract handleToggleSustained to use-abilities.tsx",
+    "status": "completed",
+    "activeForm": "Extracted handleToggleSustained"
+  },
+  {
+    "content": "Extract handleUtilityCapability to use-abilities.tsx",
+    "status": "completed",
+    "activeForm": "Extracted handleUtilityCapability"
+  },
+  {
+    "content": "Extract handleTameEnemy to use-companions.tsx",
+    "status": "completed",
+    "activeForm": "Extracted handleTameEnemy"
+  },
+  {
+    "content": "Enhance use-navigation.tsx selectDungeon with rich JSX logging",
+    "status": "completed",
+    "activeForm": "Enhanced selectDungeon"
+  },
+  {
+    "content": "Remove duplicate selectDungeon from dungeon-game.tsx (~85 lines)",
+    "status": "completed",
+    "activeForm": "Removed duplicate selectDungeon"
+  },
+  {
+    "content": "Extract handleBossAction to use-combat.tsx (~50 lines)",
+    "status": "completed",
+    "activeForm": "Extracted handleBossAction"
+  },
+  {
+    "content": "Extract TitleScreen to separate component (~66 lines)",
+    "status": "in_progress",
+    "activeForm": "Extracting TitleScreen component"
+  },
+  {
+    "content": "Extract LocationHeader to separate component (~48 lines)",
+    "status": "pending",
+    "activeForm": "Extracting LocationHeader component"
+  },
+  {
+    "content": "Extract more render sections as needed",
+    "status": "pending",
+    "activeForm": "Extracting render sections"
+  }
+]

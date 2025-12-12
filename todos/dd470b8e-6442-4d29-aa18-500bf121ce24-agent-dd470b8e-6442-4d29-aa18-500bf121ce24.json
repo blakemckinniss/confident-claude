@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Refactor DashboardTab to 3-column layout (Kittens Game pattern)",
+    "status": "in_progress",
+    "activeForm": "Refactoring DashboardTab layout"
+  },
+  {
+    "content": "Reduce padding/spacing across all dashboard panels",
+    "status": "pending",
+    "activeForm": "Reducing padding and spacing"
+  },
+  {
+    "content": "Move Narrative Feed to top-right position (prominent)",
+    "status": "pending",
+    "activeForm": "Moving Narrative Feed"
+  },
+  {
+    "content": "Enhance text visuals and progress bar emphasis",
+    "status": "pending",
+    "activeForm": "Enhancing text visuals"
+  },
+  {
+    "content": "Test 3-column layout in browser",
+    "status": "pending",
+    "activeForm": "Testing layout"
+  }
+]

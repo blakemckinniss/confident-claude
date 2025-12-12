@@ -1,0 +1,19 @@
+{
+  "last_hints": {
+    "py_ruff": 7,
+    "use_rg": 2,
+    "pip_quiet": 3,
+    "use_head": 4,
+    "js_lint": 5,
+    "use_fd": 6
+  },
+  "session_hints": [
+    "py_ruff",
+    "use_rg",
+    "pip_quiet",
+    "use_head",
+    "js_lint",
+    "use_fd",
+    "py_ruff"
+  ]
+}

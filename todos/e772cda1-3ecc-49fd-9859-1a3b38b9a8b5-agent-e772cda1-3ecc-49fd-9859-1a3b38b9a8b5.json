@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Update god display names with Greek epithets in UI",
+    "status": "completed",
+    "activeForm": "Updating god display names with epithets"
+  },
+  {
+    "content": "Replace generic entity names with Greek mythology themes",
+    "status": "in_progress",
+    "activeForm": "Replacing entity names with Greek themes"
+  },
+  {
+    "content": "Add Greek visual elements (CSS only - borders, patterns)",
+    "status": "pending",
+    "activeForm": "Adding Greek visual elements"
+  },
+  {
+    "content": "Update god dialogue and descriptions with Greek flavor",
+    "status": "completed",
+    "activeForm": "Updating god dialogue"
+  },
+  {
+    "content": "Test visual changes in browser",
+    "status": "pending",
+    "activeForm": "Testing visual changes"
+  }
+]

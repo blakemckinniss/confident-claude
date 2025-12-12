@@ -1,0 +1,22 @@
+# Privacy Restore Configuration
+# Location: ~/.claude/privacy-restore.yaml
+#
+# These mappings are applied when Claude WRITES to files.
+# Claude sees sanitized values, but real values get written to disk.
+#
+# Format: sanitized_value: real_value
+# (Reverse of privacy-config.yaml mappings)
+
+mappings:
+  # Format: "what_claude_sees": "what_gets_written"
+  #
+  # Examples:
+  # myPublicProject: mySecretProject
+  # ClientABC: AcmeCorp
+  # "****": "real-password-here"
+  #
+  # Add your restore mappings below:
+
+  myPublicProject: mySecretProject
+  ClientABC: AcmeCorp
+  # "****": "hunter123"  # Uncomment and set real value

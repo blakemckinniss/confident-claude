@@ -1,0 +1,12 @@
+{
+  "lessons": [
+    {
+      "content": "Use venv python, not system python",
+      "category": "block-reflection:python_path_injector",
+      "added_at": 1765324007.0726728
+    }
+  ],
+  "skills": {},
+  "winning_patterns": [],
+  "anti_patterns": []
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Add dual confidence format support (**XX%** and plain XX%)",
+    "status": "completed",
+    "activeForm": "Adding dual confidence format support"
+  },
+  {
+    "content": "Add EDITING_HOOKS=1 bypass flag to pre_tool_use.sh",
+    "status": "in_progress",
+    "activeForm": "Adding EDITING_HOOKS bypass flag"
+  },
+  {
+    "content": "Document all 4 fixes in docs/ADR.md",
+    "status": "pending",
+    "activeForm": "Documenting fixes in ADR.md"
+  }
+]

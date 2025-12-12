@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Create StatisticsView workspace component",
+    "status": "completed",
+    "activeForm": "Creating StatisticsView workspace component"
+  },
+  {
+    "content": "Verify archive completion (already done)",
+    "status": "completed",
+    "activeForm": "Verifying archive completion"
+  },
+  {
+    "content": "Create workspace view E2E tests",
+    "status": "completed",
+    "activeForm": "Creating workspace view E2E tests"
+  },
+  {
+    "content": "Update GameView to integrate StatisticsView",
+    "status": "completed",
+    "activeForm": "Updating GameView to integrate StatisticsView"
+  },
+  {
+    "content": "Test all workspace views with Playwright",
+    "status": "in_progress",
+    "activeForm": "Testing all workspace views with Playwright"
+  }
+]

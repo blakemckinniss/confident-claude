@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Add drag-drop to ResourceProductionRow",
+    "status": "completed",
+    "activeForm": "Added drag handlers"
+  },
+  {
+    "content": "Navigate to combination workspace in browser",
+    "status": "in_progress",
+    "activeForm": "Testing in browser"
+  },
+  {
+    "content": "Test entity drag-drop to CombinationWorkspace",
+    "status": "pending",
+    "activeForm": "Testing drag-drop"
+  },
+  {
+    "content": "Test AI recipe discovery with real Groq API",
+    "status": "pending",
+    "activeForm": "Testing AI integration"
+  },
+  {
+    "content": "Verify recipe persistence to IndexedDB",
+    "status": "pending",
+    "activeForm": "Testing persistence"
+  }
+]

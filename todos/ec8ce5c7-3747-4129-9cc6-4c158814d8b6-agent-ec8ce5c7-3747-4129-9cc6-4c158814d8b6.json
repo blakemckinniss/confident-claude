@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Create template hooks for all lifecycle events",
+    "status": "completed",
+    "activeForm": "Creating template hooks for all lifecycle events"
+  },
+  {
+    "content": "Test zen_consensus with 120s timeout",
+    "status": "pending",
+    "activeForm": "Testing zen_consensus with 120s timeout"
+  },
+  {
+    "content": "Implement Groq confidence system",
+    "status": "pending",
+    "activeForm": "Implementing Groq confidence system"
+  }
+]

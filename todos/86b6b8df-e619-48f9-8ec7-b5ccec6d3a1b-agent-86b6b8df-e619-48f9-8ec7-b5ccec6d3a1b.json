@@ -1,0 +1,37 @@
+[
+  {
+    "content": "Launch browser and navigate to game",
+    "status": "completed",
+    "activeForm": "Browser launched"
+  },
+  {
+    "content": "Fix DeityCard bugs (function signature, type errors)",
+    "status": "completed",
+    "activeForm": "Fixed 5 bugs in DeityCard"
+  },
+  {
+    "content": "Fix corruption event JSON prompt",
+    "status": "completed",
+    "activeForm": "Prompt requests JSON now"
+  },
+  {
+    "content": "Test corruption milestone AI (successful)",
+    "status": "completed",
+    "activeForm": "Generated: 'Reality Unravels...'"
+  },
+  {
+    "content": "Test deity quote AI (successful)",
+    "status": "completed",
+    "activeForm": "Generated: 'Desire's flame flickers...'"
+  },
+  {
+    "content": "Investigate DeitySynergiesPanel AI",
+    "status": "completed",
+    "activeForm": "Panel not rendering in current view"
+  },
+  {
+    "content": "Create final test summary report",
+    "status": "in_progress",
+    "activeForm": "Compiling test results"
+  }
+]

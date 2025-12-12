@@ -1,0 +1,42 @@
+{
+  "cooldowns": {
+    "assumption": 120,
+    "mutation": 120,
+    "toolchain": 300,
+    "tool_awareness": 300,
+    "large_file": 600,
+    "modularization": 10,
+    "ops_nudge": 180
+  },
+  "thresholds": {
+    "stale_session_seconds": 3600,
+    "max_method_lines": 60,
+    "max_conditionals": 12,
+    "large_file_lines": 500,
+    "min_code_length": 50,
+    "min_prompt_length": 10,
+    "pipe_threshold": 3,
+    "error_ttl_seconds": 300,
+    "context_decay_warn_turns": 15,
+    "context_decay_critical_turns": 30,
+    "tech_risk_months_threshold": 6
+  },
+  "limits": {
+    "context_items": 8,
+    "reads_before_warn": 5,
+    "max_lessons_results": 3,
+    "max_warnings": 3,
+    "max_ops_suggestions": 3,
+    "max_tool_suggestions": 5,
+    "lru_cache_size": 50
+  },
+  "ttl": {
+    "git_cache_seconds": 5.0,
+    "file_cache_seconds": 30.0
+  },
+  "patterns": {
+    "protected_paths": [".claude/ops/", ".claude/lib/"],
+    "scratch_paths": [".claude/tmp/", ".claude/memory/"],
+    "skip_extensions": [".md", ".txt", ".json", ".yaml", ".yml", ".sh", ".env"]
+  }
+}

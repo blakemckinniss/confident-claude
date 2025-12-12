@@ -1,0 +1,82 @@
+[
+  {
+    "content": "Create CollapsiblePanel component with animations",
+    "status": "pending",
+    "activeForm": "Creating CollapsiblePanel component with animations"
+  },
+  {
+    "content": "Create GameView component with 3-column layout",
+    "status": "pending",
+    "activeForm": "Creating GameView component with 3-column layout"
+  },
+  {
+    "content": "Implement view state management (activeWorkspace store)",
+    "status": "pending",
+    "activeForm": "Implementing view state management (activeWorkspace store)"
+  },
+  {
+    "content": "Adapt ResourcesTab → CombinationWorkspace view",
+    "status": "pending",
+    "activeForm": "Adapting ResourcesTab to CombinationWorkspace view"
+  },
+  {
+    "content": "Adapt RecipesTab → RecipeLibrary view",
+    "status": "pending",
+    "activeForm": "Adapting RecipesTab to RecipeLibrary view"
+  },
+  {
+    "content": "Adapt GodsTab → GodShrine view",
+    "status": "pending",
+    "activeForm": "Adapting GodsTab to GodShrine view"
+  },
+  {
+    "content": "Adapt StatisticsTab → Statistics view",
+    "status": "pending",
+    "activeForm": "Adapting StatisticsTab to Statistics view"
+  },
+  {
+    "content": "Refactor QuickActionsPanel to NavigationPanel with view switching",
+    "status": "pending",
+    "activeForm": "Refactoring QuickActionsPanel to NavigationPanel with view switching"
+  },
+  {
+    "content": "Integrate all panels into GameView sidebars",
+    "status": "pending",
+    "activeForm": "Integrating all panels into GameView sidebars"
+  },
+  {
+    "content": "Update AppShell to use GameView (remove tab infrastructure)",
+    "status": "pending",
+    "activeForm": "Updating AppShell to use GameView (remove tab infrastructure)"
+  },
+  {
+    "content": "Implement responsive vertical stacking for mobile",
+    "status": "pending",
+    "activeForm": "Implementing responsive vertical stacking for mobile"
+  },
+  {
+    "content": "Add panel transition animations",
+    "status": "pending",
+    "activeForm": "Adding panel transition animations"
+  },
+  {
+    "content": "Delete old TabNavigation and *Tab components",
+    "status": "pending",
+    "activeForm": "Deleting old TabNavigation and *Tab components"
+  },
+  {
+    "content": "Create ADR 009: Single-Page Column-Based Architecture",
+    "status": "pending",
+    "activeForm": "Creating ADR 009: Single-Page Column-Based Architecture"
+  },
+  {
+    "content": "Update TODO.md with new architecture roadmap",
+    "status": "completed",
+    "activeForm": "Updating TODO.md with new architecture roadmap"
+  },
+  {
+    "content": "Update CLAUDE.md to remove tab navigation references",
+    "status": "completed",
+    "activeForm": "Updating CLAUDE.md to remove tab navigation references"
+  }
+]

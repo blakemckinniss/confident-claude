@@ -1,0 +1,82 @@
+[
+  {
+    "content": "Extract attemptFlee to use-combat.tsx",
+    "status": "completed",
+    "activeForm": "Extracted attemptFlee"
+  },
+  {
+    "content": "Extract handleToggleSustained to use-abilities.tsx",
+    "status": "completed",
+    "activeForm": "Extracted handleToggleSustained"
+  },
+  {
+    "content": "Extract handleUtilityCapability to use-abilities.tsx",
+    "status": "completed",
+    "activeForm": "Extracted handleUtilityCapability"
+  },
+  {
+    "content": "Extract handleTameEnemy to use-companions.tsx",
+    "status": "completed",
+    "activeForm": "Extracted handleTameEnemy"
+  },
+  {
+    "content": "Enhance use-navigation.tsx selectDungeon with rich JSX logging",
+    "status": "completed",
+    "activeForm": "Enhanced selectDungeon"
+  },
+  {
+    "content": "Remove duplicate selectDungeon from dungeon-game.tsx (~85 lines)",
+    "status": "completed",
+    "activeForm": "Removed duplicate selectDungeon"
+  },
+  {
+    "content": "Extract handleBossAction to use-combat.tsx (~50 lines)",
+    "status": "completed",
+    "activeForm": "Extracted handleBossAction"
+  },
+  {
+    "content": "Extract TitleScreen to separate component (~66 lines)",
+    "status": "completed",
+    "activeForm": "Extracted TitleScreen"
+  },
+  {
+    "content": "Extract LocationHeader to separate component (~48 lines)",
+    "status": "completed",
+    "activeForm": "Extracted LocationHeader"
+  },
+  {
+    "content": "Clean up unused imports and dead code",
+    "status": "completed",
+    "activeForm": "Cleaned up unused code"
+  },
+  {
+    "content": "Extract descendFloor to use-navigation.tsx (~159 lines)",
+    "status": "completed",
+    "activeForm": "Extracted descendFloor"
+  },
+  {
+    "content": "Extract exploreRoom to use-navigation.tsx (~44 lines)",
+    "status": "completed",
+    "activeForm": "Extracted exploreRoom"
+  },
+  {
+    "content": "Extract renderInteractiveEntities to component (~143 lines)",
+    "status": "completed",
+    "activeForm": "Extracted InteractiveEntities"
+  },
+  {
+    "content": "Extract currentChoices to use-choices.tsx (~180 lines)",
+    "status": "completed",
+    "activeForm": "Extracted currentChoices"
+  },
+  {
+    "content": "Extract DungeonContent component (~200 lines)",
+    "status": "completed",
+    "activeForm": "Extracted DungeonContent"
+  },
+  {
+    "content": "Remove 64 more lines to reach 500 target",
+    "status": "in_progress",
+    "activeForm": "Reducing dungeon-game.tsx"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "prepared_at": "2025-12-11T18:57:45.224319",
+  "session_id": "ses_1765456172",
+  "summary": "No significant progress",
+  "next_steps": [],
+  "blockers": [],
+  "recent_files": [
+    "/home/jinx/projects/the-depths/src/hooks/shrine-decision.ts",
+    "/home/jinx/projects/the-depths/src/lib/effects/effect-types.ts",
+    "/home/jinx/projects/the-depths/src/hooks/use-encounters.tsx",
+    "/home/jinx/projects/the-depths/src/hooks/npc-decision.ts",
+    "/home/jinx/projects/the-depths/src/lib/effects/effect-executor.ts"
+  ],
+  "recent_commits": [],
+  "last_checkpoint": null
+}

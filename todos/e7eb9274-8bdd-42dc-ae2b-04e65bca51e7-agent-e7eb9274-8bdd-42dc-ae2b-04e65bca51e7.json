@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Consult Zen MCP for Phase 2/3 implementation strategy",
+    "status": "completed",
+    "activeForm": "Consulting Zen MCP for Phases 2/3 design"
+  },
+  {
+    "content": "Present comprehensive implementation plan to user",
+    "status": "in_progress",
+    "activeForm": "Presenting implementation plan"
+  },
+  {
+    "content": "Address limited pattern coverage (Phase 1 enhancement)",
+    "status": "pending",
+    "activeForm": "Expanding pattern detection library"
+  },
+  {
+    "content": "Implement Zen MCP integration for risky/open_world tasks (Phase 2)",
+    "status": "pending",
+    "activeForm": "Implementing Tier-2 Zen MCP planner"
+  },
+  {
+    "content": "Design and implement learning loop (Phase 3)",
+    "status": "pending",
+    "activeForm": "Implementing outcome tracking and feedback"
+  }
+]

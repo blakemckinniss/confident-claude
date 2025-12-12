@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Diagnose Zen MCP timeout/validation failures",
+    "status": "in_progress",
+    "activeForm": "Diagnosing Zen MCP timeout/validation failures"
+  },
+  {
+    "content": "Fix Zen MCP connection issues",
+    "status": "pending",
+    "activeForm": "Fixing Zen MCP connection issues"
+  },
+  {
+    "content": "Test Zen tools after fix",
+    "status": "pending",
+    "activeForm": "Testing Zen tools after fix"
+  },
+  {
+    "content": "Implement Groq confidence system",
+    "status": "pending",
+    "activeForm": "Implementing Groq confidence system"
+  }
+]
