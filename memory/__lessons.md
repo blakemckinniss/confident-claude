@@ -253,3 +253,9 @@ Post-edit validation is critical: py_compile only checks SYNTAX, not imports. Fo
 ### 2025-12-10 16:27
 
 ### 2025-12-12 01:45
+
+### 2025-12-12 21:29
+GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transitions on transform property cause stutter/lag because they fight GSAP's inline style updates. Fix: Add a class (is-dragging) on drag start that sets transition: none. NEVER use transform: none as it blocks GSAP movement. The original slaytheweb works because it has NO CSS transitions on cards.
+
+### 2025-12-13 00:50
+- [abandoned_stubs] ⚠️ ABANDONED WORK: db.ts contain stubs/TODOs

@@ -139,6 +139,7 @@
     "javascript-typescript@claude-code-workflows": true,
     "shell-scripting@claude-code-workflows": true,
     "developer-essentials@claude-code-workflows": true,
-    "repomix-mcp@repomix": true
+    "repomix-mcp@repomix": true,
+    "dev-browser@dev-browser-marketplace": true
   }
 }

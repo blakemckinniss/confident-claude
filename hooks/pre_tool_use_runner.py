@@ -764,12 +764,18 @@ def check_beads_parallel(data: dict, state: SessionState) -> HookResult:
 
     PATTERN: Multiple bd create/update/close commands should be batched or parallelized.
     """
+    global _BD_CACHE, _BD_CACHE_TURN
+
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
 
     # Only care about beads commands
     if not re.search(r"\bbd\s+(create|update|close|dep)", command):
         return HookResult.approve()
+
+    # Invalidate cache - bd state is changing
+    _BD_CACHE = {}
+    _BD_CACHE_TURN = 0
 
     # Track beads commands
     if not hasattr(state, "recent_beads_commands"):
@@ -825,21 +831,24 @@ def _get_open_beads(state: SessionState) -> list:
     if _BD_CACHE_TURN == current_turn and "open_beads" in _BD_CACHE:
         return _BD_CACHE.get("open_beads", [])
 
-    # Cache miss - query bd
+    # Cache miss - query bd (separate queries since bd doesn't support comma-separated status)
     try:
         import subprocess
 
-        result = subprocess.run(
-            ["bd", "list", "--status=open,in_progress", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if result.returncode == 0:
-            beads = json.loads(result.stdout) if result.stdout.strip() else []
-            _BD_CACHE = {"open_beads": beads}
-            _BD_CACHE_TURN = current_turn
-            return beads
+        all_beads = []
+        for status in ["open", "in_progress"]:
+            result = subprocess.run(
+                ["bd", "list", f"--status={status}", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                all_beads.extend(json.loads(result.stdout))
+
+        _BD_CACHE = {"open_beads": all_beads}
+        _BD_CACHE_TURN = current_turn
+        return all_beads
     except Exception:
         pass
 

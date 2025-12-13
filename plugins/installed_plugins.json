@@ -4,22 +4,11 @@
     "claude-mem@thedotmack": [
       {
         "scope": "project",
-        "projectPath": "/home/jinx",
-        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.0.11",
-        "version": "7.0.11",
-        "installedAt": "2025-12-12T06:45:59.968Z",
-        "lastUpdated": "2025-12-12T06:45:59.968Z",
-        "isLocal": true
-      }
-    ],
-    "hookify@claude-code-plugins": [
-      {
-        "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-plugins/plugins/hookify",
-        "version": "0.1.0",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
-        "gitCommitSha": "2192c86c208b39aa262ada534d89f72f65708a8e",
+        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.1.0",
+        "version": "7.1.0",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
+        "gitCommitSha": "6815cc55b8eafcb0020d6f7e718a82f2ea47f19e",
         "isLocal": true,
         "projectPath": "/home/jinx"
       }
@@ -27,10 +16,10 @@
     "unit-testing@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/unit-testing",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/unit-testing/1.2.0",
         "version": "1.2.0",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -39,10 +28,10 @@
     "code-refactoring@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/code-refactoring",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/code-refactoring/1.2.0",
         "version": "1.2.0",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -51,10 +40,10 @@
     "error-debugging@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/error-debugging",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/error-debugging/1.2.0",
         "version": "1.2.0",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -63,10 +52,10 @@
     "context-management@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/context-management",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/context-management/1.2.0",
         "version": "1.2.0",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -75,10 +64,10 @@
     "codebase-cleanup@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/codebase-cleanup",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/codebase-cleanup/1.2.0",
         "version": "1.2.0",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -87,10 +76,10 @@
     "python-development@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/python-development",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/python-development/1.2.1",
         "version": "1.2.1",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -99,10 +88,10 @@
     "javascript-typescript@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/javascript-typescript",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/javascript-typescript/1.2.1",
         "version": "1.2.1",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -111,10 +100,10 @@
     "shell-scripting@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/shell-scripting",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/shell-scripting/1.2.1",
         "version": "1.2.1",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -123,10 +112,10 @@
     "developer-essentials@claude-code-workflows": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows/plugins/developer-essentials",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-workflows/developer-essentials/1.0.0",
         "version": "1.0.0",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "c7ad381360bb8a2263aa42e25f81dc41161bf7d9",
         "isLocal": true,
         "projectPath": "/home/jinx"
@@ -135,11 +124,23 @@
     "repomix-mcp@repomix": [
       {
         "scope": "project",
-        "installPath": "/home/jinx/.claude/plugins/marketplaces/repomix/.claude/plugins/repomix-mcp",
+        "installPath": "/home/jinx/.claude/plugins/cache/repomix/repomix-mcp/1.0.1",
         "version": "1.0.1",
-        "installedAt": "2025-12-12T15:40:18.345Z",
-        "lastUpdated": "2025-12-12T15:40:18.345Z",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
         "gitCommitSha": "7061f3b331dca63d51bddde4378001fd3b07e375",
+        "isLocal": true,
+        "projectPath": "/home/jinx"
+      }
+    ],
+    "dev-browser@dev-browser-marketplace": [
+      {
+        "scope": "project",
+        "installPath": "/home/jinx/.claude/plugins/cache/dev-browser-marketplace/dev-browser/45c3e37c9bdd",
+        "version": "45c3e37c9bdd",
+        "installedAt": "2025-12-13T04:27:54.342Z",
+        "lastUpdated": "2025-12-13T04:27:54.342Z",
+        "gitCommitSha": "45c3e37c9bdd3e806c9fc3b1d0d99108bd2161d7",
         "isLocal": true,
         "projectPath": "/home/jinx"
       }
