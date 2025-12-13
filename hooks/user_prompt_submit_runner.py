@@ -532,7 +532,8 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
     parts = []
 
     # Initialize confidence if not set, or enforce floor to prevent confidence hell
-    CONFIDENCE_FLOOR = 85
+    # Floor at 70% (WORKING) - can still work but maintains some caution
+    CONFIDENCE_FLOOR = 70
     if state.confidence == 0:
         set_confidence(state, DEFAULT_CONFIDENCE, "session initialization")
     elif state.confidence < CONFIDENCE_FLOOR:
