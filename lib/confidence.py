@@ -206,6 +206,8 @@ def _extract_semantic_keywords(activity: str) -> set[str]:
         "can",
         "need",
         "dare",
+        # Path components that are semantically meaningful - keep for matching
+        # Removed: "src", "lib", "test", "tests" - these indicate code structure
         "home",
         "user",
         "users",
@@ -214,12 +216,7 @@ def _extract_semantic_keywords(activity: str) -> set[str]:
         "etc",
         "usr",
         "bin",
-        "src",
-        "lib",
-        "test",
-        "tests",
-        "spec",
-        "specs",
+        # File extensions - not semantically meaningful
         "py",
         "js",
         "ts",
