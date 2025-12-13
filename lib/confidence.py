@@ -515,12 +515,6 @@ def get_tier_info(confidence: int) -> tuple[str, str, str]:
         return "EXPERT", TIER_EMOJI["EXPERT"], "Maximum freedom"
 
 
-def format_confidence_status(confidence: int) -> str:
-    """Format confidence for status line display."""
-    tier_name, emoji, _ = get_tier_info(confidence)
-    return f"{emoji}{confidence}% {tier_name}"
-
-
 def format_confidence_change(old: int, new: int, reason: str = "") -> str:
     """Format a confidence change for display."""
     delta = new - old
@@ -671,38 +665,6 @@ def check_tool_permission(
                 )
 
     return True, ""
-
-
-def get_escalation_tools() -> list[dict]:
-    """Get ordered list of escalation tools with fallbacks."""
-    return [
-        {
-            "name": "mcp__pal__thinkdeep",
-            "type": "mcp",
-            "description": "Deep multi-step analysis via PAL MCP",
-            "priority": 1,
-        },
-        {
-            "name": "mcp__pal__debug",
-            "type": "mcp",
-            "description": "Debugging analysis via PAL MCP",
-            "priority": 2,
-        },
-        {
-            "name": "groq",
-            "type": "ops",
-            "command": "~/.claude/ops/groq.py --model kimi-k2",
-            "description": "Fast inference via Groq (fallback)",
-            "priority": 3,
-        },
-        {
-            "name": "oracle",
-            "type": "ops",
-            "command": "~/.claude/ops/oracle.py --persona judge",
-            "description": "Expert consultation via OpenRouter (fallback)",
-            "priority": 4,
-        },
-    ]
 
 
 def suggest_alternatives(confidence: int, task_description: str = "") -> str:
