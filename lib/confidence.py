@@ -731,6 +731,66 @@ class UnresolvedAntiPatternReducer(ConfidenceReducer):
 
 
 @dataclass
+class SpottedIgnoredReducer(ConfidenceReducer):
+    """Triggers when explicitly spotting issues but not fixing them.
+
+    More severe than unresolved_antipattern because it demonstrates
+    explicit awareness of the problem.
+    """
+
+    name: str = "spotted_ignored"
+    delta: int = -15
+    description: str = "Explicitly spotted issue but didn't fix it"
+    cooldown_turns: int = 3
+    # Explicit "I spotted this" patterns
+    spotted_signals: list = field(
+        default_factory=lambda: [
+            r"\bi\s+(noticed|spotted|found|see|saw)\s+(a|an|the|that|this)\s+(bug|issue|problem|error)",
+            r"\bthere'?s\s+(a|an)\s+(bug|issue|problem|error)\b",
+            r"\bthis\s+(could|might|will)\s+cause\b",
+            r"\bthis\s+(is|looks)\s+(broken|wrong|incorrect)\b",
+            r"\bi\s+should\s+(note|mention|point\s+out)\b",
+            r"\bworth\s+(noting|mentioning)\s+(that|:)",
+            r"\bone\s+(issue|problem|concern)\s+(is|here|I\s+see)\b",
+            r"\bpotential\s+(issue|problem|bug)\b.*\bbut\b",
+            r"\brisk\s+(here|is)\b.*\bbut\b",
+        ]
+    )
+    # Resolution signals - if present, don't trigger
+    resolution_signals: list = field(
+        default_factory=lambda: [
+            r"\bfixing\s+(it|this|that)\b",
+            r"\blet\s+me\s+fix\b",
+            r"\bi'?ll\s+fix\b",
+            r"\bhere'?s\s+(the|a)\s+fix\b",
+            r"\bfixed\b",
+            r"\bresolving\b",
+            r"\baddressing\s+(it|this|that)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        # Check if explicitly spotted
+        has_spotted = any(
+            re.search(p, output, re.IGNORECASE) for p in self.spotted_signals
+        )
+        if not has_spotted:
+            return False
+        # Check if resolution also mentioned
+        has_resolution = any(
+            re.search(p, output, re.IGNORECASE) for p in self.resolution_signals
+        )
+        return not has_resolution
+
+
+@dataclass
 class DebtBashReducer(ConfidenceReducer):
     """Triggers on bash commands that create technical debt."""
 
@@ -826,6 +886,7 @@ REDUCERS: list[ConfidenceReducer] = [
     ApologeticReducer(),  # "sorry", "my mistake"
     SycophancyReducer(),  # "you're absolutely right"
     UnresolvedAntiPatternReducer(),  # Mentioning issues without fixing
+    SpottedIgnoredReducer(),  # "I noticed X" without fixing (-15, magnified)
     DebtBashReducer(),  # --force, --hard, --no-verify commands
     LargeDiffReducer(),  # Diffs > 400 LOC
     HookBlockReducer(),  # Soft/hard hook blocks
