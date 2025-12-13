@@ -364,6 +364,67 @@ def check_confidence_override(data: dict, state: SessionState) -> HookResult:
     )
 
 
+# Sentiment patterns for quick detection
+POSITIVE_SENTIMENT = [
+    r"^(nice|great|perfect|awesome|excellent|love\s+it|good\s+job|well\s+done)[!.,\s]?$",
+    r"^(yes|yep|yeah|yup|exactly|correct|right)[!.,\s]?$",
+    r"^(thanks|thank\s+you|thx|ty)[!.,\s]?$",
+    r"\bthat'?s?\s+(perfect|great|exactly|what\s+i\s+(wanted|needed))\b",
+    r"\blove\s+(it|this|that)\b",
+    r"\bbeautiful\b",
+    r"^(ok|okay|k|sure)[!.,\s]?$",
+]
+
+NEGATIVE_SENTIMENT = [
+    r"^(no|nope|nah|wrong)[!.,\s]?$",
+    r"^(ugh|argh|damn|dammit|shit|fuck)\b",
+    r"\b(frustrated|annoying|annoyed|irritated)\b",
+    r"\bwhat\s+the\s+(hell|heck|fuck)\b",
+    r"\bthis\s+is\s+(wrong|broken|bad|terrible)\b",
+    r"\bstop\s+(it|that|doing\s+that)\b",
+    r"\bi\s+said\b",  # User repeating themselves = frustration
+    r"\bagain\s*[?!]",  # "Again?" = frustration
+]
+
+
+@register_hook("user_sentiment", priority=2)
+def check_user_sentiment(data: dict, state: SessionState) -> HookResult:
+    """Adjust confidence based on user sentiment in prompt.
+
+    Positive sentiment: +3 (encouragement)
+    Negative sentiment: -3 (frustration signal)
+    """
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) > 100:  # Only short prompts for sentiment
+        return HookResult.allow()
+
+    prompt_lower = prompt.lower().strip()
+
+    # Check positive sentiment
+    for pattern in POSITIVE_SENTIMENT:
+        if re.search(pattern, prompt_lower, re.IGNORECASE):
+            old_conf = state.confidence
+            update_confidence(state, 3, "positive_sentiment")
+            if state.confidence != old_conf:
+                return HookResult.allow(
+                    f"😊 Positive sentiment: {old_conf}% → {state.confidence}% (+3)"
+                )
+            return HookResult.allow()
+
+    # Check negative sentiment
+    for pattern in NEGATIVE_SENTIMENT:
+        if re.search(pattern, prompt_lower, re.IGNORECASE):
+            old_conf = state.confidence
+            update_confidence(state, -3, "negative_sentiment")
+            if state.confidence != old_conf:
+                return HookResult.allow(
+                    f"😟 Negative sentiment detected: {old_conf}% → {state.confidence}% (-3)"
+                )
+            return HookResult.allow()
+
+    return HookResult.allow()
+
+
 @register_hook("goal_anchor", priority=1)
 def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
     """Prevent scope drift and block scope expansion."""
