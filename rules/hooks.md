@@ -15,6 +15,11 @@ Rules for developing and maintaining the Whitebox hook system.
 ├── user_prompt_submit_runner.py  # UserPromptSubmit orchestrator (injection)
 ├── stop_runner.py            # Stop orchestrator (session cleanup)
 ├── synapse_core.py           # Shared utilities
+├── _beads.py                 # Bead/task tracking helpers (bd CLI)
+├── _config.py                # Centralized config with hot-reload
+├── _cooldown.py              # Cooldown management (spam prevention)
+├── _hook_result.py           # HookResult API (approve/deny/none)
+├── _patterns.py              # Path patterns (scratch, protected paths)
 ├── analysis/                 # Analysis modules
 └── py                        # Python wrapper script
 ```
@@ -49,15 +54,19 @@ HookResult.deny("message")     # Block with error message
 
 ## Bypass Mechanisms
 
-1. **SUDO** - Check transcript for "SUDO" keyword
+1. **SUDO** - Pre-computed in `run_hooks()`, available via `data.get("_sudo_bypass")`
 2. **File markers** - `# LARGE_FILE_OK: reason` as first line
-3. **Path exclusions** - `.claude/tmp/`, `/.claude/` paths
+3. **Path exclusions** - Use `is_scratch_path()` from `_patterns.py`
 
 ```python
-from synapse_core import check_sudo_in_transcript
-
-if check_sudo_in_transcript(transcript_path):
+# SUDO bypass (pre-computed once per tool call, not per hook)
+if data.get("_sudo_bypass"):
     return HookResult.approve()
+
+# Scratch path bypass
+from _patterns import is_scratch_path
+if is_scratch_path(file_path):
+    return HookResult.none()
 ```
 
 ## State Management
