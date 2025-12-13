@@ -292,14 +292,16 @@ class FollowUpQuestionReducer(ConfidenceReducer):
 
 
 # Registry of all reducers
+# NOTE: GoalDriftReducer and ContradictionReducer DISABLED - context keys never set
+# Re-enable when wiring is complete
 REDUCERS: list[ConfidenceReducer] = [
     ToolFailureReducer(),
     CascadeBlockReducer(),
     SunkCostReducer(),
     UserCorrectionReducer(),
-    GoalDriftReducer(),
+    # GoalDriftReducer(),  # DISABLED: current_activity never populated
     EditOscillationReducer(),
-    ContradictionReducer(),
+    # ContradictionReducer(),  # DISABLED: contradiction_detected never set
     FollowUpQuestionReducer(),
 ]
 

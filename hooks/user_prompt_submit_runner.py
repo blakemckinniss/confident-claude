@@ -567,14 +567,31 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
             old_confidence = state.confidence
 
     # Cap confidence at 85% after user prompt (harsh - must earn trust)
-    # Only verified successes (test_pass, build_success) can push above 85%
+    # BUT: Don't cap if recent verified boost (test_pass, build_success)
     PROMPT_CONFIDENCE_CAP = 85
     if state.confidence > PROMPT_CONFIDENCE_CAP:
-        state.confidence = PROMPT_CONFIDENCE_CAP
-        parts.append(
-            f"⚖️ Confidence capped at {PROMPT_CONFIDENCE_CAP}% "
-            "(earn higher via verified success)"
-        )
+        # Check for recent verified boosts (within last 3 turns)
+        verified_increasers = ["test_pass", "build_success"]
+        has_recent_verified = False
+        for inc_name in verified_increasers:
+            key = f"confidence_increaser_{inc_name}"
+            last_turn = state.nudge_history.get(key, {}).get("last_turn", -999)
+            if state.turn_count - last_turn <= 3:
+                has_recent_verified = True
+                break
+
+        if has_recent_verified:
+            # Don't cap - verified success earned this confidence
+            parts.append(
+                f"✅ Confidence at {state.confidence}% (verified success protected)"
+            )
+        else:
+            # Cap it - no recent verified boost
+            state.confidence = PROMPT_CONFIDENCE_CAP
+            parts.append(
+                f"⚖️ Confidence capped at {PROMPT_CONFIDENCE_CAP}% "
+                "(earn higher via verified success)"
+            )
 
     # Check if external consultation is mandatory
     mandatory, mandatory_msg = should_mandate_external(state.confidence)

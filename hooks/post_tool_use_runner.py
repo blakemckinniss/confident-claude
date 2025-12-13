@@ -1394,6 +1394,12 @@ def check_thinking_confidence(
     if scaled_adjustment == 0:
         return HookResult.none()
 
+    # Apply rate limiting to prevent death spiral stacking
+    scaled_adjustment = apply_rate_limit(scaled_adjustment, state)
+
+    if scaled_adjustment == 0:
+        return HookResult.none()
+
     # Apply micro-adjustment
     old_confidence = state.confidence
     new_confidence = max(0, min(100, old_confidence + scaled_adjustment))
