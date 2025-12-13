@@ -111,8 +111,9 @@ Example: `edit_oscillation` base cooldown is 5 turns.
 - **< 51%**: Production writes blocked (only scratch allowed)
 
 ### Stop Blocks (completion_gate)
-- **< 85%**: Cannot claim task "complete", "done", "finished"
-- Must earn confidence through test_pass, build_success, or user_ok
+- **< 80%**: Cannot claim task "complete", "done", "finished"
+- Must be in stasis range (80-90%) to claim completion
+- Earn confidence through test_pass, build_success, git_explore, or user_ok
 
 ## Escalation Protocol
 

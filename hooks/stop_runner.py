@@ -132,7 +132,7 @@ COMPLETION_PATTERNS = [
 ]
 
 # Confidence threshold for completion claims
-COMPLETION_CONFIDENCE_THRESHOLD = 85  # TRUSTED zone
+COMPLETION_CONFIDENCE_THRESHOLD = 80  # Stasis floor - healthy operating range
 
 
 # =============================================================================
@@ -459,11 +459,12 @@ def check_dismissal(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("completion_gate", priority=45)
 def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
-    """Block completion claims if confidence < 85% (TRUSTED zone).
+    """Block completion claims if confidence < 80% (stasis floor).
 
     This prevents lazy completion and reward hacking - Claude must earn
     confidence through actual verification (test pass, build success, user OK)
-    before claiming a task is complete.
+    before claiming a task is complete. 80% is the floor of the healthy
+    operating range (80-90%).
     """
     # Import confidence utilities
     from confidence import get_tier_info, INCREASERS
@@ -503,11 +504,11 @@ def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
             return HookResult.block(
                 f"🚫 **COMPLETION BLOCKED** - Confidence too low\n\n"
                 f"Current: {emoji} {confidence}% ({tier_name})\n"
-                f"Required: 💚 {COMPLETION_CONFIDENCE_THRESHOLD}% (TRUSTED)\n\n"
+                f"Required: 🟢 {COMPLETION_CONFIDENCE_THRESHOLD}% (stasis floor)\n\n"
                 f"**You cannot claim completion without earning confidence.**\n"
                 f"This prevents lazy completion and reward hacking.\n\n"
                 f"**How to raise confidence:**\n"
-                + "\n".join(boost_options[:4])
+                + "\n".join(boost_options[:6])
                 + "\n\n"
                 "Or get explicit user approval: 'CONFIDENCE_BOOST_APPROVED'"
             )
