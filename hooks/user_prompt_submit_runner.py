@@ -471,6 +471,16 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
             )
             old_confidence = state.confidence
 
+    # Cap confidence at 90% after user prompt
+    # Only pre/post tool use hooks can push above 90% (must earn high confidence)
+    PROMPT_CONFIDENCE_CAP = 90
+    if state.confidence > PROMPT_CONFIDENCE_CAP:
+        state.confidence = PROMPT_CONFIDENCE_CAP
+        parts.append(
+            f"⚖️ Confidence capped at {PROMPT_CONFIDENCE_CAP}% "
+            "(earn higher via tool use)"
+        )
+
     # Check if external consultation is mandatory
     mandatory, mandatory_msg = should_mandate_external(state.confidence)
     if mandatory:
