@@ -35,9 +35,13 @@ if TYPE_CHECKING:
 # =============================================================================
 
 # Confidence thresholds
+THRESHOLD_ROCK_BOTTOM = 10  # At or below: FORCED realignment with user
 THRESHOLD_MANDATORY_EXTERNAL = 30  # Below this: external LLM MANDATORY
 THRESHOLD_REQUIRE_RESEARCH = 50  # Below this: research REQUIRED
 THRESHOLD_PRODUCTION_ACCESS = 51  # Below this: no production writes
+
+# Rock bottom recovery target
+ROCK_BOTTOM_RECOVERY_TARGET = 85  # Boost to this after realignment
 
 # Tier emoji mapping
 TIER_EMOJI = {
@@ -1065,3 +1069,133 @@ def generate_approval_prompt(
         f"This will unlock:\n{unlock_str}\n\n"
         f"Reply: **CONFIDENCE_BOOST_APPROVED** to confirm"
     )
+
+
+# =============================================================================
+# ROCK BOTTOM REALIGNMENT
+# =============================================================================
+
+# Realignment questions to ask when at rock bottom
+REALIGNMENT_QUESTIONS = [
+    {
+        "question": "What is the primary goal you want me to accomplish right now?",
+        "header": "Goal",
+        "options": [
+            {
+                "label": "Continue current task",
+                "description": "Keep working on what we were doing",
+            },
+            {
+                "label": "New task",
+                "description": "Start fresh with a different objective",
+            },
+            {"label": "Debug/fix issues", "description": "Focus on resolving problems"},
+        ],
+    },
+    {
+        "question": "How should I approach this work?",
+        "header": "Approach",
+        "options": [
+            {
+                "label": "Careful & thorough",
+                "description": "Take time, verify everything",
+            },
+            {
+                "label": "Fast & iterative",
+                "description": "Move quickly, fix issues as they come",
+            },
+            {
+                "label": "Ask before acting",
+                "description": "Check with you before each step",
+            },
+        ],
+    },
+    {
+        "question": "What went wrong that led to this confidence drop?",
+        "header": "Issue",
+        "options": [
+            {
+                "label": "Misunderstood request",
+                "description": "I wasn't clear on what you wanted",
+            },
+            {
+                "label": "Technical errors",
+                "description": "Code/commands failed repeatedly",
+            },
+            {"label": "Wrong approach", "description": "Strategy wasn't working"},
+            {"label": "Nothing wrong", "description": "Confidence dropped unfairly"},
+        ],
+    },
+]
+
+
+def is_rock_bottom(confidence: int) -> bool:
+    """Check if confidence is at rock bottom threshold."""
+    return confidence <= THRESHOLD_ROCK_BOTTOM
+
+
+def get_realignment_questions() -> list[dict]:
+    """Get the realignment questions for AskUserQuestion tool."""
+    return REALIGNMENT_QUESTIONS
+
+
+def check_realignment_complete(state: "SessionState") -> bool:
+    """Check if realignment has been completed this session."""
+    return state.nudge_history.get("rock_bottom_realignment", {}).get(
+        "completed", False
+    )
+
+
+def mark_realignment_complete(state: "SessionState") -> int:
+    """Mark realignment as complete and return new confidence."""
+    state.nudge_history["rock_bottom_realignment"] = {
+        "completed": True,
+        "turn": state.turn_count,
+    }
+    return ROCK_BOTTOM_RECOVERY_TARGET
+
+
+def reset_realignment(state: "SessionState"):
+    """Reset realignment tracking (called when confidence rises above rock bottom)."""
+    if "rock_bottom_realignment" in state.nudge_history:
+        state.nudge_history["rock_bottom_realignment"]["completed"] = False
+
+
+# =============================================================================
+# MEAN REVERSION INTEGRATION
+# =============================================================================
+
+
+def calculate_idle_reversion(
+    confidence: int, last_activity_time: float, current_time: float
+) -> tuple[int, str]:
+    """Calculate mean reversion based on idle time.
+
+    Returns:
+        Tuple of (new_confidence, reason_message)
+    """
+    if last_activity_time <= 0:
+        return confidence, ""
+
+    idle_seconds = current_time - last_activity_time
+    idle_minutes = idle_seconds / 60
+
+    # Only apply after 5 minutes of idle time
+    if idle_minutes < 5:
+        return confidence, ""
+
+    # Calculate idle periods (each 5-minute block counts as 1 idle turn)
+    idle_turns = int(idle_minutes / 5)
+
+    # Apply mean reversion
+    new_confidence = apply_mean_reversion(confidence, idle_turns)
+
+    if new_confidence != confidence:
+        delta = new_confidence - confidence
+        direction = "+" if delta > 0 else ""
+        reason = (
+            f"Mean reversion after {int(idle_minutes)}min idle ({direction}{delta})"
+        )
+        return new_confidence, reason
+
+    return confidence, ""

@@ -24,6 +24,7 @@ Design Principles:
 # SUDO SECURITY: Audit passed 2025-11-28 - adding fcntl for race condition fix
 import json
 import time
+from confidence import calculate_idle_reversion
 import re
 import os
 import tempfile
@@ -165,6 +166,7 @@ class SessionState:
     # Identity
     session_id: str = ""
     started_at: float = 0
+    last_activity_time: float = 0  # For mean reversion calculation
 
     # Domain detection
     domain: str = Domain.UNKNOWN
@@ -401,7 +403,7 @@ def load_state() -> SessionState:
                 current_mtime = STATE_FILE.stat().st_mtime
                 with open(STATE_FILE) as f:
                     data = json.load(f)
-                    _STATE_CACHE = SessionState(**data)
+                    _STATE_CACHE = _apply_mean_reversion_on_load(SessionState(**data))
                     _STATE_CACHE_MTIME = current_mtime
                     return _STATE_CACHE
             except (json.JSONDecodeError, TypeError, KeyError, OSError):
@@ -418,7 +420,7 @@ def load_state() -> SessionState:
                 current_mtime = STATE_FILE.stat().st_mtime
                 with open(STATE_FILE) as f:
                     data = json.load(f)
-                    _STATE_CACHE = SessionState(**data)
+                    _STATE_CACHE = _apply_mean_reversion_on_load(SessionState(**data))
                     _STATE_CACHE_MTIME = current_mtime
                     return _STATE_CACHE
             except (json.JSONDecodeError, TypeError, KeyError, OSError):
@@ -440,7 +442,9 @@ def load_state() -> SessionState:
 
 
 def _save_state_unlocked(state: SessionState):
-    """Save state without acquiring lock (caller must hold lock)."""
+    # Update activity timestamp for mean reversion
+    state.last_activity_time = time.time()
+
     # Trim lists to prevent unbounded growth
     state.files_read = state.files_read[-50:]
     state.files_edited = state.files_edited[-50:]
@@ -1911,3 +1915,30 @@ def check_cascade_failure(state: SessionState, hook_name: str) -> tuple[bool, st
         f"⚠️ **CASCADE FAILURE**: `{hook_name}` blocked {count}x in {turns_since_first} turns.\n"
         f"💡 Try: `/think` to decompose, `/oracle` for advice, or say 'BYPASS {hook_name}' to override once."
     )
+
+
+def _apply_mean_reversion_on_load(state: SessionState) -> SessionState:
+    """Apply mean reversion based on idle time when loading state.
+
+    Called during load_state to pull confidence toward baseline after idle periods.
+    """
+    if state.last_activity_time <= 0:
+        return state
+
+    import time as _time
+
+    current_time = _time.time()
+    new_confidence, reason = calculate_idle_reversion(
+        state.confidence, state.last_activity_time, current_time
+    )
+
+    if new_confidence != state.confidence:
+        # Log the reversion (will be shown in next hook output)
+        state.nudge_history["_mean_reversion_applied"] = {
+            "old": state.confidence,
+            "new": new_confidence,
+            "reason": reason,
+        }
+        state.confidence = new_confidence
+
+    return state

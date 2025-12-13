@@ -82,6 +82,12 @@ from _hook_result import HookResult
 
 # Confidence system
 from confidence import (
+    # Rock bottom system
+    is_rock_bottom,
+    check_realignment_complete,
+    mark_realignment_complete,
+    get_realignment_questions,
+    ROCK_BOTTOM_RECOVERY_TARGET,
     DEFAULT_CONFIDENCE,
     format_confidence_change,
     should_require_research,
@@ -420,6 +426,64 @@ def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
 
 # =============================================================================
 # CONFIDENCE SYSTEM HOOKS
+
+
+@register_hook("rock_bottom_realignment", priority=2)
+def check_rock_bottom(data: dict, state: SessionState) -> HookResult:
+    """Force realignment questions when confidence hits rock bottom.
+
+    At <= 10% confidence, Claude MUST ask realignment questions before continuing.
+    After user answers, confidence is restored to 85%.
+    """
+    prompt = data.get("prompt", "").strip()
+
+    # Skip if not at rock bottom
+    if not is_rock_bottom(state.confidence):
+        return HookResult.allow()
+
+    # Check if realignment already completed this session
+    if check_realignment_complete(state):
+        return HookResult.allow()
+
+    # Check if user just answered realignment questions (detect answer patterns)
+    # AskUserQuestion responses typically have "Answer:" prefix or are selections
+    answer_patterns = [
+        r"^(continue|new|debug|careful|fast|ask|misunderstood|technical|wrong|nothing)",
+        r"^\d\.",  # Numbered selection
+        r"^(a|b|c|d)\)",  # Letter selection
+    ]
+    is_answer = any(re.search(p, prompt.lower()) for p in answer_patterns)
+
+    # Also check if user explicitly says something positive/confirming
+    positive_patterns = [r"^(ok|yes|sure|go|proceed|continue|let's|alright|good)"]
+    is_positive = any(re.search(p, prompt.lower()) for p in positive_patterns)
+
+    if is_answer or is_positive or len(prompt) < 30:
+        # User answered - restore confidence!
+        new_confidence = mark_realignment_complete(state)
+        old_confidence = state.confidence
+        state.confidence = new_confidence
+
+        return HookResult.allow(
+            f"🔄 **REALIGNMENT COMPLETE**\n"
+            f"Confidence restored: {old_confidence}% → {new_confidence}%\n\n"
+            f"Ready to proceed with renewed focus."
+        )
+
+    # First time at rock bottom - inject realignment requirement
+    questions = get_realignment_questions()
+    questions_text = "\n".join(
+        [f"**{q['header']}**: {q['question']}" for q in questions]
+    )
+
+    return HookResult.allow(
+        f"🚨 **ROCK BOTTOM REACHED** (Confidence: {state.confidence}%)\n\n"
+        f"I need to realign with you before continuing. Please answer briefly:\n\n"
+        f"{questions_text}\n\n"
+        f"After you respond, my confidence will be restored to {ROCK_BOTTOM_RECOVERY_TARGET}%."
+    )
+
+
 # =============================================================================
 
 
