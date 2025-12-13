@@ -99,6 +99,16 @@ except ImportError:
     classify_intent = None
     intent_prewarm = None
 
+# PAL mandate system
+try:
+    from _pal_mandates import get_mandate, check_keyword_mandate
+
+    PAL_MANDATES_AVAILABLE = True
+except ImportError:
+    PAL_MANDATES_AVAILABLE = False
+    get_mandate = None
+    check_keyword_mandate = None
+
 # Confidence system
 from confidence import (
     # Rock bottom system
@@ -2403,6 +2413,63 @@ def check_intent_classifier(data: dict, state: SessionState) -> HookResult:
     except Exception:
         # Fail silently - classifier is optional enhancement
         return HookResult.allow()
+
+
+@register_hook("pal_mandate", priority=89)
+def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
+    """Inject MANDATORY PAL tool directives based on confidence/intent/state.
+
+    Aggressive by design - mandates fire automatically, not suggestions.
+    See _pal_mandates.py for the formula book.
+    """
+    if not PAL_MANDATES_AVAILABLE or get_mandate is None:
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 15:
+        return HookResult.allow()
+
+    # Skip slash commands
+    if prompt.startswith("/"):
+        return HookResult.allow()
+
+    # Get current confidence
+    confidence = state.get("confidence", 70)
+
+    # Get detected intent from intent_classifier hook (runs before us)
+    intent = state.get("detected_intent")
+
+    # Get state flags
+    cascade_failure = state.get("cascade_failure_active", False)
+    edit_oscillation = state.get("edit_oscillation_active", False)
+    sunk_cost = state.get("sunk_cost_active", False)
+    goal_drift = state.get("goal_drift_active", False)
+    consecutive_failures = state.get("consecutive_failures", 0)
+
+    # Check condition-based mandate
+    mandate = get_mandate(
+        confidence=confidence,
+        intent=intent,
+        cascade_failure=cascade_failure,
+        edit_oscillation=edit_oscillation,
+        sunk_cost=sunk_cost,
+        goal_drift=goal_drift,
+        consecutive_failures=consecutive_failures,
+    )
+
+    # Check keyword-based mandate if no condition mandate
+    if mandate is None and check_keyword_mandate is not None:
+        mandate = check_keyword_mandate(prompt, confidence)
+
+    if mandate is None:
+        return HookResult.allow()
+
+    # Store mandate in state for tracking
+    state.set("active_pal_mandate", mandate.tool)
+    state.set("mandate_reason", mandate.reason)
+
+    # Return the directive - it will be injected into context
+    return HookResult.allow(mandate.directive)
 
 
 @register_hook("work_patterns", priority=91)
