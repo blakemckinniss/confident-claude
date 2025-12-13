@@ -24,7 +24,7 @@ Design Principles:
 # SUDO SECURITY: Audit passed 2025-11-28 - adding fcntl for race condition fix
 import json
 import time
-from confidence import calculate_idle_reversion
+from confidence import calculate_idle_reversion, apply_rate_limit
 import re
 import os
 import tempfile
@@ -1951,12 +1951,19 @@ def _apply_mean_reversion_on_load(state: SessionState) -> SessionState:
     )
 
     if new_confidence != state.confidence:
+        # Apply rate limiting to mean reversion delta
+        raw_delta = new_confidence - state.confidence
+        clamped_delta = apply_rate_limit(raw_delta, state)
+        final_confidence = state.confidence + clamped_delta
+
         # Log the reversion (will be shown in next hook output)
         state.nudge_history["_mean_reversion_applied"] = {
             "old": state.confidence,
-            "new": new_confidence,
+            "new": final_confidence,
             "reason": reason,
+            "raw_delta": raw_delta,
+            "clamped_delta": clamped_delta,
         }
-        set_confidence(state, new_confidence, f"mean_reversion: {reason}")
+        set_confidence(state, final_confidence, f"mean_reversion: {reason}")
 
     return state
