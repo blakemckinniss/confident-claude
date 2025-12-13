@@ -1133,6 +1133,7 @@ def check_confidence_reducer(
         "tool_name": tool_name,
         "tool_result": tool_result,
         "current_activity": current_activity,
+        "prompt": getattr(state, "last_user_prompt", ""),  # For ContradictionReducer
     }
 
     # Check for tool failure (Bash exit code != 0)

@@ -230,6 +230,7 @@ class SessionState:
     goal_project_id: str = (
         ""  # Project ID when goal was set (for multi-project isolation)
     )
+    last_user_prompt: str = ""  # Most recent user prompt (for contradiction detection)
 
     # Meta-cognition: Sunk Cost Detector (v3.1)
     approach_history: list = field(

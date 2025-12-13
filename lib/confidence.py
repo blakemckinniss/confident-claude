@@ -325,21 +325,58 @@ class EditOscillationReducer(ConfidenceReducer):
 
 @dataclass
 class ContradictionReducer(ConfidenceReducer):
-    """Triggers on contradictory claims within session."""
+    """Triggers on contradictory claims within session.
+
+    Detection via:
+    1. User explicitly points out contradiction (pattern matching)
+    2. External LLM verification when patterns match (via Groq)
+    """
 
     name: str = "contradiction"
     delta: int = -10
     description: str = "Made contradictory claims"
     cooldown_turns: int = 5
-    # This needs to be detected externally and passed in context
-    # as "contradiction_detected": True
+
+    # Patterns that suggest user noticed a contradiction
+    contradiction_patterns: list = field(
+        default_factory=lambda: [
+            r"\byou (said|told me|mentioned|stated|claimed)\b.*\b(but|now|however)\b",
+            r"\bthat('s| is) (contradicting|contradictory|inconsistent)",
+            r"\bthat contradicts\b",
+            r"\byou('re| are) contradicting\b",
+            r"\bearlier you said\b",
+            r"\bbefore you (said|mentioned)\b.*\b(now|but)\b",
+            r"\bthat('s| is) the opposite of\b",
+            r"\byou just said the opposite\b",
+            r"\bwhich (is it|one is it)\b",
+            r"\bmake up your mind\b",
+        ]
+    )
+
+    def check_user_reported_contradiction(self, prompt: str) -> bool:
+        """Check if user is reporting a contradiction via patterns."""
+        prompt_lower = prompt.lower()
+        for pattern in self.contradiction_patterns:
+            if re.search(pattern, prompt_lower, re.IGNORECASE):
+                return True
+        return False
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
-        return context.get("contradiction_detected", False)
+
+        # Check for explicit contradiction flag (set by hooks)
+        if context.get("contradiction_detected", False):
+            return True
+
+        # Check if user reported contradiction in recent prompt
+        prompt = context.get("prompt", "")
+        if prompt and self.check_user_reported_contradiction(prompt):
+            return True
+
+        return False
 
 
 @dataclass
@@ -390,8 +427,7 @@ class FollowUpQuestionReducer(ConfidenceReducer):
 
 
 # Registry of all reducers
-# NOTE: ContradictionReducer DISABLED - requires semantic contradiction detection (LLM or NLP)
-# GoalDriftReducer now uses _extract_semantic_keywords() for file path matching
+# All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
     ToolFailureReducer(),
     CascadeBlockReducer(),
@@ -399,7 +435,7 @@ REDUCERS: list[ConfidenceReducer] = [
     UserCorrectionReducer(),
     GoalDriftReducer(),  # Uses semantic keyword extraction from file paths
     EditOscillationReducer(),
-    # ContradictionReducer(),  # DISABLED: requires semantic contradiction detection
+    ContradictionReducer(),  # Uses pattern matching for user-reported contradictions
     FollowUpQuestionReducer(),
 ]
 

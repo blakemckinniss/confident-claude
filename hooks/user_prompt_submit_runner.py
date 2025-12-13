@@ -526,6 +526,9 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
     if not prompt or len(prompt) < 20:
         return HookResult.allow()
 
+    # Save prompt for contradiction detection in post_tool_use
+    state.last_user_prompt = prompt
+
     parts = []
 
     # Initialize confidence if not set
