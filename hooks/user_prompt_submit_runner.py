@@ -105,7 +105,6 @@ from confidence import (
 
 # =============================================================================
 # HOOK REGISTRY
-# =============================================================================
 
 # Format: (name, check_function, priority)
 HOOKS: list[tuple[str, Callable, int]] = []
@@ -330,6 +329,38 @@ def detect_scope_expansion(state: SessionState, prompt: str) -> tuple[bool, str]
                 f"Significant new scope detected ({len(new_keywords)} new terms)",
             )
     return False, ""
+
+
+@register_hook("confidence_override", priority=0)
+def check_confidence_override(data: dict, state: SessionState) -> HookResult:
+    """Allow manual confidence override via SET_CONFIDENCE=X in prompt.
+
+    Example: "SET_CONFIDENCE=70" sets confidence to 70%.
+    This is the ultimate escape hatch for the confidence system.
+    """
+    prompt = data.get("prompt", "")
+
+    # Look for SET_CONFIDENCE=X pattern
+    match = re.search(r"\bSET_CONFIDENCE\s*=\s*(\d+)\b", prompt, re.IGNORECASE)
+    if not match:
+        return HookResult.allow()
+
+    try:
+        new_confidence = int(match.group(1))
+        new_confidence = max(0, min(100, new_confidence))  # Clamp to 0-100
+    except ValueError:
+        return HookResult.allow()
+
+    old_confidence = state.confidence
+    state.confidence = new_confidence
+
+    old_tier, old_emoji, _ = get_tier_info(old_confidence)
+    new_tier, new_emoji, _ = get_tier_info(new_confidence)
+
+    return HookResult.allow(
+        f"🎛️ **CONFIDENCE OVERRIDE**\n"
+        f"{old_emoji} {old_confidence}% ({old_tier}) → {new_emoji} {new_confidence}% ({new_tier})"
+    )
 
 
 @register_hook("goal_anchor", priority=1)
