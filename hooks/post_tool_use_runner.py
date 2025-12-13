@@ -1348,18 +1348,27 @@ _THINKING_CONFIDENCE_PATTERNS = [
 ]
 
 
-@register_hook("thinking_confidence", None, priority=16)
+# DISABLED: thinking_confidence creates net-negative pressure due to:
+# 1. Asymmetric caps (-5/+2) guarantee downward drift
+# 2. False positives on normal language ("I think", "alternatively", "might")
+# 3. Penalizes healthy epistemic practices (hedging, considering options)
+# 4. Floor (70%) + rock-bottom recovery already regulate confidence
+# 5. Natural decay provides sufficient downward pressure
+# Re-enable only after rebalancing patterns to reward-only or symmetric caps.
+# @register_hook("thinking_confidence", None, priority=16)
 def check_thinking_confidence(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Micro-adjust confidence based on reasoning quality in thinking blocks.
+    """DISABLED - Micro-adjust confidence based on reasoning quality.
 
-    Analyzes the thinking that led to this tool call for:
-    - Uncertainty markers: hedging, assumptions, confusion (-1 to -2)
-    - Clarity markers: certainty, verified reasoning (+1)
+    Previously analyzed thinking blocks for uncertainty/clarity markers.
+    Disabled because asymmetric penalties created constant downward drift.
 
-    Max adjustment per tool call: -5 to +2
+    To re-enable: uncomment @register_hook above and rebalance caps to symmetric.
     """
+    return HookResult.none()  # Disabled - skip all processing
+
+    # Original implementation preserved below for reference:
     from synapse_core import extract_thinking_blocks
 
     transcript_path = data.get("transcript_path", "")
