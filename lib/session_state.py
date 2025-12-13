@@ -220,7 +220,7 @@ class SessionState:
     last_5_tools: list = field(default_factory=list)  # For iteration detection
     ops_turns: dict = field(default_factory=dict)  # op_name -> last turn
     directives_fired: int = 0
-    confidence: int = 0  # 0-100%
+    confidence: int = 70  # 0-100%, default to WORKING tier (floor)
     evidence_ledger: list = field(default_factory=list)  # Evidence items
     _decay_accumulator: float = 0.0  # Fractional decay accumulator (persisted)
 
