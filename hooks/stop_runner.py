@@ -742,6 +742,22 @@ GOOD_LANGUAGE_PATTERNS = {
             r"\bto\s+verify\s+(that|this|the|whether)\b",
         ],
     },
+    "proactive_contribution": {
+        "delta": 5,
+        "patterns": [
+            # "I also" patterns (extra work done)
+            r"\bi\s+also\s+(fixed|addressed|cleaned|updated|improved|noticed\s+and\s+fixed)\b",
+            r"\bwhile\s+(i\s+was\s+)?(there|at\s+it|doing\s+this),?\s+i\s+(also\s+)?(fixed|cleaned|updated)\b",
+            r"\badditionally,?\s+i\s+(went\s+ahead\s+and\s+)?(fixed|addressed|cleaned|improved)\b",
+            r"\bi\s+went\s+ahead\s+and\s+(also\s+)?(fixed|cleaned|ran|added)\b",
+            # Bonus/extra patterns
+            r"\b(bonus|as\s+a\s+bonus)[:\s]+\s*i\b",
+            r"\bextra[:\s]+i\s+(also\s+)?\b",
+            # Proactive quality signals
+            r"\bi\s+ran\s+(the\s+)?(tests?|lints?|checks?)\s+(to\s+make\s+sure|to\s+verify|proactively)\b",
+            r"\bcaught\s+(and\s+fixed|this\s+while)\b",
+        ],
+    },
 }
 
 
