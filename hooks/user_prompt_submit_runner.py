@@ -471,14 +471,14 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
             )
             old_confidence = state.confidence
 
-    # Cap confidence at 90% after user prompt
-    # Only pre/post tool use hooks can push above 90% (must earn high confidence)
-    PROMPT_CONFIDENCE_CAP = 90
+    # Cap confidence at 85% after user prompt (harsh - must earn trust)
+    # Only verified successes (test_pass, build_success) can push above 85%
+    PROMPT_CONFIDENCE_CAP = 85
     if state.confidence > PROMPT_CONFIDENCE_CAP:
         state.confidence = PROMPT_CONFIDENCE_CAP
         parts.append(
             f"⚖️ Confidence capped at {PROMPT_CONFIDENCE_CAP}% "
-            "(earn higher via tool use)"
+            "(earn higher via verified success)"
         )
 
     # Check if external consultation is mandatory

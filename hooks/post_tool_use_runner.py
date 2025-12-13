@@ -864,15 +864,23 @@ def _get_context_multiplier(context_pct: float) -> tuple[float, float]:
 def check_confidence_decay(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Natural confidence decay and information gathering boosts.
+    """Harsh confidence decay - confidence is hard to maintain.
 
-    Decay: -0.5 per tool call (complexity accumulates over conversation)
-    Boosts:
-    - Read file: +1 (gathering information)
-    - Memory search: +1 (leveraging past knowledge)
-    - Grep/Glob: +0.5 (exploring codebase)
+    Base decay: -1.0 per tool call (every action costs confidence)
+    High confidence tax: +0.5 extra decay above 85% (complacency penalty)
 
-    Penalties scale with confidence level (higher = harsher).
+    Boosts (small, reading-focused):
+    - Read file: +0.5 (actually gaining context)
+    - Memory/Web: +0.5 (external knowledge)
+    - Task/AskUser: +1 (delegation/clarification)
+
+    Penalties (risky actions):
+    - Edit/Write: -1 base (could introduce bugs)
+    - Edit without read: -2 extra (skipping context)
+    - Stub code: -1 extra (incomplete work)
+    - Bash: -1 (state changes, failure risk)
+
+    All penalties scale with confidence × context multipliers.
     """
     tool_name = data.get("tool_name", "")
 
@@ -880,48 +888,58 @@ def check_confidence_decay(
     if not hasattr(state, "_decay_accumulator"):
         state._decay_accumulator = 0.0
 
-    # Base decay per tool call
-    state._decay_accumulator += 0.5
+    # Base decay per tool call (harsh: every action costs confidence)
+    base_decay = 1.0
 
-    # Boosts for good practices
+    # High confidence tax: above 85%, decay faster (complacency penalty)
+    if state.confidence >= 85:
+        base_decay += 0.5  # 1.5 total at high confidence
+
+    state._decay_accumulator += base_decay
+
+    # Boosts for information gathering ONLY (halved from original)
+    # Philosophy: searching ≠ understanding, only reading gives insight
     boost = 0
     boost_reason = ""
     tool_input = data.get("tool_input", {})
 
     if tool_name == "Read":
-        boost = 1
-        boost_reason = "file-read"
-    elif tool_name in ("Grep", "Glob"):
+        # Reading files = actually gaining context
         boost = 0.5
-        boost_reason = "codebase-search"
+        boost_reason = "file-read"
+    # Grep/Glob removed - searching isn't understanding
     elif tool_name.startswith("mcp__") and "mem" in tool_name.lower():
-        boost = 1
+        # Memory access = leveraging past knowledge
+        boost = 0.5
         boost_reason = "memory-access"
     elif tool_name == "WebSearch" or tool_name == "WebFetch":
-        boost = 1
+        # Research = gathering external info
+        boost = 0.5
         boost_reason = "web-research"
     elif tool_name == "Task":
-        # Delegating to agents shows good judgment
-        boost = 2
+        # Delegating shows judgment, but reduced
+        boost = 1
         boost_reason = "agent-delegation"
     elif tool_name == "AskUserQuestion":
-        # Clarifying with user shows humility
-        boost = 2
-        boost_reason = "user-clarification"
-    elif tool_name == "EnterPlanMode":
-        # Planning before acting is good
+        # Clarifying with user is valuable
         boost = 1
-        boost_reason = "planning"
+        boost_reason = "user-clarification"
+    # EnterPlanMode removed - planning is expected, not rewarded
 
-    # Penalties for bad practices (in addition to decay)
+    # Penalties for risky actions (in addition to decay)
     penalty = 0
     penalty_reason = ""
 
     if tool_name in ("Edit", "Write"):
         file_path = tool_input.get("file_path", "")
-        # Edit without reading first = skipping context
+
+        # Base edit penalty: every edit is a risk (could introduce bugs)
+        penalty = 1
+        penalty_reason = "edit-risk"
+
+        # Edit without reading first = extra penalty for skipping context
         if file_path and file_path not in state.files_read:
-            penalty = 2
+            penalty += 2
             penalty_reason = "edit-without-read"
 
         # Check for stubs in new code
@@ -935,9 +953,12 @@ def check_confidence_decay(
             ]
             if any(p in new_code for p in stub_patterns):
                 penalty += 1
-                penalty_reason = (
-                    (penalty_reason + "+stub") if penalty_reason else "stub-code"
-                )
+                penalty_reason += "+stub"
+
+    # Bash commands are risky - state changes, potential failures
+    elif tool_name == "Bash":
+        penalty = 1
+        penalty_reason = "bash-risk"
 
     # Calculate net adjustment (decay + penalty - boosts)
     # Only apply when accumulator reaches whole number
