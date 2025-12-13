@@ -946,6 +946,140 @@ class GitSpamReducer(ConfidenceReducer):
         return context.get("git_spam", False)
 
 
+# =============================================================================
+# TIME WASTER REDUCERS (Punish inefficient patterns)
+# =============================================================================
+
+
+@dataclass
+class RereadUnchangedReducer(ConfidenceReducer):
+    """Triggers when re-reading a file that hasn't changed since last read.
+
+    Wastes time and tokens re-reading content already in context.
+    """
+
+    name: str = "reread_unchanged"
+    delta: int = -3
+    description: str = "Re-read unchanged file (already in context)"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("reread_unchanged", False)
+
+
+@dataclass
+class VerbosePreambleReducer(ConfidenceReducer):
+    """Triggers on verbose preambles like 'I'll now...' or 'Let me...'.
+
+    Wastes tokens on fluff instead of direct action.
+    """
+
+    name: str = "verbose_preamble"
+    delta: int = -3
+    description: str = "Verbose preamble (fluff before action)"
+    cooldown_turns: int = 2
+    patterns: list = field(
+        default_factory=lambda: [
+            r"^(?:i'?ll|let me|i'?m going to|i will now|now i'?ll)\s+(?:go ahead and|proceed to|start by)",
+            r"^(?:first,?\s+)?(?:i'?ll|let me)\s+(?:begin|start)\s+by\s+(?:reading|checking|looking)",
+            r"^(?:okay|alright|sure),?\s+(?:i'?ll|let me|i will)\s+",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        # Check first 200 chars for preamble patterns
+        first_part = output[:200].lower().strip()
+        for pattern in self.patterns:
+            if re.search(pattern, first_part, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class HugeOutputDumpReducer(ConfidenceReducer):
+    """Triggers when dumping huge tool output without summarizing.
+
+    Wastes context window with raw dumps instead of extracting key info.
+    """
+
+    name: str = "huge_output_dump"
+    delta: int = -2
+    description: str = "Huge output dump without summarizing"
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("huge_output_dump", False)
+
+
+@dataclass
+class RedundantExplanationReducer(ConfidenceReducer):
+    """Triggers when re-explaining something already explained.
+
+    Wastes tokens repeating information user already has.
+    """
+
+    name: str = "redundant_explanation"
+    delta: int = -2
+    description: str = "Redundant explanation (already explained)"
+    cooldown_turns: int = 3
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\bas\s+(?:i|we)\s+(?:mentioned|said|explained|noted)\s+(?:earlier|before|previously)\b",
+            r"\bto\s+reiterate\b",
+            r"\bas\s+(?:i|we)\s+(?:already|just)\s+(?:mentioned|said|explained)\b",
+            r"\blike\s+(?:i|we)\s+said\s+(?:earlier|before)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, output.lower(), re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class TrivialQuestionReducer(ConfidenceReducer):
+    """Triggers when asking questions that could be answered by reading code.
+
+    Should read the code first instead of asking obvious questions.
+    """
+
+    name: str = "trivial_question"
+    delta: int = -5
+    description: str = "Trivial question (read code instead)"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("trivial_question", False)
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
@@ -976,6 +1110,12 @@ REDUCERS: list[ConfidenceReducer] = [
     UnbackedVerificationClaimReducer(),  # Claim without tool evidence (-15)
     FixedWithoutChainReducer(),  # "Fixed" without write+verify (-8)
     GitSpamReducer(),  # >3 git commands in 5 turns (-2)
+    # Time waster reducers (v4.2)
+    RereadUnchangedReducer(),  # Re-reading unchanged file (-3)
+    VerbosePreambleReducer(),  # "I'll now..." fluff (-3)
+    HugeOutputDumpReducer(),  # Huge output without summary (-2)
+    RedundantExplanationReducer(),  # "As I mentioned..." (-2)
+    TrivialQuestionReducer(),  # Questions answerable by reading (-5)
 ]
 
 
@@ -1445,6 +1585,116 @@ class GitCommitIncreaser(ConfidenceIncreaser):
         return context.get("git_committed", False)
 
 
+# =============================================================================
+# TIME SAVER INCREASERS (Reward efficient patterns)
+# =============================================================================
+
+
+@dataclass
+class ParallelToolsIncreaser(ConfidenceIncreaser):
+    """Triggers when using multiple tools in parallel (same message).
+
+    Efficient use of parallelism saves time and context.
+    """
+
+    name: str = "parallel_tools"
+    delta: int = 3
+    description: str = "Used parallel tool calls efficiently"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("parallel_tools", False)
+
+
+@dataclass
+class EfficientSearchIncreaser(ConfidenceIncreaser):
+    """Triggers when search finds target on first try.
+
+    Efficient searching demonstrates codebase understanding.
+    """
+
+    name: str = "efficient_search"
+    delta: int = 2
+    description: str = "Found target on first search attempt"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("efficient_search", False)
+
+
+@dataclass
+class BatchFixIncreaser(ConfidenceIncreaser):
+    """Triggers when fixing multiple issues in single edit.
+
+    Batch operations are more efficient than one-at-a-time.
+    """
+
+    name: str = "batch_fix"
+    delta: int = 3
+    description: str = "Fixed multiple issues in single edit"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("batch_fix", False)
+
+
+@dataclass
+class DirectActionIncreaser(ConfidenceIncreaser):
+    """Triggers when taking direct action without preamble.
+
+    Direct action saves tokens and time vs verbose explanations.
+    """
+
+    name: str = "direct_action"
+    delta: int = 2
+    description: str = "Took direct action without preamble"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("direct_action", False)
+
+
+@dataclass
+class ChainedCommandsIncreaser(ConfidenceIncreaser):
+    """Triggers when chaining related commands with && or ;.
+
+    Chaining saves round trips and demonstrates planning.
+    """
+
+    name: str = "chained_commands"
+    delta: int = 1
+    description: str = "Chained related commands efficiently"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("chained_commands", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1468,6 +1718,12 @@ INCREASERS: list[ConfidenceIncreaser] = [
     AskUserIncreaser(),
     UserOkIncreaser(),
     TrustRegainedIncreaser(),
+    # Time saver increasers (v4.2)
+    ParallelToolsIncreaser(),  # Multiple tools in parallel (+3)
+    EfficientSearchIncreaser(),  # First-try search success (+2)
+    BatchFixIncreaser(),  # Multiple fixes in one edit (+3)
+    DirectActionIncreaser(),  # No preamble, just action (+2)
+    ChainedCommandsIncreaser(),  # Commands with && or ; (+1)
 ]
 
 

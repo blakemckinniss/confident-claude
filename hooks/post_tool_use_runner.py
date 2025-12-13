@@ -757,7 +757,9 @@ def check_state_updater(
     # Track last tool for sequential repetition detection
     bash_cmd = ""
     if tool_name == "Bash":
-        bash_cmd = tool_input.get("command", "")[:50]  # First 50 chars for pattern matching
+        bash_cmd = tool_input.get("command", "")[
+            :50
+        ]  # First 50 chars for pattern matching
     state.last_tool_info = {
         "tool_name": tool_name,
         "turn": state.turn_count,
@@ -1206,7 +1208,9 @@ def check_confidence_reducer(
 
     # Check for git spam (>3 git commands in 5 turns without writes)
     git_explore_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
-    if tool_name == "Bash" and any(g in tool_input.get("command", "") for g in git_explore_cmds):
+    if tool_name == "Bash" and any(
+        g in tool_input.get("command", "") for g in git_explore_cmds
+    ):
         git_turns = getattr(state, "git_explore_turns", [])
         git_turns.append(state.turn_count)
         # Keep only last 5 turns
@@ -1217,6 +1221,42 @@ def check_confidence_reducer(
             recent_writes = [f for f in state.files_edited[-5:]]
             if not recent_writes:
                 context["git_spam"] = True
+
+    # =========================================================================
+    # TIME WASTER DETECTION (v4.2)
+    # =========================================================================
+
+    # Re-read unchanged file (-3) - already read and not edited since
+    if tool_name == "Read":
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            # Check if file was already read
+            files_read = getattr(state, "files_read", {})
+            files_edited = getattr(state, "files_edited", [])
+            if file_path in files_read:
+                # Check if file was edited since last read
+                last_read_turn = files_read.get(file_path, {}).get("turn", 0)
+                # Find if edited after last read
+                edited_after = False
+                for edit_entry in files_edited:
+                    if isinstance(edit_entry, dict):
+                        if edit_entry.get("path") == file_path:
+                            edit_turn = edit_entry.get("turn", 0)
+                            if edit_turn > last_read_turn:
+                                edited_after = True
+                                break
+                    elif isinstance(edit_entry, str) and edit_entry == file_path:
+                        # Simple string entry - can't determine turn
+                        edited_after = True
+                        break
+                # If not edited since last read, it's a wasted re-read
+                if not edited_after:
+                    context["reread_unchanged"] = True
+
+    # Huge output dump (-2) - tool output > 5000 chars without summarizing
+    result_str = str(tool_result) if tool_result else ""
+    if len(result_str) > 5000:
+        context["huge_output_dump"] = True
 
     # Apply reducers
     triggered = apply_reducers(state, context)
@@ -1414,6 +1454,56 @@ def check_confidence_increaser(
             if any(t in command for t in ["ruff check", "eslint", "clippy", "pylint"]):
                 if "error" not in stdout and "warning" not in stdout:
                     context["lint_passed"] = True
+
+    # =========================================================================
+    # TIME SAVER DETECTION (v4.2)
+    # =========================================================================
+
+    # Chained commands (+1) - detect && or ; in bash commands
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        # Look for meaningful command chaining (not just in strings)
+        if " && " in command or re.search(r";\s*\w+", command):
+            # Exclude trivial chains like "cd x && ls"
+            parts = re.split(r"\s*&&\s*|\s*;\s*", command)
+            # Only reward if chaining 2+ meaningful commands
+            meaningful = [p for p in parts if len(p.strip()) > 5]
+            if len(meaningful) >= 2:
+                context["chained_commands"] = True
+
+    # Batch fix (+3) - detect multiple changes in single edit
+    if tool_name == "Edit":
+        old_string = tool_input.get("old_string", "")
+        new_string = tool_input.get("new_string", "")
+        if old_string and new_string:
+            # Count line changes
+            old_lines = old_string.count("\n")
+            new_lines = new_string.count("\n")
+            # If changing multiple lines in one edit, it's a batch fix
+            if old_lines >= 3 or new_lines >= 3:
+                context["batch_fix"] = True
+
+    # Parallel tools (+3) - detect multiple tools in same turn
+    # Check runner_state for parallel tool execution tracking
+    tools_this_turn = runner_state.get("tools_this_turn", 1)
+    if tools_this_turn >= 2:
+        context["parallel_tools"] = True
+
+    # Efficient search (+2) - search finds target without repeated attempts
+    if tool_name in {"Grep", "Glob"}:
+        # Check if this is first search for this pattern (not a retry)
+        pattern = tool_input.get("pattern", "")
+        recent_searches = getattr(state, "recent_searches", [])
+        if pattern and pattern not in recent_searches:
+            # First attempt - track it
+            if not hasattr(state, "recent_searches"):
+                state.recent_searches = []
+            state.recent_searches.append(pattern)
+            state.recent_searches = state.recent_searches[-20:]  # Keep last 20
+            # Check if search returned results (efficient)
+            result_str = str(tool_result)[:500].lower()
+            if "no matches" not in result_str and "0 results" not in result_str:
+                context["efficient_search"] = True
 
     # Apply increasers
     triggered = apply_increasers(state, context)
