@@ -31,6 +31,21 @@ CACHE_TTL = {
     "comfyui": 10,  # Service status very stable
     "net": 10,  # Connectivity rarely changes
     "git": 3,  # Changes with edits but not rapidly
+    "ports": 3,  # Dev servers start/stop occasionally
+}
+
+# Dev ports worth monitoring (port -> short label)
+DEV_PORTS = {
+    3000: "3k",  # React, Next.js, Create React App
+    3001: "3k1",  # Next.js alt
+    4200: "ng",  # Angular
+    5000: "5k",  # Flask, various
+    5173: "vite",  # Vite dev server
+    5174: "vite",  # Vite alt
+    8000: "8k",  # Django, FastAPI, uvicorn
+    8080: "8080",  # Generic, Tomcat, etc
+    8888: "jup",  # Jupyter
+    9000: "9k",  # PHP-FPM, SonarQube
 }
 
 
@@ -224,6 +239,38 @@ def get_gpu_vram():
         return ""
 
 
+def get_dev_ports():
+    """Check which dev ports are listening."""
+    try:
+        result = subprocess.run(
+            ["ss", "-tlnH"], capture_output=True, text=True, timeout=1
+        )
+        if result.returncode != 0:
+            return ""
+
+        listening = set()
+        for line in result.stdout.split("\n"):
+            # Parse ss output: LISTEN 0 511 *:3000 *:*
+            parts = line.split()
+            if len(parts) >= 4:
+                addr = parts[3]  # Local address like *:3000 or 127.0.0.1:8000
+                if ":" in addr:
+                    port_str = addr.rsplit(":", 1)[-1]
+                    if port_str.isdigit():
+                        port = int(port_str)
+                        if port in DEV_PORTS:
+                            listening.add(port)
+
+        if not listening:
+            return ""
+
+        # Sort and format: "3k 8k vite"
+        labels = [DEV_PORTS[p] for p in sorted(listening)]
+        return f"{C.MAGENTA}{' '.join(labels)}{C.RESET}"
+    except Exception:
+        return ""
+
+
 def get_comfyui_status():
     """Check if ComfyUI is running."""
     try:
@@ -379,6 +426,7 @@ def main():
     slow_funcs = {
         "gpu": get_gpu_vram,
         "services": get_services_status,
+        "ports": get_dev_ports,
         "comfyui": get_comfyui_status,
         "net": get_network_status,
         "git": get_git_info,
@@ -412,6 +460,7 @@ def main():
 
     gpu = results.get("gpu", "")
     services = results.get("services", "")
+    ports = results.get("ports", "")
     comfyui = results.get("comfyui", "")
     net = results.get("net", f"{C.DIM}NET{C.RESET}")
     git = results.get("git", "")
@@ -428,6 +477,8 @@ def main():
         line1_parts.append(f"GPU:{gpu}")
     if services:
         line1_parts.append(services)
+    if ports:
+        line1_parts.append(ports)
     if comfyui:
         line1_parts.append(comfyui)
     line1_parts.append(net)
