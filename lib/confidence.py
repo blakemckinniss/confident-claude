@@ -892,7 +892,9 @@ def format_dispute_instructions(reducer_names: list[str]) -> str:
 
     reducers_str = ", ".join(reducer_names)
     return (
-        f"\n💡 **False positive?** Say `FP: <reducer>` or `dispute <reducer>`\n"
+        f"\n💡 **False positive?** Options:\n"
+        f"   • Claude: Run `~/.claude/ops/fp.py <reducer> [reason]`\n"
+        f"   • User: Say `FP: <reducer>` or `dispute <reducer>`\n"
         f"   Recent reducers: {reducers_str}"
     )
 
