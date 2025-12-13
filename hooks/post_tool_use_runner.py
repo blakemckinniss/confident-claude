@@ -541,7 +541,9 @@ def check_state_updater(
                     new_func_lines = extract_function_def_lines(new_code)
                     for func_name, old_def in old_func_lines.items():
                         new_def = new_func_lines.get(func_name)
-                        if new_def is None or old_def != new_def:
+                        # Only track if signature CHANGED (not removed)
+                        # Removed functions cause immediate errors at call sites
+                        if new_def is not None and old_def != new_def:
                             add_pending_integration_grep(state, func_name, filepath)
             # SELF-HEAL: Clear if successful edit on framework files (no error)
             if (

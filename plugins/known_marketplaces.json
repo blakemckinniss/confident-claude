@@ -21,7 +21,7 @@
       "url": "https://github.com/wshobson/agents.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows",
-    "lastUpdated": "2025-12-13T13:48:18.449Z"
+    "lastUpdated": "2025-12-13T14:08:30.219Z"
   },
   "repomix": {
     "source": {
@@ -45,6 +45,6 @@
       "repo": "sawyerhood/dev-browser"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/dev-browser-marketplace",
-    "lastUpdated": "2025-12-13T14:03:48.418Z"
+    "lastUpdated": "2025-12-13T14:06:12.669Z"
   }
 }
