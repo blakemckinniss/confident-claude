@@ -1205,20 +1205,24 @@ def check_confidence_increaser(
 
     # Check for successful test/build commands
     if tool_name == "Bash":
-        if isinstance(tool_result, dict):
-            exit_code = tool_result.get("exit_code", 0)
-            output = tool_result.get("output", "").lower()
+        # Get output from tool_response (Claude Code's actual field), not tool_result
+        tool_response = data.get("tool_response", {})
+        if isinstance(tool_response, dict):
+            stdout = tool_response.get("stdout", "").lower()
+            stderr = tool_response.get("stderr", "")
+            # No exit code in tool_response, infer from stderr/interrupted
+            success = not tool_response.get("interrupted", False) and not stderr
+        else:
+            stdout = str(tool_response).lower() if tool_response else ""
+            success = True
 
-            if exit_code == 0:
-                # Check for test success patterns
-                if any(
-                    p in output
-                    for p in ["passed", "tests passed", "ok", "success", "✓"]
-                ):
-                    context["tests_passed"] = True
-                # Check for build success
-                if any(p in output for p in ["built", "compiled", "build successful"]):
-                    context["build_succeeded"] = True
+        if success and stdout:
+            # Check for test success patterns
+            if any(p in stdout for p in ["passed", "tests passed", "ok", "success", "✓"]):
+                context["tests_passed"] = True
+            # Check for build success
+            if any(p in stdout for p in ["built", "compiled", "build successful"]):
+                context["build_succeeded"] = True
 
     # Apply increasers
     triggered = apply_increasers(state, context)

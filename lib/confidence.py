@@ -502,10 +502,15 @@ class TestPassIncreaser(ConfidenceIncreaser):
         # Check context from post_tool_use_runner (output-based detection)
         if context.get("tests_passed"):
             return True
-        # Check recent commands for test passes (command-based detection)
+        # Check recent commands for test passes
         for cmd in state.commands_succeeded[-5:]:
             cmd_str = cmd.get("command", "").lower()
+            output = cmd.get("output", "").lower()
+            # Command-based: actual test runners
             if any(t in cmd_str for t in ["pytest", "jest", "cargo test", "npm test"]):
+                return True
+            # Output-based: success patterns in output
+            if any(p in output for p in ["passed", "tests passed", "success", "✓"]):
                 return True
         return False
 
@@ -551,13 +556,17 @@ class BuildSuccessIncreaser(ConfidenceIncreaser):
         # Check context from post_tool_use_runner (output-based detection)
         if context.get("build_succeeded"):
             return True
-        # Check recent commands for builds (command-based detection)
+        # Check recent commands for builds
         for cmd in state.commands_succeeded[-5:]:
             cmd_str = cmd.get("command", "").lower()
-            # Must match actual build command, not just contain substring
+            output = cmd.get("output", "").lower()
+            # Command-based: actual build commands
             if any(
                 cmd_str.startswith(t) or f" {t}" in cmd_str for t in self.build_commands
             ):
+                return True
+            # Output-based: build success patterns in output
+            if any(p in output for p in ["built", "compiled", "build successful"]):
                 return True
         return False
 

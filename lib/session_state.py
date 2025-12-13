@@ -739,6 +739,7 @@ def track_command(state: SessionState, command: str, success: bool, output: str 
         "command": command[:200],
         "success": success,
         "timestamp": time.time(),
+        "output": output[:500] if output else "",  # Store output for increaser pattern matching
     }
 
     if success:
