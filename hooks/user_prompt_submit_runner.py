@@ -46,7 +46,6 @@ import time
 import os
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Callable, Optional
-from dataclasses import dataclass
 from pathlib import Path
 
 # Performance: cached file I/O and git commands
@@ -72,28 +71,7 @@ from session_state import (
     Domain,
     generate_context,
 )
-
-# =============================================================================
-# HOOK RESULT TYPE
-# =============================================================================
-
-
-@dataclass
-class HookResult:
-    """Result from a hook check."""
-
-    decision: str = "allow"  # "allow" or "deny"
-    reason: str = ""  # Reason for deny
-    context: str = ""  # Additional context to inject
-
-    @staticmethod
-    def allow(context: str = "") -> "HookResult":
-        return HookResult(decision="allow", context=context)
-
-    @staticmethod
-    def deny(reason: str) -> "HookResult":
-        return HookResult(decision="deny", reason=reason)
-
+from _hook_result import HookResult
 
 # =============================================================================
 # HOOK REGISTRY

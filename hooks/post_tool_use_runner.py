@@ -39,7 +39,6 @@ import os
 import re
 import time
 from typing import Optional, Callable
-from dataclasses import dataclass
 from pathlib import Path
 from collections import Counter
 
@@ -82,6 +81,7 @@ from session_state import (
     get_adaptive_threshold,
     record_threshold_trigger,
 )
+from _hook_result import HookResult
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -145,31 +145,6 @@ _JS_MUTATION_PATTERNS = [
 
 # Spread operator check for JS mutation guard
 _SPREAD_CHECK = re.compile(r"\[\.\.\.\w+\]\s*$")
-
-# =============================================================================
-# HOOK RESULT TYPE
-# =============================================================================
-
-
-@dataclass
-class HookResult:
-    """Result from a hook check."""
-
-    context: str = ""  # Additional context to inject
-
-    @staticmethod
-    def none() -> "HookResult":
-        return HookResult()
-
-    @staticmethod
-    def allow(context: str = "") -> "HookResult":
-        """Allow with optional context (alias for consistency with other runners)."""
-        return HookResult(context=context)
-
-    @staticmethod
-    def with_context(context: str) -> "HookResult":
-        return HookResult(context=context)
-
 
 # =============================================================================
 # HOOK REGISTRY
@@ -289,29 +264,39 @@ def _clear_self_heal(state: SessionState) -> None:
 
 
 def _detect_error_in_result(
-    result: dict, keywords: tuple[str, ...] = ("error", "failed")
+    result, keywords: tuple[str, ...] = ("error", "failed")
 ) -> str:
     """Detect errors in tool result.
 
     Args:
-        result: Tool result dict with potential 'error' or 'output' fields
+        result: Tool result dict with potential 'error' or 'output' fields,
+                or a string (treated as output)
         keywords: Error keywords to search for in output (lowercase)
 
     Returns:
         Error string (truncated to 200 chars) or empty string if no error
     """
+    # Handle string results (Claude sometimes returns plain strings)
+    if isinstance(result, str):
+        result_lower = result.lower()[:150]
+        if any(kw in result_lower for kw in keywords):
+            return result[:200]
+        return ""
+
+    if not isinstance(result, dict):
+        return ""
+
     # Check explicit error field first
     error = result.get("error", "") or ""
     if error:
         return error[:200]
 
     # Check output for error keywords
-    if isinstance(result, dict):
-        output = result.get("output", "")
-        if isinstance(output, str):
-            output_lower = output.lower()[:150]
-            if any(kw in output_lower for kw in keywords):
-                return output[:200]
+    output = result.get("output", "")
+    if isinstance(output, str):
+        output_lower = output.lower()[:150]
+        if any(kw in output_lower for kw in keywords):
+            return output[:200]
 
     return ""
 
@@ -497,6 +482,11 @@ def check_state_updater(
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     result = data.get("tool_result", {})
+    # Normalize string results to dict format
+    if isinstance(result, str):
+        result = {"output": result}
+    elif not isinstance(result, dict):
+        result = {}
     warning = None
 
     # Update tool count

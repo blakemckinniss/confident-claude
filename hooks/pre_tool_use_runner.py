@@ -66,6 +66,7 @@ from session_state import (
     clear_blocks,
     check_cascade_failure,
 )
+from _hook_result import HookResult
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -137,12 +138,6 @@ _FLAW_PATTERNS = [
         "overconfidence",
     ),
 ]
-
-# =============================================================================
-# HOOK RESULT TYPE
-# =============================================================================
-
-from _hook_result import HookResult
 
 # =============================================================================
 # HOOK REGISTRY

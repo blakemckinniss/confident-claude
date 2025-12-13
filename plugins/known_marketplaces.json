@@ -37,7 +37,7 @@
       "url": "https://github.com/davila7/claude-code-templates.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-templates",
-    "lastUpdated": "2025-12-13T13:51:23.666Z"
+    "lastUpdated": "2025-12-13T14:00:52.952Z"
   },
   "dev-browser-marketplace": {
     "source": {
@@ -45,6 +45,6 @@
       "repo": "sawyerhood/dev-browser"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/dev-browser-marketplace",
-    "lastUpdated": "2025-12-13T13:51:56.538Z"
+    "lastUpdated": "2025-12-13T14:03:48.418Z"
   }
 }
