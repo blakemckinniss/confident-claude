@@ -10,7 +10,7 @@ HOOKS INDEX (by priority):
     11 confidence_decay    - Natural decay + tool boosts (context-scaled)
     12 confidence_reducer  - Apply deterministic confidence reductions on failures
     14 confidence_increaser - Apply confidence increases on success signals
-    16 thinking_confidence - Analyze reasoning quality in thinking blocks (context-scaled)
+    16 thinking_quality_boost - Reward good reasoning (evidence, verification, diagnosis)
 
   QUALITY GATES (22-50):
     22 assumption_check    - Surface hidden assumptions in code changes
@@ -1271,67 +1271,11 @@ def check_confidence_increaser(
 
 
 # -----------------------------------------------------------------------------
-# THINKING CONFIDENCE (priority 16) - Micro-adjust based on reasoning quality
+# THINKING QUALITY BOOST (priority 16) - Reward good reasoning practices
 # -----------------------------------------------------------------------------
+# REWARD-ONLY: No penalties. Confidence earned through evidence, not lost through language.
+# Penalties on hedging/alternatives were removed - they punished healthy epistemic practices.
 
-# Patterns that indicate uncertainty/confusion (reduce confidence)
-_THINKING_UNCERTAINTY_PATTERNS = [
-    # Uncertainty & hedging
-    (
-        re.compile(r"\b(I'm not sure|not certain|unclear|confus)", re.I),
-        -1,
-        "uncertainty",
-    ),
-    (re.compile(r"\b(maybe|might|could be|possibly|perhaps)\b", re.I), -1, "hedging"),
-    (re.compile(r"\b(I think|I believe|I assume)\b", re.I), -1, "assumption"),
-    (re.compile(r"\b(should work|hopefully|probably)\b", re.I), -1, "hope-driven"),
-    # Confusion & backtracking
-    (
-        re.compile(r"\b(wait|hmm+|let me reconsider|let me think)\b", re.I),
-        -2,
-        "confusion",
-    ),
-    (
-        re.compile(r"\b(actually|no wait|I was wrong|that's wrong)\b", re.I),
-        -2,
-        "backtrack",
-    ),
-    (
-        re.compile(r"\b(this is (tricky|complex|difficult|confusing))\b", re.I),
-        -1,
-        "complexity",
-    ),
-    # Logical fallacies
-    (
-        re.compile(r"\b(must be|has to be|obviously means)\b", re.I),
-        -1,
-        "jumping-conclusion",
-    ),
-    (re.compile(r"\b(always|never|every time|impossible)\b", re.I), -1, "absolutism"),
-    (re.compile(r"\b(the user (wants|expects|needs))\b", re.I), -1, "mind-reading"),
-    # Indecisive assertions
-    (re.compile(r"\b(I (could|might|may) (try|do|use))\b", re.I), -1, "indecisive"),
-    (
-        re.compile(r"\b(one option|another approach|alternatively)\b", re.I),
-        -1,
-        "waffling",
-    ),
-    # Skipping verification
-    (
-        re.compile(
-            r"\b(skip|don't need to|no need to) (check|verify|read|test)\b", re.I
-        ),
-        -2,
-        "skip-verify",
-    ),
-    (
-        re.compile(r"\b(assume|assuming) (it|this|that) (works|exists|is)\b", re.I),
-        -1,
-        "blind-assumption",
-    ),
-]
-
-# Patterns that indicate clear reasoning (maintain/boost confidence)
 _THINKING_CONFIDENCE_PATTERNS = [
     # Clarity & certainty
     (re.compile(r"\b(definitely|clearly|certainly)\b", re.I), 1, "clarity"),
@@ -1348,27 +1292,19 @@ _THINKING_CONFIDENCE_PATTERNS = [
 ]
 
 
-# DISABLED: thinking_confidence creates net-negative pressure due to:
-# 1. Asymmetric caps (-5/+2) guarantee downward drift
-# 2. False positives on normal language ("I think", "alternatively", "might")
-# 3. Penalizes healthy epistemic practices (hedging, considering options)
-# 4. Floor (70%) + rock-bottom recovery already regulate confidence
-# 5. Natural decay provides sufficient downward pressure
-# Re-enable only after rebalancing patterns to reward-only or symmetric caps.
-# @register_hook("thinking_confidence", None, priority=16)
-def check_thinking_confidence(
+@register_hook("thinking_quality_boost", None, priority=16)
+def check_thinking_quality_boost(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """DISABLED - Micro-adjust confidence based on reasoning quality.
+    """Reward good reasoning practices detected in thinking blocks.
 
-    Previously analyzed thinking blocks for uncertainty/clarity markers.
-    Disabled because asymmetric penalties created constant downward drift.
+    REWARD-ONLY design philosophy:
+    - Confidence should be EARNED through good practices, not LOST through language
+    - Penalties on hedging/alternatives punished healthy epistemic practices
+    - Natural decay + other reducers already provide downward pressure
 
-    To re-enable: uncomment @register_hook above and rebalance caps to symmetric.
+    Rewards: +1 per pattern matched, max +3 per tool call
     """
-    return HookResult.none()  # Disabled - skip all processing
-
-    # Original implementation preserved below for reference:
     from synapse_core import extract_thinking_blocks
 
     transcript_path = data.get("transcript_path", "")
@@ -1379,71 +1315,34 @@ def check_thinking_confidence(
     if not thinking_blocks:
         return HookResult.none()
 
-    # Analyze most recent thinking (last 2 blocks, last 2000 chars)
-    recent_thinking = " ".join(thinking_blocks[-2:])[-2000:]
+    # Analyze most recent thinking (last 2 blocks, last 1500 chars)
+    recent_thinking = " ".join(thinking_blocks[-2:])[-1500:]
     if not recent_thinking:
         return HookResult.none()
 
-    # Calculate adjustment
+    # REWARD-ONLY: Check positive patterns, no penalties
     adjustment = 0
     triggered = []
 
-    # Check uncertainty patterns (penalties)
-    for pattern, delta, label in _THINKING_UNCERTAINTY_PATTERNS:
-        matches = len(pattern.findall(recent_thinking))
-        if matches > 0:
-            # Cap at 2 matches per pattern to avoid over-penalizing
-            adj = delta * min(matches, 2)
-            adjustment += adj
-            triggered.append(f"{label}:{adj}")
-
-    # Check confidence patterns (small boosts)
     for pattern, delta, label in _THINKING_CONFIDENCE_PATTERNS:
         if pattern.search(recent_thinking):
             adjustment += delta
-            triggered.append(f"{label}:+{delta}")
+            triggered.append(label)
 
-    # Cap total adjustment to avoid wild swings
-    adjustment = max(-5, min(2, adjustment))
+    # Cap at +3 to prevent gaming
+    adjustment = min(3, adjustment)
 
     if adjustment == 0:
         return HookResult.none()
 
-    # Apply context-based scaling
-    context_pct = _get_context_percentage(transcript_path)
-    ctx_penalty_mult, ctx_boost_mult = _get_context_multiplier(context_pct)
-
-    # Scale adjustment based on context
-    if adjustment < 0:
-        # Penalties: multiply by context pressure
-        scaled_adjustment = int(adjustment * ctx_penalty_mult)
-    else:
-        # Boosts: reduce at high context
-        scaled_adjustment = int(adjustment * ctx_boost_mult)
-
-    if scaled_adjustment == 0:
-        return HookResult.none()
-
-    # Apply rate limiting to prevent death spiral stacking
-    scaled_adjustment = apply_rate_limit(scaled_adjustment, state)
-
-    if scaled_adjustment == 0:
-        return HookResult.none()
-
-    # Apply micro-adjustment
+    # Apply to confidence
     old_confidence = state.confidence
-    new_confidence = max(0, min(100, old_confidence + scaled_adjustment))
+    new_confidence = min(100, old_confidence + adjustment)
 
     if new_confidence != old_confidence:
-        set_confidence(state, new_confidence, "thinking_confidence micro-adjustment")
-        direction = "📉" if scaled_adjustment < 0 else "📈"
-
-        # Add context indicator if significant
-        ctx_suffix = f", CTX:{context_pct:.0f}%" if context_pct >= 40 else ""
+        set_confidence(state, new_confidence, "thinking_quality_boost")
         return HookResult.with_context(
-            f"{direction} **Thinking confidence**: {old_confidence}% → {new_confidence}% "
-            f"({'+' if scaled_adjustment > 0 else ''}{scaled_adjustment}) "
-            f"[{', '.join(triggered[:3])}{ctx_suffix}]"
+            f"📈 **Quality**: +{adjustment} [{', '.join(triggered[:3])}]"
         )
 
     return HookResult.none()
