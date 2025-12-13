@@ -758,6 +758,27 @@ def check_state_updater(
 # -----------------------------------------------------------------------------
 
 
+def _get_penalty_multiplier(confidence: int) -> float:
+    """Scale penalties based on confidence level.
+
+    Higher confidence = harder to maintain (bigger penalties).
+    Lower confidence = already struggling (reduced penalties).
+
+    This prevents coasting at high confidence - mistakes cost more
+    when you're confident, creating pressure to stay careful.
+    """
+    if confidence >= 95:
+        return 2.0  # Double penalties at peak confidence
+    elif confidence >= 85:
+        return 1.5  # 50% extra penalty in trusted zone
+    elif confidence >= 70:
+        return 1.0  # Normal penalties in working zone
+    elif confidence >= 50:
+        return 0.75  # Reduced penalties when struggling
+    else:
+        return 0.5  # Half penalties when in crisis
+
+
 @register_hook("confidence_decay", None, priority=11)
 def check_confidence_decay(
     data: dict, state: SessionState, runner_state: dict
@@ -770,8 +791,7 @@ def check_confidence_decay(
     - Memory search: +1 (leveraging past knowledge)
     - Grep/Glob: +0.5 (exploring codebase)
 
-    This creates a natural flow where confidence decays unless
-    actively counteracted by information gathering.
+    Penalties scale with confidence level (higher = harsher).
     """
     tool_name = data.get("tool_name", "")
 
@@ -843,8 +863,13 @@ def check_confidence_decay(
     accumulated_decay = int(state._decay_accumulator)
     state._decay_accumulator -= accumulated_decay  # Keep fractional part
 
+    # Scale penalties by confidence level (higher = harsher)
+    multiplier = _get_penalty_multiplier(state.confidence)
+    scaled_penalty = int(penalty * multiplier)
+    scaled_decay = int(accumulated_decay * multiplier) if accumulated_decay else 0
+
     # Net change: boosts are positive, decay and penalty are negative
-    delta = boost - accumulated_decay - penalty
+    delta = boost - scaled_decay - scaled_penalty
 
     if delta == 0:
         return HookResult.none()
