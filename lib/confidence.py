@@ -292,16 +292,15 @@ class FollowUpQuestionReducer(ConfidenceReducer):
 
 
 # Registry of all reducers
-# NOTE: GoalDriftReducer and ContradictionReducer DISABLED - context keys never set
-# Re-enable when wiring is complete
+# NOTE: ContradictionReducer still DISABLED - requires semantic contradiction detection
 REDUCERS: list[ConfidenceReducer] = [
     ToolFailureReducer(),
     CascadeBlockReducer(),
     SunkCostReducer(),
     UserCorrectionReducer(),
-    # GoalDriftReducer(),  # DISABLED: current_activity never populated
+    GoalDriftReducer(),  # RE-ENABLED: current_activity now populated in post_tool_use_runner
     EditOscillationReducer(),
-    # ContradictionReducer(),  # DISABLED: contradiction_detected never set
+    # ContradictionReducer(),  # DISABLED: requires semantic contradiction detection
     FollowUpQuestionReducer(),
 ]
 

@@ -1110,12 +1110,29 @@ def check_confidence_reducer(
     - edit_oscillation: -12 (same file edited 3+ times)
     """
     tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
     tool_result = data.get("tool_result", {})
+
+    # Build current_activity string for GoalDriftReducer
+    activity_parts = [tool_name]
+    if tool_name in ("Read", "Edit", "Write", "Glob", "Grep"):
+        file_path = tool_input.get("file_path", "") or tool_input.get("path", "")
+        if file_path:
+            activity_parts.append(file_path)
+        pattern = tool_input.get("pattern", "")
+        if pattern:
+            activity_parts.append(pattern)
+    elif tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if command:
+            activity_parts.append(command[:200])  # Limit length
+    current_activity = " ".join(activity_parts)
 
     # Build context for reducers
     context = {
         "tool_name": tool_name,
         "tool_result": tool_result,
+        "current_activity": current_activity,
     }
 
     # Check for tool failure (Bash exit code != 0)
