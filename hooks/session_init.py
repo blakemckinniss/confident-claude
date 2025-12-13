@@ -27,26 +27,35 @@ from pathlib import Path
 
 # Import the state machine
 from session_state import (
-    load_state, save_state, reset_state,
+    load_state,
+    save_state,
+    reset_state,
     MEMORY_DIR,
     _discover_ops_scripts,
-    get_next_work_item, start_feature,
+    get_next_work_item,
+    start_feature,
 )
 
 # Import project-aware state management
+# Note: Some imports reserved for future features or API consistency
 try:
-    from project_detector import get_current_project, ProjectContext
+    from project_detector import get_current_project, ProjectContext  # noqa: F401 (docstring type)
     from project_state import (
-        get_active_project_state, save_active_state, run_maintenance,
-        get_contextual_lessons, is_same_project,
+        get_active_project_state,  # noqa: F401 (reserved: project switching)
+        save_active_state,  # noqa: F401 (reserved: project switching)
+        run_maintenance,
+        get_contextual_lessons,
+        is_same_project,  # noqa: F401 (reserved: project switching)
     )
+
     PROJECT_AWARE = True
 except ImportError:
     PROJECT_AWARE = False
 
 # Import spark_core for pre-warming (lazy load synapse map)
 try:
-    from spark_core import _load_synapses, fire_synapses
+    from spark_core import _load_synapses, fire_synapses  # noqa: F401 (commented code line 177)
+
     SPARK_AVAILABLE = True
 except ImportError:
     SPARK_AVAILABLE = False
@@ -70,6 +79,7 @@ def _get_project_handoff_file(project_context=None) -> Path:
     if PROJECT_AWARE and project_context:
         try:
             from project_state import get_project_memory_dir
+
             return get_project_memory_dir(project_context.project_id) / "handoff.json"
         except Exception:
             pass
@@ -81,10 +91,12 @@ def _get_project_progress_file(project_context=None) -> Path:
     if PROJECT_AWARE and project_context:
         try:
             from project_state import get_project_memory_dir
+
             return get_project_memory_dir(project_context.project_id) / "progress.json"
         except Exception:
             pass
     return PROGRESS_FILE
+
 
 # =============================================================================
 # CONFIGURATION
@@ -110,9 +122,14 @@ def check_system_health() -> str | None:
 
     try:
         result = subprocess.run(
-            [str(Path.home() / ".claude" / "hooks" / "py"),
-             str(Path.home() / ".claude" / "ops" / "sysinfo.py"), "--quick"],
-            capture_output=True, text=True, timeout=3
+            [
+                str(Path.home() / ".claude" / "hooks" / "py"),
+                str(Path.home() / ".claude" / "ops" / "sysinfo.py"),
+                "--quick",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         if result.returncode != 0:
             return None
@@ -124,6 +141,7 @@ def check_system_health() -> str | None:
         # Check memory
         if "Mem:" in output:
             import re
+
             mem_match = re.search(r"Mem:\s*(\d+)%", output)
             if mem_match and int(mem_match.group(1)) > 85:
                 warnings.append(f"⚠️ Memory: {mem_match.group(1)}% used")
@@ -131,6 +149,7 @@ def check_system_health() -> str | None:
         # Check disk
         if "Disk:" in output:
             import re
+
             disk_match = re.search(r"Disk:\s*(\d+)%", output)
             if disk_match and int(disk_match.group(1)) > 90:
                 warnings.append(f"⚠️ Disk: {disk_match.group(1)}% used")
@@ -138,6 +157,7 @@ def check_system_health() -> str | None:
         # Check CPU load (first value is 1-min avg)
         if "CPU:" in output:
             import re
+
             cpu_match = re.search(r"CPU:\s*([\d.]+)", output)
             if cpu_match and float(cpu_match.group(1)) > 4.0:
                 warnings.append(f"⚠️ CPU Load: {cpu_match.group(1)}")
@@ -209,6 +229,7 @@ def sync_beads_on_start():
 # STALE DETECTION
 # =============================================================================
 
+
 def is_session_stale(state) -> tuple[bool, str]:
     """Check if the existing session state is stale."""
     if not state.started_at:
@@ -221,7 +242,11 @@ def is_session_stale(state) -> tuple[bool, str]:
 
     # Check if session_id changed (new Claude session)
     current_session_id = os.environ.get("CLAUDE_SESSION_ID", "")[:16]
-    if current_session_id and state.session_id and current_session_id != state.session_id:
+    if (
+        current_session_id
+        and state.session_id
+        and current_session_id != state.session_id
+    ):
         return True, "session_id_changed"
 
     return False, "fresh"
@@ -232,12 +257,10 @@ def prune_old_errors(state):
     cutoff = time.time() - ERROR_CARRY_OVER_MAX
 
     state.errors_recent = [
-        e for e in state.errors_recent
-        if e.get("timestamp", 0) > cutoff
+        e for e in state.errors_recent if e.get("timestamp", 0) > cutoff
     ]
     state.errors_unresolved = [
-        e for e in state.errors_unresolved
-        if e.get("timestamp", 0) > cutoff
+        e for e in state.errors_unresolved if e.get("timestamp", 0) > cutoff
     ]
 
 
@@ -251,6 +274,7 @@ def prune_old_gaps(state):
 # =============================================================================
 # AUTONOMOUS AGENT: HANDOFF & ONBOARDING
 # =============================================================================
+
 
 def load_handoff_data(project_context=None) -> dict | None:
     """Load handoff data from previous session.
@@ -268,6 +292,7 @@ def load_handoff_data(project_context=None) -> dict | None:
             data = json.load(f)
         # Check if handoff is stale (>24h old)
         from datetime import datetime, timezone
+
         prepared = data.get("prepared_at", "")
         if prepared:
             try:
@@ -275,7 +300,9 @@ def load_handoff_data(project_context=None) -> dict | None:
                 prepared_dt = datetime.fromisoformat(prepared.replace("Z", "+00:00"))
                 if prepared_dt.tzinfo is not None:
                     # Convert to UTC then to naive for comparison
-                    prepared_dt = prepared_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                    prepared_dt = prepared_dt.astimezone(timezone.utc).replace(
+                        tzinfo=None
+                    )
                     now = datetime.now(timezone.utc).replace(tzinfo=None)
                 else:
                     now = datetime.now()
@@ -322,7 +349,9 @@ def load_infrastructure_summary() -> str:
         in_section = False
 
         for line in lines:
-            if line.startswith("## Setup Scripts") or line.startswith("## Key Directories"):
+            if line.startswith("## Setup Scripts") or line.startswith(
+                "## Key Directories"
+            ):
                 in_section = True
                 summary_lines.append(line)
             elif line.startswith("## ") and in_section:
@@ -448,7 +477,9 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
 
     # === STEP 0.5: System Context ===
     # Brief reminder of available tools (not a hard block)
-    parts.append("💻 **SYSTEM**: WSL2 global assistant @ /home/jinx | Full access | ~/projects/ for work | ~/ai/ for AI projects")
+    parts.append(
+        "💻 **SYSTEM**: WSL2 global assistant @ /home/jinx | Full access | ~/projects/ for work | ~/ai/ for AI projects"
+    )
 
     # === STEP 0: Project Context (for multi-project swiss army knife) ===
     if project_context and PROJECT_AWARE:
@@ -476,7 +507,9 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
         # Blockers from previous session
         blockers = handoff.get("blockers", [])
         if blockers:
-            blocker_list = ", ".join(b.get("type", "unknown")[:20] for b in blockers[:2])
+            blocker_list = ", ".join(
+                b.get("type", "unknown")[:20] for b in blockers[:2]
+            )
             parts.append(f"🚧 **BLOCKERS**: {blocker_list}")
 
         # Recent files (context continuity)
@@ -531,9 +564,17 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
             parts.append(f"  {warning}")
 
     # === STEP 5: Relevant Global Lessons (cross-project wisdom) ===
-    if PROJECT_AWARE and project_context and project_context.project_type != "ephemeral":
+    if (
+        PROJECT_AWARE
+        and project_context
+        and project_context.project_type != "ephemeral"
+    ):
         # Get lessons relevant to this project's language/framework
-        keywords = [project_context.language, project_context.framework, project_context.project_name]
+        keywords = [
+            project_context.language,
+            project_context.framework,
+            project_context.project_name,
+        ]
         keywords = [k for k in keywords if k]
         if keywords:
             lessons = get_contextual_lessons(keywords)
@@ -547,6 +588,7 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
 # =============================================================================
 # CONTEXT GENERATION (for resume)
 # =============================================================================
+
 
 def get_active_scope_task() -> dict | None:
     """Check if there's an active scope task from punch_list.json."""
@@ -579,7 +621,7 @@ def build_resume_context(state, result: dict) -> str:
         pct = scope_task["percent"]
         done = scope_task["items_done"]
         total = scope_task["items_total"]
-        parts.append(f"📋 Active task: \"{desc}\" ({done}/{total} items, {pct}%)")
+        parts.append(f'📋 Active task: "{desc}" ({done}/{total} items, {pct}%)')
 
     # 2. Recently edited files (from previous session state)
     if state.files_edited:
@@ -588,7 +630,7 @@ def build_resume_context(state, result: dict) -> str:
             try:
                 recent.append(Path(f).name)
             except (ValueError, OSError):
-                recent.append(str(f).split('/')[-1] if '/' in str(f) else str(f))
+                recent.append(str(f).split("/")[-1] if "/" in str(f) else str(f))
         parts.append(f"📝 Last edited: {', '.join(recent)}")
 
     # 3. Unresolved errors (warn, don't block)
@@ -603,6 +645,7 @@ def build_resume_context(state, result: dict) -> str:
 # =============================================================================
 # INITIALIZATION
 # =============================================================================
+
 
 def initialize_session(project_context=None) -> dict:
     """Initialize or refresh session state.
@@ -653,7 +696,9 @@ def initialize_session(project_context=None) -> dict:
 
     # Ensure session_id is set
     if not state.session_id:
-        state.session_id = os.environ.get("CLAUDE_SESSION_ID", "")[:16] or f"ses_{int(time.time())}"
+        state.session_id = (
+            os.environ.get("CLAUDE_SESSION_ID", "")[:16] or f"ses_{int(time.time())}"
+        )
 
     result["session_id"] = state.session_id
 
@@ -678,6 +723,7 @@ def initialize_session(project_context=None) -> dict:
 # MAIN
 # =============================================================================
 
+
 def main():
     """SessionStart hook entry point."""
     try:
@@ -700,7 +746,10 @@ def main():
             pass  # Fall back to legacy behavior
         except Exception as e:
             # Unexpected errors: log for debugging but don't block
-            print(f"Warning: project detection failed: {type(e).__name__}: {e}", file=sys.stderr)
+            print(
+                f"Warning: project detection failed: {type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
 
     # Load state BEFORE initialize (to capture previous session's context)
     previous_state = load_state()
@@ -742,7 +791,9 @@ def main():
         else:
             # Even without handoff, show project context if available
             if project_context and project_context.project_type != "ephemeral":
-                output["message"] = f"🚀 **SESSION START**\n📁 **PROJECT**: {project_context.project_name}"
+                output["message"] = (
+                    f"🚀 **SESSION START**\n📁 **PROJECT**: {project_context.project_name}"
+                )
             else:
                 output["message"] = f"🔄 {result['message']}"
 
