@@ -24,6 +24,7 @@ HOOKS INDEX (by priority):
     75 proactive_nudge     - Actionable suggestions from state
     80 ops_nudge           - Tool suggestions (comprehensive)
     85 ops_awareness       - Script awareness (fallback)
+    86 ops_audit_reminder  - Periodic unused tool reminder (v3.9)
     89 expert_probe        - Force probing questions, assume user needs guidance
     90 resource_pointer    - Sparse pointers to resources
     91 work_patterns       - Assumptions, rollback, confidence, integration
@@ -70,6 +71,8 @@ from session_state import (
     add_domain_signal,
     Domain,
     generate_context,
+    get_ops_tool_stats,
+    get_unused_ops_tools,
 )
 from _hook_result import HookResult
 
@@ -1526,6 +1529,61 @@ def check_ops_awareness(data: dict, state: SessionState) -> HookResult:
 
     suggestions = "\n".join([f"   - `{s}`: {d}" for s, d in matches])
     return HookResult.allow(f"🔧 OPS SCRIPTS AVAILABLE:\n{suggestions}")
+
+
+@register_hook("ops_audit_reminder", priority=86)
+def check_ops_audit_reminder(data: dict, state: SessionState) -> HookResult:
+    """Periodic reminder about ops tool usage and unused tools (v3.9).
+
+    Fires occasionally to surface:
+    - Tools that haven't been used in 7+ days
+    - Suggestions for useful diagnostics
+    """
+    from _cooldown import check_and_reset_cooldown
+
+    # Only run every 3 hours - check cooldown and reset if running
+    if not check_and_reset_cooldown("ops_audit_reminder"):
+        return HookResult.allow()
+
+    parts = []
+
+    # Check for unused tools (7 day threshold)
+    unused = get_unused_ops_tools(days_threshold=7)
+    if unused and len(unused) >= 5:
+        # Only mention if significant number unused
+        sample = unused[:5]
+        parts.append(
+            f"📊 **OPS TOOLS**: {len(unused)} tools unused in 7+ days: "
+            f"`{', '.join(sample)}`{'...' if len(unused) > 5 else ''}"
+        )
+
+    # Check tool stats for suggestions
+    stats = get_ops_tool_stats()
+    if stats:
+        # Find most-used tools (positive reinforcement)
+        by_usage = sorted(
+            stats.items(), key=lambda x: x[1].get("total_uses", 0), reverse=True
+        )
+        if by_usage:
+            top_tool = by_usage[0][0]
+            top_uses = by_usage[0][1].get("total_uses", 0)
+            if top_uses >= 10:
+                parts.append(f"💡 Most-used tool: `{top_tool}` ({top_uses} uses)")
+
+        # Check for tools with high failure rates
+        for tool, data in stats.items():
+            total = data.get("total_uses", 0)
+            failures = data.get("failures", 0)
+            if total >= 5 and failures / total > 0.5:
+                parts.append(
+                    f"⚠️ `{tool}` has {failures}/{total} failures - may need fixing"
+                )
+                break
+
+    if not parts:
+        return HookResult.allow()
+
+    return HookResult.allow("\n".join(parts))
 
 
 # Tool index for resource_pointer

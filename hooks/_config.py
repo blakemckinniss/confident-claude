@@ -30,6 +30,7 @@ DEFAULTS = {
         "large_file": 600,
         "modularization": 10,
         "ops_nudge": 180,
+        "ops_audit_reminder": 10800,  # 3 hours (v3.9)
     },
     "thresholds": {
         "stale_session_seconds": 3600,
