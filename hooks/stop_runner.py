@@ -758,6 +758,25 @@ GOOD_LANGUAGE_PATTERNS = {
             r"\bcaught\s+(and\s+fixed|this\s+while)\b",
         ],
     },
+    "debt_removal": {
+        "delta": 10,
+        "patterns": [
+            # Removing dead/unused code
+            r"\b(removed|deleted|cleaned\s+up)\s+(dead|unused|obsolete|stale)\s+(code|imports?|files?|functions?)\b",
+            r"\b(removed|deleted)\s+\d+\s+(unused|dead)\b",
+            r"\bpaid\s+(down|off)\s+(tech(nical)?|org(anizational)?)\s+debt\b",
+            # Resolving TODOs/FIXMEs
+            r"\b(resolved|completed|addressed|fixed)\s+(the\s+)?(TODO|FIXME|HACK)\b",
+            r"\b(removed|cleared)\s+(a\s+)?(TODO|FIXME)\b",
+            # Cleanup actions
+            r"\bcleaned\s+up\s+(the\s+)?(codebase|code|file|module)\b",
+            r"\brefactored\s+(away|out)\s+(the\s+)?(tech(nical)?\s+)?debt\b",
+            r"\beliminated\s+(the\s+)?(tech(nical)?\s+)?debt\b",
+            # File/code removal
+            r"\bdeleted\s+(the\s+)?(deprecated|legacy|old)\s+(code|file|module)\b",
+            r"\bremoved\s+(commented|commented-out)\s+code\b",
+        ],
+    },
 }
 
 
@@ -877,6 +896,100 @@ def check_unresolved_errors(data: dict, state: SessionState) -> HookResult:
     error = state.errors_unresolved[-1]
     return HookResult.warn(
         f"⚠️ **UNRESOLVED ERROR**: {error.get('type', 'unknown')[:50]}"
+    )
+
+
+@register_hook("session_debt_penalty", priority=85)
+def check_session_debt(data: dict, state: SessionState) -> HookResult:
+    """HEAVILY penalize ending session with technical/organizational debt.
+
+    Checks for:
+    - Stubs in created/edited files
+    - Unresolved errors
+    - Pending integration greps
+    - TODO/FIXME left behind in edited files
+    """
+    from confidence import (
+        format_confidence_change,
+        get_tier_info,
+        set_confidence,
+    )
+
+    debt_items = []
+    debt_score = 0
+
+    # Check for stubs in created files
+    for filepath in state.files_created[-20:]:
+        path = Path(filepath)
+        if not path.exists() or path.suffix not in CODE_EXTENSIONS:
+            continue
+        try:
+            content = path.read_bytes()
+            if any(p in content for p in STUB_BYTE_PATTERNS):
+                debt_items.append(f"stub in {path.name}")
+                debt_score += 5
+        except (OSError, PermissionError):
+            pass
+
+    # Check for stubs/TODOs in edited files
+    todo_patterns = [b"TODO", b"FIXME", b"HACK", b"XXX"]
+    for filepath in state.files_edited[-20:]:
+        path = Path(filepath)
+        if not path.exists() or path.suffix not in CODE_EXTENSIONS:
+            continue
+        try:
+            content = path.read_bytes()
+            if any(p in content for p in STUB_BYTE_PATTERNS):
+                debt_items.append(f"stub in edited {path.name}")
+                debt_score += 5
+            # Check for TODOs we may have left
+            for pattern in todo_patterns:
+                if pattern in content:
+                    debt_items.append(f"{pattern.decode()} in {path.name}")
+                    debt_score += 2
+                    break
+        except (OSError, PermissionError):
+            pass
+
+    # Check for unresolved errors
+    if state.errors_unresolved:
+        debt_items.append(f"{len(state.errors_unresolved)} unresolved error(s)")
+        debt_score += 10 * len(state.errors_unresolved)
+
+    # Check for pending integration greps
+    if state.pending_integration_greps:
+        debt_items.append(f"{len(state.pending_integration_greps)} unverified edit(s)")
+        debt_score += 5 * len(state.pending_integration_greps)
+
+    if not debt_items or debt_score < 5:
+        return HookResult.ok()
+
+    # Calculate penalty (capped at -20 per session end)
+    penalty = min(debt_score, 20)
+    old_confidence = state.confidence
+    new_confidence = max(0, old_confidence - penalty)
+
+    set_confidence(state, new_confidence, "session debt penalty")
+
+    _, emoji, desc = get_tier_info(new_confidence)
+    change_msg = format_confidence_change(old_confidence, new_confidence, "session_debt")
+
+    debt_list = "\n".join(f"  • {item}" for item in debt_items[:5])
+
+    # Block if debt is severe (score >= 15) or confidence drops too low
+    if debt_score >= 15 or new_confidence < 70:
+        return HookResult.block(
+            f"🚫 **SESSION DEBT BLOCKED** - Cannot end with this much debt!\n\n"
+            f"{change_msg}\n\n"
+            f"**Debt detected:**\n{debt_list}\n\n"
+            f"**Fix the debt before ending session.**\n"
+            f"Say SUDO to force end anyway."
+        )
+
+    return HookResult.warn(
+        f"⚠️ **SESSION DEBT WARNING**\n{change_msg}\n\n"
+        f"**Debt detected:**\n{debt_list}\n\n"
+        f"Current: {emoji} {new_confidence}% - {desc}"
     )
 
 
