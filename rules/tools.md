@@ -19,6 +19,17 @@ Quick reference for framework tools. Use when you need tool syntax.
 | Completeness check | `void <file>` |
 | Pre-commit | `upkeep` |
 
+## Confidence System
+
+| Need | Tool |
+|------|------|
+| Record false positive | `fp.py <reducer> [reason]` |
+| Check confidence | Shown in statusline |
+| Dispute reducer (user) | Say `FP: <reducer>` or `dispute <reducer>` |
+| Force boost (user) | Say `CONFIDENCE_BOOST_APPROVED` |
+
+See `confidence.md` for full reference.
+
 ## Memory & Evidence
 
 | Need | Tool |
