@@ -1745,6 +1745,28 @@ class ChainedCommandsIncreaser(ConfidenceIncreaser):
         return context.get("chained_commands", False)
 
 
+@dataclass
+class PremiseChallengeIncreaser(ConfidenceIncreaser):
+    """Triggers when suggesting existing solutions instead of building from scratch.
+
+    Challenging the build-vs-buy premise saves time and prevents wheel reinvention.
+    Rewards "thinking outside the box" by suggesting alternatives.
+    """
+
+    name: str = "premise_challenge"
+    delta: int = 5
+    description: str = "Suggested existing solution or challenged build-vs-buy"
+    requires_approval: bool = False
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("premise_challenge", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1774,6 +1796,8 @@ INCREASERS: list[ConfidenceIncreaser] = [
     BatchFixIncreaser(),  # Multiple fixes in one edit (+3)
     DirectActionIncreaser(),  # No preamble, just action (+2)
     ChainedCommandsIncreaser(),  # Commands with && or ; (+1)
+    # Build-vs-buy (v4.3)
+    PremiseChallengeIncreaser(),  # Suggest alternatives (+5)
 ]
 
 

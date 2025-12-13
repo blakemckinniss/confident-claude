@@ -100,6 +100,7 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `ask_user` | +20 | AskUserQuestion (epistemic humility) |
 | `user_ok` | +2 | Short positive feedback ("ok", "thanks") |
 | `trust_regained` | +15 | User says "CONFIDENCE_BOOST_APPROVED" |
+| `premise_challenge` | +5 | Suggested existing solution or challenged build-vs-buy |
 
 **Per-turn cap:** Maximum +15 or -15 total change per turn (prevents death spirals and gaming).
 

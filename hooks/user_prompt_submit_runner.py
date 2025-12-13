@@ -599,7 +599,9 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
         # Increment trust debt before resetting - repeated floor hits accumulate
         old_debt = getattr(state, "reputation_debt", 0)
         state.reputation_debt = old_debt + 1
-        set_confidence(state, CONFIDENCE_FLOOR, f"floor reset (debt now {state.reputation_debt})")
+        set_confidence(
+            state, CONFIDENCE_FLOOR, f"floor reset (debt now {state.reputation_debt})"
+        )
 
     # Skip further analysis for trivial prompts
     if not prompt or len(prompt) < 20:
@@ -819,6 +821,24 @@ _COMPLEX_SIGNALS = [
         re.IGNORECASE,
     ),
 ]
+
+# Build-vs-Buy patterns - detect "reinventing the wheel" requests
+_BUILD_FROM_SCRATCH_PATTERNS = [
+    re.compile(
+        r"\b(build|create|implement|make|write)\s+(a|an|my|the)\s+\w+\s*(app|application|tool|system|service|cli|bot|script)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bfrom\s+scratch\b", re.IGNORECASE),
+    re.compile(
+        r"\b(todo|task|note|bookmark|password|budget|expense|habit|timer|pomodoro|reminder|calendar|journal|diary|inventory|kanban|crm)\s*(app|manager|tracker|tool|system)?\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(implement|build|create)\s+(my\s+own|a\s+custom|a\s+simple)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(don't|do not)\s+want\s+to\s+use\s+(any|existing)\b", re.IGNORECASE),
+]
 _TRIVIAL_SIGNALS = [
     re.compile(r"^(fix|typo|update|change|rename)\s+\w+$", re.IGNORECASE),
     re.compile(r"^(run|execute|test)\s+", re.IGNORECASE),
@@ -857,6 +877,7 @@ def check_intake_protocol(data: dict, state: SessionState) -> HookResult:
 │ 📋 Request: [1-line summary]                                 │
 │ 🎯 Confidence: [L/M/H] because [reason]                      │
 │ ❓ Gaps: [what I don't know / need to verify]                │
+│ 🔄 Alternatives: [ ] searched  [ ] none fit  [ ] user wants custom
 │ 🔍 Boost: [ ] research  [ ] oracle  [ ] groq  [ ] ask user   │
 │ 📊 Adjusted: [L/M/H] after [action taken]                    │
 │ 🚦 Gate: [PROCEED / STOP - need X to continue]               │
@@ -881,6 +902,36 @@ def check_intake_protocol(data: dict, state: SessionState) -> HookResult:
         return HookResult.allow(f"📋 Multi-step task - Abbreviated intake:{checklist}")
 
     return HookResult.allow()
+
+
+@register_hook("build_vs_buy", priority=6)
+def check_build_vs_buy(data: dict, state: SessionState) -> HookResult:
+    """Detect wheel-reinvention and prompt for alternatives consideration."""
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 20:
+        return HookResult.allow()
+
+    # Check if this looks like a "build from scratch" request
+    matches = [p for p in _BUILD_FROM_SCRATCH_PATTERNS if p.search(prompt)]
+    if not matches:
+        return HookResult.allow()
+
+    # Don't trigger if user explicitly mentions learning/practice
+    learning_patterns = re.compile(
+        r"\b(learn|practice|exercise|tutorial|study|understand|educational)\b",
+        re.IGNORECASE,
+    )
+    if learning_patterns.search(prompt):
+        return HookResult.allow()
+
+    return HookResult.allow(
+        "🔄 **BUILD-VS-BUY CHECK** (Principle #23)\n"
+        "Before building custom, verify:\n"
+        "- [ ] Searched for existing tools/libraries\n"
+        "- [ ] Listed 2-3 alternatives with pros/cons\n"
+        "- [ ] User explicitly wants custom OR existing solutions don't fit\n\n"
+        "💡 Earn +5 confidence by suggesting alternatives (`premise_challenge` increaser)"
+    )
 
 
 # =============================================================================
