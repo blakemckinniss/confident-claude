@@ -1180,22 +1180,43 @@ def check_confidence_reducer(
                 context["hook_blocked"] = True
                 break
 
-    # Check for sequential repetition (same tool used in consecutive turns)
+    # Check for sequential repetition (same tool used 3+ consecutive turns)
     last_info = getattr(state, "last_tool_info", {})
     if last_info:
         last_tool = last_info.get("tool_name", "")
         last_turn = last_info.get("turn", 0)
+        consecutive = last_info.get("consecutive", 1)
         # Sequential = same tool in different turn (parallel = same turn, which is fine)
         if last_tool == tool_name and last_turn < state.turn_count:
-            # For Bash, also check if command is similar (same prefix)
+            is_similar = True
             if tool_name == "Bash":
                 last_cmd = last_info.get("bash_cmd", "")
                 curr_cmd = tool_input.get("command", "")[:50]
-                # Similar command = same first 20 chars (likely same tool/pattern)
-                if last_cmd[:20] == curr_cmd[:20]:
-                    context["sequential_repetition"] = True
-            else:
-                context["sequential_repetition"] = True
+                is_similar = last_cmd[:20] == curr_cmd[:20]
+            if is_similar:
+                new_consecutive = consecutive + 1
+                state.last_tool_info["consecutive"] = new_consecutive
+                # Only trigger on 3+ consecutive
+                if new_consecutive >= 3:
+                    context["sequential_repetition_3plus"] = True
+        else:
+            # Reset consecutive count on tool change
+            if hasattr(state, "last_tool_info"):
+                state.last_tool_info["consecutive"] = 1
+
+    # Check for git spam (>3 git commands in 5 turns without writes)
+    git_explore_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
+    if tool_name == "Bash" and any(g in tool_input.get("command", "") for g in git_explore_cmds):
+        git_turns = getattr(state, "git_explore_turns", [])
+        git_turns.append(state.turn_count)
+        # Keep only last 5 turns
+        git_turns = [t for t in git_turns if state.turn_count - t <= 5]
+        state.git_explore_turns = git_turns
+        # Check for spam: >3 in window AND no write in that window
+        if len(git_turns) > 3:
+            recent_writes = [f for f in state.files_edited[-5:]]
+            if not recent_writes:
+                context["git_spam"] = True
 
     # Apply reducers
     triggered = apply_reducers(state, context)

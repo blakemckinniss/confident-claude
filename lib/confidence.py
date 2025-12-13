@@ -864,15 +864,15 @@ class HookBlockReducer(ConfidenceReducer):
 
 @dataclass
 class SequentialRepetitionReducer(ConfidenceReducer):
-    """Triggers when same tool is used sequentially (not parallel).
+    """Triggers when same tool is used 3+ times sequentially without state change.
 
-    Parallel tool calls (same turn) are fine - sequential single calls are inefficient.
-    For Bash, also checks if the command pattern is similar.
+    Softened from -3 to -1 to avoid punishing legitimate iterative debugging.
+    Only triggers after 3+ consecutive uses of same tool category.
     """
 
     name: str = "sequential_repetition"
-    delta: int = -3
-    description: str = "Same tool used sequentially (should batch/parallelize)"
+    delta: int = -1  # Softened from -3
+    description: str = "Same tool used 3+ times sequentially"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -880,7 +880,70 @@ class SequentialRepetitionReducer(ConfidenceReducer):
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
-        return context.get("sequential_repetition", False)
+        # Now requires 3+ consecutive (set by detection logic)
+        return context.get("sequential_repetition_3plus", False)
+
+
+@dataclass
+class UnbackedVerificationClaimReducer(ConfidenceReducer):
+    """Triggers when claiming verification without matching tool log.
+
+    Detects "verification theater" - claims like "tests passed" or "lint clean"
+    without corresponding tool execution in recent turns.
+    """
+
+    name: str = "unbacked_verification"
+    delta: int = -15
+    description: str = "Claimed verification without tool evidence"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("unbacked_verification", False)
+
+
+@dataclass
+class FixedWithoutChainReducer(ConfidenceReducer):
+    """Triggers when claiming 'fixed' without causal chain.
+
+    Requires: file write + verification step after the claim.
+    Catches "Fixed it" claims when nothing changed or no verification attempted.
+    """
+
+    name: str = "fixed_without_chain"
+    delta: int = -8
+    description: str = "Claimed 'fixed' without write or verification"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("fixed_without_chain", False)
+
+
+@dataclass
+class GitSpamReducer(ConfidenceReducer):
+    """Triggers when git commands are spammed without intervening writes.
+
+    >3 git_explore commands within 5 turns with no file write = farming.
+    """
+
+    name: str = "git_spam"
+    delta: int = -2
+    description: str = "Git command spam (>3 in 5 turns without writes)"
+    cooldown_turns: int = 5
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("git_spam", False)
 
 
 # Registry of all reducers
@@ -908,7 +971,11 @@ REDUCERS: list[ConfidenceReducer] = [
     DebtBashReducer(),  # --force, --hard, --no-verify commands
     LargeDiffReducer(),  # Diffs > 400 LOC
     HookBlockReducer(),  # Soft/hard hook blocks
-    SequentialRepetitionReducer(),  # Same tool used sequentially (not parallel)
+    SequentialRepetitionReducer(),  # Same tool 3+ times sequentially (-1)
+    # Verification theater reducers (GPT-5.2 recommendations)
+    UnbackedVerificationClaimReducer(),  # Claim without tool evidence (-15)
+    FixedWithoutChainReducer(),  # "Fixed" without write+verify (-8)
+    GitSpamReducer(),  # >3 git commands in 5 turns (-2)
 ]
 
 
@@ -1150,13 +1217,16 @@ class ResearchIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class AskUserIncreaser(ConfidenceIncreaser):
-    """Triggers when asking user for clarification - epistemic humility."""
+    """Triggers when asking user for clarification - epistemic humility.
+
+    Reduced from +20 to +8 with longer cooldown to prevent question-spam gaming.
+    """
 
     name: str = "ask_user"
-    delta: int = 20  # Significant boost - consulting user is GOOD
+    delta: int = 8  # Reduced from 20 - prevents gaming via question spam
     description: str = "Consulted user for clarification"
     requires_approval: bool = False
-    cooldown_turns: int = 2
+    cooldown_turns: int = 8  # Increased from 2 - can't farm questions
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -1338,13 +1408,16 @@ class SmallDiffIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class GitExploreIncreaser(ConfidenceIncreaser):
-    """Triggers when exploring git history - understanding context."""
+    """Triggers when exploring git history - understanding context.
+
+    Reduced from +10 to +3 with longer cooldown - process hygiene, not evidence.
+    """
 
     name: str = "git_explore"
-    delta: int = 10
+    delta: int = 3  # Reduced from 10 - prevent farming
     description: str = "Explored git history/state"
     requires_approval: bool = False
-    cooldown_turns: int = 2
+    cooldown_turns: int = 5  # Increased from 2 - diminishing returns
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int

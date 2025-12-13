@@ -891,6 +891,134 @@ def check_good_language(data: dict, state: SessionState) -> HookResult:
     )
 
 
+# Verification theater patterns - claims that need tool evidence
+VERIFICATION_CLAIMS = {
+    "test_claim": {
+        "patterns": [
+            r"\btests?\s+(are\s+)?(pass(ing|ed)?|green|succeed(ed|ing)?)\b",
+            r"\ball\s+tests?\s+(pass|green)\b",
+            r"\bpytest\s+(pass|succeed)\b",
+            r"\bi\s+ran\s+(the\s+)?tests?\b",
+        ],
+        "evidence_key": "tests_run",  # Check state.tests_run or recent test commands
+    },
+    "lint_claim": {
+        "patterns": [
+            r"\blint\s+(is\s+)?(clean|pass(ing|ed)?|green)\b",
+            r"\bruff\s+(check\s+)?(pass|clean|green)\b",
+            r"\bno\s+(lint(ing)?|ruff)\s+(errors?|issues?|warnings?)\b",
+        ],
+        "evidence_key": "lint_run",
+    },
+    "fixed_claim": {
+        "patterns": [
+            r"\b(fixed|resolved|solved)\s+(it|this|the\s+(bug|issue|problem))\b",
+            r"\bthat\s+(should\s+)?(fix|resolve|solve)\s+(it|this|the)\b",
+            r"\b(bug|issue|problem)\s+(is\s+)?(now\s+)?(fixed|resolved|solved)\b",
+        ],
+        "evidence_key": "recent_write",  # Need a recent file write
+    },
+}
+
+
+@register_hook("verification_theater_detector", priority=48)
+def check_verification_theater(data: dict, state: SessionState) -> HookResult:
+    """Detect verification claims without tool evidence.
+
+    Checks for claims like 'tests passed' or 'fixed it' and verifies
+    they're backed by actual tool execution in recent history.
+    """
+    from confidence import (
+        apply_rate_limit,
+        format_confidence_change,
+        format_dispute_instructions,
+        get_tier_info,
+        set_confidence,
+    )
+
+    transcript_path = data.get("transcript_path")
+    if not transcript_path or not Path(transcript_path).exists():
+        return HookResult.ok()
+
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 10000))  # Last 10KB (recent output)
+            content = f.read().decode("utf-8", errors="ignore").lower()
+    except (OSError, PermissionError):
+        return HookResult.ok()
+
+    triggered = []
+
+    for claim_type, config in VERIFICATION_CLAIMS.items():
+        # Check cooldown
+        cooldown_key = f"verify_theater_{claim_type}_turn"
+        last_turn = state.nudge_history.get(cooldown_key, 0)
+        if state.turn_count - last_turn < 3:
+            continue
+
+        # Check if claim pattern exists
+        claim_found = any(re.search(p, content) for p in config["patterns"])
+        if not claim_found:
+            continue
+
+        # Check for evidence
+        has_evidence = False
+        evidence_key = config["evidence_key"]
+
+        if evidence_key == "tests_run":
+            # Check if tests were run recently (in commands)
+            recent_cmds = state.commands_succeeded[-5:] + state.commands_failed[-5:]
+            test_cmds = ["pytest", "npm test", "jest", "cargo test", "go test"]
+            has_evidence = any(
+                any(tc in cmd for tc in test_cmds) for cmd in recent_cmds
+            )
+        elif evidence_key == "lint_run":
+            recent_cmds = state.commands_succeeded[-5:]
+            lint_cmds = ["ruff check", "eslint", "clippy", "pylint", "flake8"]
+            has_evidence = any(
+                any(lc in cmd for lc in lint_cmds) for cmd in recent_cmds
+            )
+        elif evidence_key == "recent_write":
+            # Need a file edit in last 3 turns (approximate via edit count)
+            has_evidence = len(state.files_edited) > 0
+
+        if not has_evidence:
+            if claim_type == "fixed_claim":
+                triggered.append(("fixed_without_chain", -8))
+            else:
+                triggered.append(("unbacked_verification", -15))
+            state.nudge_history[cooldown_key] = state.turn_count
+
+    if not triggered:
+        return HookResult.ok()
+
+    # Apply penalties
+    old_confidence = state.confidence
+    total_delta = sum(delta for _, delta in triggered)
+    total_delta = apply_rate_limit(total_delta, state)
+    new_confidence = max(0, min(100, old_confidence + total_delta))
+
+    set_confidence(state, new_confidence, "verification theater detected")
+
+    reasons = [f"{name}: {delta}" for name, delta in triggered]
+    change_msg = format_confidence_change(
+        old_confidence, new_confidence, ", ".join(reasons)
+    )
+
+    _, emoji, desc = get_tier_info(new_confidence)
+    reducer_names = [name for name, _ in triggered]
+    dispute_hint = format_dispute_instructions(reducer_names)
+
+    return HookResult.warn(
+        f"📉 **Verification Theater Detected**\n{change_msg}\n\n"
+        f"Claims made without tool evidence.\n"
+        f"Current: {emoji} {new_confidence}% - {desc}"
+        f"{dispute_hint}"
+    )
+
+
 @register_hook("stub_detector", priority=50)
 def check_stubs(data: dict, state: SessionState) -> HookResult:
     """Check created files for stubs."""
