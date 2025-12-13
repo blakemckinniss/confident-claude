@@ -17,11 +17,13 @@ HOOKS INDEX (by priority):
     5  recursion_guard     - Block nested .claude/.claude paths
     10 loop_detector       - Block bash loops
     15 background_enforcer - Require background for slow commands
+    18 confidence_tool_gate - Block tools at low confidence levels
 
   GATES (20-50):
     20 commit_gate         - Warn on git commit without upkeep
     25 tool_preference     - Nudge toward preferred tools
     30 oracle_gate         - Enforce think/council after failures
+    32 confidence_external_suggestion - Suggest alternatives at low confidence
     35 integration_gate    - Require grep after function edits
     40 error_suppression   - Block until errors resolved
     45 content_gate        - Block eval/exec/SQL injection
@@ -69,6 +71,14 @@ from session_state import (
     is_production_verified,
 )
 from _hook_result import HookResult
+
+# Confidence system
+from confidence import (
+    check_tool_permission,
+    suggest_alternatives,
+    should_mandate_external,
+    get_tier_info,
+)
 from _beads import (
     get_open_beads,
     get_in_progress_beads,
@@ -1021,6 +1031,39 @@ def check_recursion_guard(data: dict, state: SessionState) -> HookResult:
     return HookResult.approve()
 
 
+# =============================================================================
+# CONFIDENCE SYSTEM GATES
+# =============================================================================
+
+
+@register_hook("confidence_tool_gate", None, priority=18)
+def check_confidence_tool_gate(data: dict, state: SessionState) -> HookResult:
+    """Gate tool usage based on confidence level."""
+    # SUDO bypass
+    if data.get("_sudo_bypass"):
+        return HookResult.approve()
+
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Skip if confidence not initialized
+    if state.confidence == 0:
+        return HookResult.approve()
+
+    # Check tool permission
+    is_permitted, block_message = check_tool_permission(
+        state.confidence, tool_name, tool_input
+    )
+
+    if not is_permitted:
+        track_block(state, "confidence_tool_gate")
+        return HookResult.deny(block_message)
+
+    # Clear blocks on successful passage
+    clear_blocks(state, "confidence_tool_gate")
+    return HookResult.approve()
+
+
 @register_hook("oracle_gate", "Edit|Write|Bash", priority=30)
 def check_oracle_gate(data: dict, state: SessionState) -> HookResult:
     """Enforce oracle consultation after repeated failures."""
@@ -1064,6 +1107,48 @@ def check_oracle_gate(data: dict, state: SessionState) -> HookResult:
             f"**{failures} failures** without oracle/think consultation.\n"
             f'Run `think "Debug: <problem>"` or user says "SUDO CONTINUE".'
         )
+    return HookResult.approve()
+
+
+@register_hook("confidence_external_suggestion", None, priority=32)
+def check_confidence_external_suggestion(data: dict, state: SessionState) -> HookResult:
+    """Suggest external consultation and alternatives at low confidence."""
+    # Skip if confidence not initialized or high enough
+    if state.confidence == 0 or state.confidence >= 50:
+        return HookResult.approve()
+
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Don't suggest for diagnostic/read-only tools
+    read_only_tools = {"Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoRead"}
+    if tool_name in read_only_tools:
+        return HookResult.approve()
+
+    # Don't suggest for external consultation tools (that's what we're suggesting!)
+    if tool_name.startswith("mcp__pal__"):
+        return HookResult.approve()
+
+    parts = []
+
+    # Check if external consultation is mandatory
+    mandatory, mandatory_msg = should_mandate_external(state.confidence)
+    if mandatory:
+        parts.append(mandatory_msg)
+
+    # Suggest alternatives based on confidence
+    task_desc = tool_input.get("description", "") or tool_input.get("prompt", "")[:50]
+    alternatives = suggest_alternatives(state.confidence, task_desc)
+    if alternatives:
+        parts.append(alternatives)
+
+    if parts:
+        tier_name, emoji, _ = get_tier_info(state.confidence)
+        header = (
+            f"{emoji} **Low Confidence Warning: {state.confidence}% ({tier_name})**\n"
+        )
+        return HookResult.approve(header + "\n\n".join(parts))
+
     return HookResult.approve()
 
 

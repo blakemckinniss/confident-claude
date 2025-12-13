@@ -6,8 +6,11 @@ PERFORMANCE: ~50ms for 12 hooks vs ~500ms for individual processes (10x faster)
 
 HOOKS INDEX (by priority):
   GATING (0-10):
-    1  goal_anchor         - Block scope expansion, warn on drift
-    5  intake_protocol     - Show complexity-tiered checklists
+    1  goal_anchor              - Block scope expansion, warn on drift
+    3  confidence_initializer   - Assess confidence, mandate research/external
+    5  intake_protocol          - Show complexity-tiered checklists
+    7  confidence_approval_gate - Handle trust restoration requests
+    8  confidence_dispute       - Handle false positive reducer disputes
 
   EXTRACTION (15-25):
     15 intention_tracker   - Extract mentioned files/searches
@@ -73,8 +76,26 @@ from session_state import (
     generate_context,
     get_ops_tool_stats,
     get_unused_ops_tools,
+    update_confidence,
 )
 from _hook_result import HookResult
+
+# Confidence system
+from confidence import (
+    DEFAULT_CONFIDENCE,
+    format_confidence_change,
+    should_require_research,
+    should_mandate_external,
+    assess_prompt_complexity,
+    apply_increasers,
+    get_tier_info,
+    generate_approval_prompt,
+    UserCorrectionReducer,
+    # False positive dispute system
+    detect_dispute_in_prompt,
+    dispute_reducer,
+    get_recent_reductions,
+)
 
 # =============================================================================
 # HOOK REGISTRY
@@ -395,6 +416,190 @@ def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
             return HookResult.allow(f"\n{drift_message}\n")
 
     return HookResult.allow()
+
+
+# =============================================================================
+# CONFIDENCE SYSTEM HOOKS
+# =============================================================================
+
+
+@register_hook("confidence_initializer", priority=3)
+def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
+    """Initialize and assess confidence on every prompt."""
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 20:
+        return HookResult.allow()
+
+    parts = []
+
+    # Initialize confidence if not set
+    if state.confidence == 0:
+        state.confidence = DEFAULT_CONFIDENCE
+
+    # Assess prompt complexity and adjust
+    delta, reasons = assess_prompt_complexity(prompt)
+    old_confidence = state.confidence
+    if delta != 0:
+        update_confidence(state, delta, ", ".join(reasons))
+
+    # Check for user correction patterns (reducer)
+    correction_reducer = UserCorrectionReducer()
+    last_trigger = state.nudge_history.get(
+        "confidence_reducer_user_correction", {}
+    ).get("last_turn", -999)
+    if correction_reducer.should_trigger({"prompt": prompt}, state, last_trigger):
+        update_confidence(state, correction_reducer.delta, correction_reducer.name)
+        if "confidence_reducer_user_correction" not in state.nudge_history:
+            state.nudge_history["confidence_reducer_user_correction"] = {}
+        state.nudge_history["confidence_reducer_user_correction"]["last_turn"] = (
+            state.turn_count
+        )
+        parts.append(
+            format_confidence_change(
+                old_confidence, state.confidence, f"({correction_reducer.name})"
+            )
+        )
+        old_confidence = state.confidence
+
+    # Check for positive feedback (increasers)
+    triggered_increasers = apply_increasers(state, {"prompt": prompt})
+    for name, inc_delta, desc, requires_approval in triggered_increasers:
+        if not requires_approval:
+            update_confidence(state, inc_delta, name)
+            parts.append(
+                format_confidence_change(old_confidence, state.confidence, f"({name})")
+            )
+            old_confidence = state.confidence
+
+    # Check if external consultation is mandatory
+    mandatory, mandatory_msg = should_mandate_external(state.confidence)
+    if mandatory:
+        parts.append(mandatory_msg)
+
+    # Check if research is required
+    elif state.confidence < 50:
+        require_research, research_msg = should_require_research(state.confidence, {})
+        if require_research:
+            parts.append(research_msg)
+
+    # Always show current confidence status at start of complex prompts
+    if len(prompt) > 100:
+        tier_name, emoji, desc = get_tier_info(state.confidence)
+        parts.insert(0, f"{emoji} **Confidence: {state.confidence}% ({tier_name})**")
+
+    return HookResult.allow("\n\n".join(parts)) if parts else HookResult.allow()
+
+
+@register_hook("confidence_approval_gate", priority=7)
+def check_confidence_approval_gate(data: dict, state: SessionState) -> HookResult:
+    """Handle explicit trust restoration requests requiring approval."""
+    prompt = data.get("prompt", "")
+    if not prompt:
+        return HookResult.allow()
+
+    prompt_upper = prompt.upper()
+
+    # Check for approval confirmation
+    if "CONFIDENCE_BOOST_APPROVED" in prompt_upper:
+        # Check if there's a pending approval request
+        pending = state.nudge_history.get("confidence_boost_pending", {})
+        if pending.get("requested", False):
+            requested_delta = pending.get("delta", 15)
+            old_confidence = state.confidence
+            update_confidence(state, requested_delta, "trust_regained (approved)")
+            # Clear pending
+            state.nudge_history["confidence_boost_pending"] = {"requested": False}
+            return HookResult.allow(
+                "✅ **Confidence Restored**\n\n"
+                + format_confidence_change(
+                    old_confidence, state.confidence, "(trust_regained)"
+                )
+            )
+        return HookResult.allow()
+
+    # Check for trust restoration request patterns
+    trust_patterns = [
+        r"\btrust\s+regained\b",
+        r"\bconfidence\s+(?:restored|boost(?:ed)?)\b",
+        r"\brestore\s+(?:my\s+)?confidence\b",
+    ]
+
+    for pattern in trust_patterns:
+        if re.search(pattern, prompt, re.IGNORECASE):
+            # Generate approval prompt
+            approval_msg = generate_approval_prompt(
+                state.confidence,
+                requested_delta=15,
+                reasons=["User requested trust restoration"],
+            )
+            # Mark as pending
+            if "confidence_boost_pending" not in state.nudge_history:
+                state.nudge_history["confidence_boost_pending"] = {}
+            state.nudge_history["confidence_boost_pending"]["requested"] = True
+            state.nudge_history["confidence_boost_pending"]["delta"] = 15
+            state.nudge_history["confidence_boost_pending"]["turn"] = state.turn_count
+
+            return HookResult.allow(approval_msg)
+
+    return HookResult.allow()
+
+
+# -----------------------------------------------------------------------------
+# CONFIDENCE DISPUTE (priority 8) - Handle false positive disputes
+# -----------------------------------------------------------------------------
+
+
+@register_hook("confidence_dispute", priority=8)
+def check_confidence_dispute(data: dict, state: SessionState) -> HookResult:
+    """Handle false positive disputes for confidence reducers.
+
+    Detects patterns like:
+    - "false positive"
+    - "FP: edit_oscillation"
+    - "dispute cascade_block"
+    - "that was wrong" (when recent reducer fired)
+    """
+    prompt = data.get("prompt", "")
+    if not prompt:
+        return HookResult.allow()
+
+    # Detect dispute in prompt
+    is_dispute, reducer_name, reason = detect_dispute_in_prompt(prompt)
+
+    if not is_dispute:
+        return HookResult.allow()
+
+    # If no specific reducer named, check for recent reductions
+    if not reducer_name:
+        recent = get_recent_reductions(state, turns=3)
+        if len(recent) == 1:
+            # Only one recent reducer - assume that's the target
+            reducer_name = recent[0]
+        elif recent:
+            # Multiple recent reducers - ask for clarification
+            return HookResult.allow(
+                f"🔍 **Which reducer?** Multiple fired recently:\n"
+                f"  {', '.join(recent)}\n"
+                f"Say `FP: <reducer_name>` to specify."
+            )
+        else:
+            return HookResult.allow(
+                "⚠️ No recent confidence reductions to dispute.\n"
+                "Use `FP: <reducer_name>` to specify which reducer."
+            )
+
+    # Process the dispute
+    old_confidence = state.confidence
+    restore_amount, message = dispute_reducer(state, reducer_name, reason)
+
+    if restore_amount > 0:
+        update_confidence(state, restore_amount, f"FP:{reducer_name}")
+        change_msg = format_confidence_change(
+            old_confidence, state.confidence, f"(FP: {reducer_name})"
+        )
+        return HookResult.allow(f"{message}\n{change_msg}")
+
+    return HookResult.allow(message)
 
 
 # Complexity patterns for intake_protocol (pre-compiled for performance)

@@ -3,6 +3,7 @@
 System Assistant Statusline - Full WSL2 system status at a glance
 
 Shows: Model | Context% | CPU | RAM | Disk | Services | Network
+Line 2: Session | Folder | Confidence | Git
 Designed for personalized WSL2 system assistant use.
 """
 
@@ -13,6 +14,9 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+# Add lib path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 # =============================================================================
 # CACHE LAYER - subprocess results don't change rapidly
@@ -244,6 +248,20 @@ def get_comfyui_status():
         return ""
 
 
+def get_confidence_status():
+    """Get confidence level from session state."""
+    try:
+        from session_state import load_state
+        from confidence import get_tier_info
+
+        state = load_state()
+        confidence = getattr(state, "confidence", 70)
+        tier_name, emoji, _ = get_tier_info(confidence)
+        return f"{emoji}{confidence}% {tier_name}"
+    except Exception:
+        return ""
+
+
 def get_git_info():
     """Get git branch and status."""
     try:
@@ -405,10 +423,13 @@ def main():
     line1_parts.append(net)
     line1 = f" {C.DIM}|{C.RESET} ".join(line1_parts)
 
-    # Line 2: Session + Git
+    # Line 2: Session + Folder + Confidence + Git
     session_id = input_data.get("session_id", "")[:8]
     folder = Path.cwd().name
+    confidence = get_confidence_status()
     line2_parts = [f"{C.DIM}{session_id}{C.RESET}", f"{C.CYAN}{folder}{C.RESET}"]
+    if confidence:
+        line2_parts.append(confidence)
     if git:
         line2_parts.append(git)
     line2 = f" {C.DIM}|{C.RESET} ".join(line2_parts)

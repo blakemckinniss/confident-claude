@@ -7,6 +7,8 @@ PERFORMANCE: ~40ms for 8 hooks vs ~300ms for individual processes (7x faster)
 HOOKS INDEX (by priority):
   STATE (0-20):
     10 state_updater       - Track files read/edited, commands, libraries, errors
+    12 confidence_reducer  - Apply deterministic confidence reductions on failures
+    14 confidence_increaser - Apply confidence increases on success signals
 
   QUALITY GATES (22-50):
     22 assumption_check    - Surface hidden assumptions in code changes
@@ -86,8 +88,19 @@ from session_state import (
     # Ops tool tracking (v3.9)
     track_ops_tool,
     mark_production_verified,
+    # Confidence system (v4.0)
+    update_confidence,
 )
 from _hook_result import HookResult
+
+# Confidence system imports (v4.0)
+from confidence import (
+    apply_reducers,
+    apply_increasers,
+    format_confidence_change,
+    get_tier_info,
+    format_dispute_instructions,
+)
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -740,6 +753,162 @@ def check_state_updater(
         add_domain_signal(state, prompt[:200])
 
     return HookResult.with_context(warning) if warning else HookResult.none()
+
+
+# -----------------------------------------------------------------------------
+# CONFIDENCE REDUCER (priority 12) - Deterministic confidence reductions
+# -----------------------------------------------------------------------------
+
+
+@register_hook("confidence_reducer", None, priority=12)
+def check_confidence_reducer(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Apply deterministic confidence reductions based on failure signals.
+
+    Reducers fire MECHANICALLY without judgment:
+    - tool_failure: -5 (Bash exit != 0)
+    - cascade_block: -15 (same hook blocks 3+ times)
+    - sunk_cost: -20 (3+ consecutive failures)
+    - edit_oscillation: -12 (same file edited 3+ times)
+    """
+    tool_name = data.get("tool_name", "")
+    tool_result = data.get("tool_result", {})
+
+    # Build context for reducers
+    context = {
+        "tool_name": tool_name,
+        "tool_result": tool_result,
+    }
+
+    # Check for tool failure (Bash exit code != 0)
+    if tool_name == "Bash":
+        if isinstance(tool_result, dict):
+            exit_code = tool_result.get("exit_code", 0)
+            if exit_code != 0:
+                context["tool_failed"] = True
+
+    # Apply reducers
+    triggered = apply_reducers(state, context)
+
+    if not triggered:
+        return HookResult.none()
+
+    # Calculate total reduction and apply
+    old_confidence = state.confidence
+    total_delta = sum(delta for _, delta, _ in triggered)
+    new_confidence = max(0, old_confidence + total_delta)
+
+    # Update state
+    update_confidence(state, new_confidence)
+
+    # Format feedback
+    reasons = [f"{name}: {delta}" for name, delta, _ in triggered]
+    change_msg = format_confidence_change(
+        old_confidence, new_confidence, ", ".join(reasons)
+    )
+
+    # Add tier info for context
+    _, emoji, desc = get_tier_info(new_confidence)
+
+    # Include dispute instructions
+    reducer_names = [name for name, _, _ in triggered]
+    dispute_hint = format_dispute_instructions(reducer_names)
+
+    return HookResult.with_context(
+        f"📉 **Confidence Reduced**\n{change_msg}\n\n"
+        f"Current: {emoji} {new_confidence}% - {desc}"
+        f"{dispute_hint}"
+    )
+
+
+# -----------------------------------------------------------------------------
+# CONFIDENCE INCREASER (priority 14) - Success signal confidence increases
+# -----------------------------------------------------------------------------
+
+
+@register_hook("confidence_increaser", None, priority=14)
+def check_confidence_increaser(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Apply confidence increases based on success signals.
+
+    Auto-increases (+5, no approval):
+    - test_pass: Tests passed successfully
+    - build_success: Build completed successfully
+
+    Large increases (+15, requires approval):
+    - trust_regained: User explicitly restored trust
+    """
+    tool_name = data.get("tool_name", "")
+    tool_result = data.get("tool_result", {})
+
+    # Build context for increasers
+    context = {
+        "tool_name": tool_name,
+        "tool_result": tool_result,
+    }
+
+    # Check for successful test/build commands
+    if tool_name == "Bash":
+        if isinstance(tool_result, dict):
+            exit_code = tool_result.get("exit_code", 0)
+            output = tool_result.get("output", "").lower()
+
+            if exit_code == 0:
+                # Check for test success patterns
+                if any(
+                    p in output
+                    for p in ["passed", "tests passed", "ok", "success", "✓"]
+                ):
+                    context["tests_passed"] = True
+                # Check for build success
+                if any(p in output for p in ["built", "compiled", "build successful"]):
+                    context["build_succeeded"] = True
+
+    # Apply increasers
+    triggered = apply_increasers(state, context)
+
+    if not triggered:
+        return HookResult.none()
+
+    # Separate auto-approved from approval-required
+    auto_increases = [(n, d, desc) for n, d, desc, req in triggered if not req]
+    approval_required = [(n, d, desc) for n, d, desc, req in triggered if req]
+
+    messages = []
+    old_confidence = state.confidence
+
+    # Apply auto-increases
+    if auto_increases:
+        total_auto = sum(d for _, d, _ in auto_increases)
+        new_confidence = min(100, old_confidence + total_auto)
+        update_confidence(state, new_confidence)
+
+        reasons = [f"{name}: +{delta}" for name, delta, _ in auto_increases]
+        change_msg = format_confidence_change(
+            old_confidence, new_confidence, ", ".join(reasons)
+        )
+
+        _, emoji, desc = get_tier_info(new_confidence)
+        messages.append(
+            f"📈 **Confidence Increased**\n{change_msg}\n\n"
+            f"Current: {emoji} {new_confidence}% - {desc}"
+        )
+
+    # Note approval-required increases (don't apply yet)
+    if approval_required:
+        for name, delta, desc in approval_required:
+            messages.append(
+                f"🔐 **Confidence Boost Available** (+{delta})\n"
+                f"Reason: {desc}\n"
+                f"Reply **CONFIDENCE_BOOST_APPROVED** to apply."
+            )
+
+    if messages:
+        return HookResult.with_context("\n\n".join(messages))
+
+    return HookResult.none()
 
 
 # -----------------------------------------------------------------------------
