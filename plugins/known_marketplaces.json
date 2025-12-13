@@ -29,7 +29,7 @@
       "url": "https://github.com/yamadashy/repomix.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/repomix",
-    "lastUpdated": "2025-12-13T15:00:53.413Z"
+    "lastUpdated": "2025-12-13T15:02:37.778Z"
   },
   "claude-code-templates": {
     "source": {
@@ -45,6 +45,6 @@
       "repo": "sawyerhood/dev-browser"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/dev-browser-marketplace",
-    "lastUpdated": "2025-12-13T14:54:49.153Z"
+    "lastUpdated": "2025-12-13T15:01:21.831Z"
   }
 }

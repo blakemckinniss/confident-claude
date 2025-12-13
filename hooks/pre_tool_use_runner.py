@@ -223,16 +223,14 @@ def check_loop_detector(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("python_path_enforcer", "Bash", priority=12)
 def check_python_path_enforcer(data: dict, state: SessionState) -> HookResult:
-    """Enforce venv python usage instead of system python."""
-    from synapse_core import log_block, format_block_acknowledgment
-
+    """Suggest venv python usage instead of system python (soft nudge, not blocking)."""
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
 
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", str(Path.home()))
     venv_python = f"{project_dir}/.claude/.venv/bin/python"
 
-    # Only enforce if venv exists
+    # Only suggest if venv exists
     if not os.path.exists(venv_python):
         return HookResult.approve()
 
@@ -242,10 +240,9 @@ def check_python_path_enforcer(data: dict, state: SessionState) -> HookResult:
 
     if bare_python and ".venv/bin" not in cmd_to_check:
         venv_bin = f"{project_dir}/.claude/.venv/bin"
-        reason = f"Use venv: {venv_bin}/python or {venv_bin}/pip"
-        log_block("python_path_enforcer", reason, "Bash", tool_input)
-        return HookResult.deny(
-            reason + format_block_acknowledgment("python_path_enforcer")
+        # Soft nudge instead of block - suggest but allow
+        return HookResult.approve(
+            f"💡 Tip: Use `{venv_bin}/python` for consistent deps"
         )
     return HookResult.approve()
 
