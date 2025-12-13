@@ -730,6 +730,81 @@ class UnresolvedAntiPatternReducer(ConfidenceReducer):
         return not has_resolution
 
 
+@dataclass
+class DebtBashReducer(ConfidenceReducer):
+    """Triggers on bash commands that create technical debt."""
+
+    name: str = "debt_bash"
+    delta: int = -10
+    description: str = "Ran debt-creating bash command"
+    cooldown_turns: int = 1
+    # Commands that create debt or are dangerous
+    debt_patterns: list = field(
+        default_factory=lambda: [
+            r"--force\b",
+            r"-f\b.*(?:rm|git|npm)",  # Force flags
+            r"git\s+reset\s+--hard",
+            r"git\s+push\s+--force",
+            r"git\s+push\s+-f\b",
+            r"npm\s+audit\s+fix\s+--force",
+            r"rm\s+-rf\s+/",  # Dangerous rm
+            r"chmod\s+777",
+            r">\s*/dev/null\s+2>&1",  # Suppressing errors
+            r"\|\|\s*true\b",  # Ignoring failures
+            r"--no-verify",
+            r"--skip-",
+            r"DISABLE_",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        command = context.get("bash_command", "")
+        if not command:
+            return False
+        for pattern in self.debt_patterns:
+            if re.search(pattern, command, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class LargeDiffReducer(ConfidenceReducer):
+    """Triggers when diffs exceed 400 LOC - risky large changes."""
+
+    name: str = "large_diff"
+    delta: int = -8
+    description: str = "Large diff (>400 LOC) - risky change"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("large_diff", False)
+
+
+@dataclass
+class HookBlockReducer(ConfidenceReducer):
+    """Triggers when a hook blocks (soft or hard)."""
+
+    name: str = "hook_block"
+    delta: int = -5
+    description: str = "Hook blocked action (soft/hard)"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("hook_blocked", False)
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
@@ -751,6 +826,9 @@ REDUCERS: list[ConfidenceReducer] = [
     ApologeticReducer(),  # "sorry", "my mistake"
     SycophancyReducer(),  # "you're absolutely right"
     UnresolvedAntiPatternReducer(),  # Mentioning issues without fixing
+    DebtBashReducer(),  # --force, --hard, --no-verify commands
+    LargeDiffReducer(),  # Diffs > 400 LOC
+    HookBlockReducer(),  # Soft/hard hook blocks
 ]
 
 
@@ -1106,6 +1184,79 @@ class BeadCreateIncreaser(ConfidenceIncreaser):
 
 
 @dataclass
+class SearchToolIncreaser(ConfidenceIncreaser):
+    """Triggers when using search tools - gathering understanding."""
+
+    name: str = "search_tool"
+    delta: int = 2
+    description: str = "Used search tool (Grep/Glob/Task)"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("search_performed", False)
+
+
+@dataclass
+class ProductiveBashIncreaser(ConfidenceIncreaser):
+    """Triggers on productive, non-risky bash commands."""
+
+    name: str = "productive_bash"
+    delta: int = 1
+    description: str = "Ran productive bash command"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+    # Non-risky productive commands
+    productive_patterns: list = field(
+        default_factory=lambda: [
+            r"^ls\b",
+            r"^pwd$",
+            r"^which\b",
+            r"^type\b",
+            r"^file\b",
+            r"^wc\b",
+            r"^du\b",
+            r"^df\b",
+            r"^env\b",
+            r"^echo\s+\$",  # Variable inspection
+            r"^cat\b.*\|\s*(head|tail|grep)",  # Piped inspection
+            r"^tree\b",
+            r"^find\b.*-name",  # Finding files
+            r"^stat\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("productive_bash", False)
+
+
+@dataclass
+class SmallDiffIncreaser(ConfidenceIncreaser):
+    """Triggers when diffs are under 400 LOC - focused changes."""
+
+    name: str = "small_diff"
+    delta: int = 3
+    description: str = "Small diff (<400 LOC) - focused change"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("small_diff", False)
+
+
+@dataclass
 class GitExploreIncreaser(ConfidenceIncreaser):
     """Triggers when exploring git history - understanding context."""
 
@@ -1134,10 +1285,13 @@ INCREASERS: list[ConfidenceIncreaser] = [
     BuildSuccessIncreaser(),
     LintPassIncreaser(),
     CustomScriptIncreaser(),
+    SmallDiffIncreaser(),  # Small focused changes (+3)
     # Due diligence signals
     FileReadIncreaser(),
     ResearchIncreaser(),
     RulesUpdateIncreaser(),
+    SearchToolIncreaser(),  # Grep/Glob/Task (+2)
+    ProductiveBashIncreaser(),  # Non-risky bash (+1)
     # User interaction
     AskUserIncreaser(),
     UserOkIncreaser(),

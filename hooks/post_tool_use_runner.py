@@ -1147,6 +1147,15 @@ def check_confidence_reducer(
             if exit_code != 0:
                 context["tool_failed"] = True
 
+    # Check for recent hook blocks (HookBlockReducer)
+    if hasattr(state, "consecutive_blocks") and state.consecutive_blocks:
+        # Any recent block in last 2 turns triggers
+        for hook_name, entry in state.consecutive_blocks.items():
+            last_turn = entry.get("last_turn", 0)
+            if state.turn_count - last_turn <= 2:
+                context["hook_blocked"] = True
+                break
+
     # Apply reducers
     triggered = apply_reducers(state, context)
 
@@ -1231,6 +1240,10 @@ def check_confidence_increaser(
     }:
         context["research_performed"] = True
 
+    # Search tools = gathering understanding (+2)
+    if tool_name in {"Grep", "Glob", "Task"}:
+        context["search_performed"] = True
+
     # Asking user = epistemic humility (+20)
     if tool_name == "AskUserQuestion":
         context["asked_user"] = True
@@ -1248,6 +1261,8 @@ def check_confidence_increaser(
     # Bash commands with special signals
     if tool_name == "Bash":
         command = tool_input.get("command", "")
+        context["bash_command"] = command  # For DebtBashReducer
+
         # Custom ops scripts = using tools (+5)
         if "/.claude/ops/" in command or "/ops/" in command:
             context["custom_script_ran"] = True
@@ -1265,6 +1280,42 @@ def check_confidence_increaser(
         ]
         if any(g in command for g in git_explore_cmds):
             context["git_explored"] = True
+
+        # Productive bash = non-risky inspection commands (+1)
+        productive_patterns = [
+            r"^ls\b",
+            r"^pwd$",
+            r"^which\b",
+            r"^type\b",
+            r"^file\b",
+            r"^wc\b",
+            r"^du\b",
+            r"^df\b",
+            r"^env\b",
+            r"^tree\b",
+            r"^stat\b",
+        ]
+        if any(re.match(p, command.strip()) for p in productive_patterns):
+            context["productive_bash"] = True
+
+        # Diff size detection from git diff --stat output
+        tool_response = data.get("tool_response", {})
+        if isinstance(tool_response, dict):
+            stdout = tool_response.get("stdout", "")
+            # Look for diff stat summary line: "X files changed, Y insertions(+), Z deletions(-)"
+            diff_match = re.search(
+                r"(\d+)\s+files?\s+changed.*?(\d+)\s+insertion.*?(\d+)\s+deletion",
+                stdout,
+                re.IGNORECASE,
+            )
+            if diff_match:
+                insertions = int(diff_match.group(2))
+                deletions = int(diff_match.group(3))
+                total_loc = insertions + deletions
+                if total_loc < 400:
+                    context["small_diff"] = True
+                elif total_loc > 400:
+                    context["large_diff"] = True
 
     # =========================================================================
     # OBJECTIVE SIGNAL DETECTION (tests, builds, lints)
