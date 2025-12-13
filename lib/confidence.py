@@ -499,7 +499,10 @@ class TestPassIncreaser(ConfidenceIncreaser):
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
-        # Check recent commands for test passes
+        # Check context from post_tool_use_runner (output-based detection)
+        if context.get("tests_passed"):
+            return True
+        # Check recent commands for test passes (command-based detection)
         for cmd in state.commands_succeeded[-5:]:
             cmd_str = cmd.get("command", "").lower()
             if any(t in cmd_str for t in ["pytest", "jest", "cargo test", "npm test"]):
@@ -545,6 +548,10 @@ class BuildSuccessIncreaser(ConfidenceIncreaser):
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
+        # Check context from post_tool_use_runner (output-based detection)
+        if context.get("build_succeeded"):
+            return True
+        # Check recent commands for builds (command-based detection)
         for cmd in state.commands_succeeded[-5:]:
             cmd_str = cmd.get("command", "").lower()
             # Must match actual build command, not just contain substring
