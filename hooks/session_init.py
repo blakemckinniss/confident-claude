@@ -367,6 +367,34 @@ def load_capabilities_summary() -> str:
         return ""
 
 
+def get_confidence_fp_history(state) -> list[str]:
+    """Get false positive history for confidence reducers.
+
+    Since LLMs can't learn, we must inject FP history as explicit context
+    so the same false triggers don't frustrate users session after session.
+
+    Returns list of reducer warnings based on FP counts.
+    """
+    if not hasattr(state, "nudge_history"):
+        return []
+
+    fp_warnings = []
+    for key, data in state.nudge_history.items():
+        if key.startswith("reducer_fp_") and isinstance(data, dict):
+            reducer_name = key.replace("reducer_fp_", "")
+            fp_count = data.get("count", 0)
+            if fp_count >= 2:
+                # Calculate adaptive cooldown
+                base_cooldown = 5  # default
+                multiplier = min(3.0, 1.0 + (fp_count * 0.5))
+                cooldown = int(base_cooldown * multiplier)
+                fp_warnings.append(
+                    f"⚠️ {reducer_name}: {fp_count} FPs → cooldown {cooldown} turns"
+                )
+
+    return fp_warnings[:5]  # Limit to 5 most relevant
+
+
 def get_recent_block_lessons(limit: int = 3) -> list[str]:
     """Get recent block-reflection lessons for session injection.
 
@@ -492,6 +520,15 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
         parts.append("⚠️ **RECENT LESSONS**:")
         for lesson in block_lessons:
             parts.append(f"  • {lesson}")
+
+    # === STEP 4.5: Confidence FP History (LLM can't learn - inject as context) ===
+    # Since I have no persistent memory, inject FP history so I don't
+    # trigger the same false positives that frustrated users before
+    fp_warnings = get_confidence_fp_history(state)
+    if fp_warnings:
+        parts.append("🎯 **CONFIDENCE CALIBRATION** (reducers with high FP rates):")
+        for warning in fp_warnings:
+            parts.append(f"  {warning}")
 
     # === STEP 5: Relevant Global Lessons (cross-project wisdom) ===
     if PROJECT_AWARE and project_context and project_context.project_type != "ephemeral":
