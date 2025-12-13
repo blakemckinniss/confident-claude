@@ -12,6 +12,24 @@ LLMs are prone to:
 
 The confidence system provides **external mechanical regulation** that bypasses self-judgment.
 
+## Stasis Target: 80-90%
+
+**Healthy operation means confidence stays in the 80-90% range.**
+
+This "stasis zone" represents balanced operation where:
+- Small penalties (-1 bash-risk, -1 edit-risk, -1 decay) balance with
+- Small rewards (+1 file_read, +2 research, +3 lint_pass, +5 test_pass)
+
+**If confidence drops below 80%**, PROACTIVELY recover by:
+1. Reading relevant files (+1 each)
+2. Running `git status/log/diff` (+10)
+3. Consulting `~/.claude/memory/` files (+10)
+4. Creating beads with `bd create` (+10)
+5. Running lints/tests (+3/+5)
+6. Asking clarifying questions (+20)
+
+**Do NOT spam SUDO** - use the increasers to earn confidence back legitimately.
+
 ## Confidence Zones
 
 | Zone | Range | Emoji | Allowed Actions |
@@ -38,15 +56,31 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `edit_oscillation` | -12 | Same file edited 3+ times in 5 turns | 5 turns |
 | `goal_drift` | -8 | < 20% keyword overlap with original goal | 8 turns |
 | `contradiction` | -10 | Contradictory claims detected | 5 turns |
+| `bash-risk` | -1 | Any bash command (state change risk) | None |
+| `edit-risk` | -1 | Any file edit | None |
+| `decay` | -1 | Natural drift toward uncertainty | None |
 
 ## Increasers (Automatic Rewards)
 
-| Increaser | Delta | Trigger | Auto? |
-|-----------|-------|---------|-------|
-| `test_pass` | +5 | pytest/jest/cargo test passes | Yes |
-| `build_success` | +5 | npm build/cargo build/tsc succeeds | Yes |
-| `user_ok` | +5 | Short positive response ("good", "ok", "yes", "thanks") | Yes |
-| `trust_regained` | +15 | User says "trust regained" or "CONFIDENCE_BOOST_APPROVED" | Requires approval |
+**Due diligence rewards balance natural decay:**
+
+| Increaser | Delta | Trigger |
+|-----------|-------|---------|
+| `file_read` | +1 | Read tool (gathering evidence) |
+| `research` | +2 | WebSearch, WebFetch, crawl4ai |
+| `rules_update` | +3 | Edit CLAUDE.md or /rules/ |
+| `lint_pass` | +3 | ruff check, eslint, cargo clippy passes |
+| `custom_script` | +5 | ~/.claude/ops/* scripts (audit, void, etc.) |
+| `test_pass` | +5 | pytest/jest/cargo test passes |
+| `build_success` | +5 | npm build/cargo build/tsc succeeds |
+| `memory_consult` | +10 | Read ~/.claude/memory/ files |
+| `bead_create` | +10 | bd create/update (task tracking) |
+| `git_explore` | +10 | git log/diff/status/show/blame |
+| `ask_user` | +20 | AskUserQuestion (epistemic humility) |
+| `user_ok` | +2 | Short positive feedback ("ok", "thanks") |
+| `trust_regained` | +15 | User says "CONFIDENCE_BOOST_APPROVED" |
+
+**Per-turn cap:** Maximum +15 or -15 total change per turn (prevents death spirals and gaming).
 
 ## False Positive Handling
 
