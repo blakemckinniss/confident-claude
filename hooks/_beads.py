@@ -6,46 +6,60 @@ Extracted from pre_tool_use_runner.py to reduce file size and improve reusabilit
 """
 
 import json
-import subprocess
+import os
+import tempfile
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from session_state import SessionState
 
-# Cache for bd queries (avoid repeated subprocess calls)
-_BD_CACHE: dict = {}
-_BD_CACHE_TURN: int = 0
+# Simple per-process cache (hooks run as subprocesses, so this resets each call)
+_BD_CACHE: list | None = None
 
 
 def get_open_beads(state: "SessionState") -> list:
-    """Get open beads, cached per turn."""
-    global _BD_CACHE, _BD_CACHE_TURN
+    """Get open beads. Caches within single hook invocation.
 
-    current_turn = state.turn_count
-    if _BD_CACHE_TURN == current_turn and "open_beads" in _BD_CACHE:
-        return _BD_CACHE.get("open_beads", [])
+    Note: Uses temp file + os.system instead of subprocess.run due to bd pipe issues.
+    """
+    global _BD_CACHE
 
-    # Cache miss - query bd (separate queries since bd doesn't support comma-separated status)
+    # Use cached result if already queried this invocation
+    if _BD_CACHE is not None:
+        return _BD_CACHE
+
+    # Query bd for both open and in_progress beads
+    # Using temp file approach because bd has issues with subprocess pipes
+    all_beads = []
     try:
-        all_beads = []
-        for status in ["open", "in_progress"]:
-            result = subprocess.run(
-                ["bd", "list", f"--status={status}", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                all_beads.extend(json.loads(result.stdout))
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            tmp_path = f.name
 
-        _BD_CACHE = {"open_beads": all_beads}
-        _BD_CACHE_TURN = current_turn
-        return all_beads
+        for status in ["open", "in_progress"]:
+            exit_code = os.system(
+                f'bd list --status={status} --json > "{tmp_path}" 2>/dev/null'
+            )
+            if exit_code == 0:
+                try:
+                    with open(tmp_path) as f:
+                        content = f.read().strip()
+                    if content:
+                        all_beads.extend(json.loads(content))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+        _BD_CACHE = all_beads
     except Exception:
         pass
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
-    return []
+    return all_beads
 
 
 def get_in_progress_beads(state: "SessionState") -> list:
@@ -68,18 +82,19 @@ def get_independent_beads(state: "SessionState") -> list:
     if not beads:
         return []
 
-    # Get blocked beads to exclude
+    # Get blocked beads to exclude (using temp file due to bd pipe issues)
     blocked_ids = set()
     try:
-        result = subprocess.run(
-            ["bd", "blocked", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            blocked = json.loads(result.stdout)
-            blocked_ids = {b.get("id") for b in blocked}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            tmp_path = f.name
+        exit_code = os.system(f'bd blocked --json > "{tmp_path}" 2>/dev/null')
+        if exit_code == 0:
+            with open(tmp_path) as f:
+                content = f.read().strip()
+            if content:
+                blocked = json.loads(content)
+                blocked_ids = {b.get("id") for b in blocked}
+        os.unlink(tmp_path)
     except Exception:
         pass
 
