@@ -1217,7 +1217,12 @@ def check_confidence_increaser(
             context["memory_consulted"] = True
 
     # Research tools = due diligence (+2)
-    if tool_name in {"WebSearch", "WebFetch", "mcp__crawl4ai__crawl", "mcp__crawl4ai__search"}:
+    if tool_name in {
+        "WebSearch",
+        "WebFetch",
+        "mcp__crawl4ai__crawl",
+        "mcp__crawl4ai__search",
+    }:
         context["research_performed"] = True
 
     # Asking user = epistemic humility (+20)
@@ -1227,7 +1232,11 @@ def check_confidence_increaser(
     # Rules/docs updates = system improvement (+3)
     if tool_name in {"Edit", "Write"}:
         file_path = tool_input.get("file_path", "")
-        if "CLAUDE.md" in file_path or "/rules/" in file_path or "/.claude/rules" in file_path:
+        if (
+            "CLAUDE.md" in file_path
+            or "/rules/" in file_path
+            or "/.claude/rules" in file_path
+        ):
             context["rules_updated"] = True
 
     # Bash commands with special signals
@@ -1237,10 +1246,17 @@ def check_confidence_increaser(
         if "/.claude/ops/" in command or "/ops/" in command:
             context["custom_script_ran"] = True
         # Bead creation = planning work (+10)
-        if "bd create" in command or "bd update" in command:
+        # Match actual bd commands at start, not mentions in commit messages/strings
+        if re.match(r"^bd\s+(create|update)\b", command.strip()):
             context["bead_created"] = True
         # Git exploration = understanding context (+10)
-        git_explore_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
+        git_explore_cmds = [
+            "git log",
+            "git diff",
+            "git status",
+            "git show",
+            "git blame",
+        ]
         if any(g in command for g in git_explore_cmds):
             context["git_explored"] = True
 
@@ -1262,7 +1278,9 @@ def check_confidence_increaser(
 
         if success and stdout:
             # Check for test success patterns
-            if any(p in stdout for p in ["passed", "tests passed", "ok", "success", "✓"]):
+            if any(
+                p in stdout for p in ["passed", "tests passed", "ok", "success", "✓"]
+            ):
                 context["tests_passed"] = True
             # Check for build success
             if any(p in stdout for p in ["built", "compiled", "build successful"]):
