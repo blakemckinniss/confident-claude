@@ -104,15 +104,15 @@ from confidence import (
     format_dispute_instructions,
 )
 
-# Security scanner (lazy-loaded HuggingFace model)
+# Quality scanner (ruff + radon)
 try:
-    from _security_scanner import scan_code as security_scan, is_ready as security_ready
+    from _quality_scanner import scan_file as quality_scan_file, format_report
 
-    SECURITY_SCANNER_AVAILABLE = True
+    QUALITY_SCANNER_AVAILABLE = True
 except ImportError:
-    SECURITY_SCANNER_AVAILABLE = False
-    security_scan = None
-    security_ready = None
+    QUALITY_SCANNER_AVAILABLE = False
+    quality_scan_file = None
+    format_report = None
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -2004,65 +2004,45 @@ def check_code_quality(
 
 
 # -----------------------------------------------------------------------------
-# SECURITY SCANNER (priority 36) - CodeBERT insecure code detection
+# QUALITY SCANNER (priority 36) - ruff + radon code quality
 # -----------------------------------------------------------------------------
 
 
-@register_hook("security_scanner", "Edit|Write", priority=36)
-def check_security_scan(
+@register_hook("quality_scanner", "Edit|Write", priority=36)
+def check_quality_scan(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Scan code for security vulnerabilities using CodeBERT model.
+    """Scan code for quality issues using ruff (lint) and radon (complexity).
 
-    Non-blocking: Model loads in background on first call.
-    Advisory only (~65% accuracy) - warns but doesn't block.
+    Fast rule-based analysis - no ML model required.
+    Advisory only - warns but doesn't block.
     """
-    if not SECURITY_SCANNER_AVAILABLE or security_scan is None:
+    if not QUALITY_SCANNER_AVAILABLE or quality_scan_file is None:
         return HookResult.none()
 
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    # Only scan code files
-    code_extensions = (
-        ".py",
-        ".js",
-        ".ts",
-        ".jsx",
-        ".tsx",
-        ".go",
-        ".rs",
-        ".java",
-        ".c",
-        ".cpp",
-    )
-    if not file_path.endswith(code_extensions):
+    # Only scan Python files (ruff/radon are Python-focused)
+    if not file_path.endswith(".py"):
         return HookResult.none()
 
     # Skip scratch/tmp files
     if is_scratch_path(file_path):
         return HookResult.none()
 
-    code = tool_input.get("content", "") or tool_input.get("new_string", "")
-    if not code or len(code) < 50:
-        return HookResult.none()
-
-    # Scan code (non-blocking - returns None while model loads)
-    result = security_scan(code, threshold=0.6)
+    # Scan file for quality issues
+    result = quality_scan_file(file_path, complexity_threshold="C")
 
     if result is None:
-        # Model not ready yet or code is secure
         return HookResult.none()
 
-    # Security issue detected - advisory warning
-    confidence = result["confidence"]
-    recommendation = result["recommendation"]
+    # Quality issues found - advisory warning
+    report = format_report(result)
+    if report:
+        return HookResult.with_context(report)
 
-    return HookResult.with_context(
-        f"🔒 **SECURITY SCAN** ({confidence:.0%} confidence)\n"
-        f"{recommendation}\n"
-        f"💡 Model: CodeBERT (~65% accuracy) - verify manually"
-    )
+    return HookResult.none()
 
 
 # -----------------------------------------------------------------------------
