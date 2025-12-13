@@ -569,6 +569,53 @@ BAD_LANGUAGE_PATTERNS = {
             r"\bexcellent\s+(point|observation|catch)\b",
         ],
     },
+    # Theater patterns - look busy without substance
+    "filler_preamble": {
+        "delta": -5,
+        "patterns": [
+            r"\bgreat\s+question\b",
+            r"\bgood\s+question\b",
+            r"\bi\s+understand\s+(your|the|what)\b",
+            r"\bi'?d\s+be\s+happy\s+to\b",
+            r"\bi'?ll\s+be\s+happy\s+to\b",
+            r"^certainly[!.,]",
+            r"^absolutely[!.,]",
+            r"^of\s+course[!.,]",
+            r"\blet\s+me\s+help\s+you\s+with\b",
+        ],
+    },
+    "confirmation_theater": {
+        "delta": -5,
+        "patterns": [
+            r"\bwould\s+you\s+like\s+me\s+to\b",
+            r"\bshould\s+i\s+proceed\b",
+            r"\bdo\s+you\s+want\s+me\s+to\b",
+            r"\bshall\s+i\s+(start|begin|proceed|continue)\b",
+            r"\bwant\s+me\s+to\s+(go\s+ahead|proceed)\b",
+        ],
+    },
+    "announcement_theater": {
+        "delta": -3,
+        "patterns": [
+            r"\bnow\s+i\s+will\b",
+            r"\bnow\s+i'?m\s+going\s+to\b",
+            r"\bi'?m\s+now\s+going\s+to\b",
+            r"\blet\s+me\s+now\b",
+            r"\bi'?ll\s+now\b",
+            r"\bnext,?\s+i\s+will\b",
+            r"\bnext,?\s+i'?ll\b",
+        ],
+    },
+    "excessive_affirmation": {
+        "delta": -3,
+        "patterns": [
+            r"^sure[!.,]\s",
+            r"^yes[!.,]\s+i\s+(can|will)\b",
+            r"\bhappy\s+to\s+help\b",
+            r"\bglad\s+to\s+help\b",
+            r"\bno\s+problem[!.,]",
+        ],
+    },
 }
 
 
