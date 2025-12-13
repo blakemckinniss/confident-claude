@@ -7,8 +7,10 @@ PERFORMANCE: ~40ms for 8 hooks vs ~300ms for individual processes (7x faster)
 HOOKS INDEX (by priority):
   STATE (0-20):
     10 state_updater       - Track files read/edited, commands, libraries, errors
+    11 confidence_decay    - Natural decay + tool boosts (context-scaled)
     12 confidence_reducer  - Apply deterministic confidence reductions on failures
     14 confidence_increaser - Apply confidence increases on success signals
+    16 thinking_confidence - Analyze reasoning quality in thinking blocks (context-scaled)
 
   QUALITY GATES (22-50):
     22 assumption_check    - Surface hidden assumptions in code changes
@@ -779,6 +781,85 @@ def _get_penalty_multiplier(confidence: int) -> float:
         return 0.5  # Half penalties when in crisis
 
 
+# Default context window for Claude models (used when model info unavailable)
+_DEFAULT_CONTEXT_WINDOW = 200000
+
+
+def _get_context_percentage(transcript_path: str) -> float:
+    """Calculate context window usage percentage from transcript.
+
+    Reads the most recent assistant message's usage data to determine
+    how much of the context window has been consumed.
+
+    Returns 0.0 if unable to determine (safe default).
+    """
+    if not transcript_path:
+        return 0.0
+
+    try:
+        transcript = Path(transcript_path)
+        if not transcript.exists():
+            return 0.0
+
+        with open(transcript, "r") as f:
+            lines = f.readlines()
+
+        # Find most recent assistant message with usage data
+        for line in reversed(lines):
+            try:
+                data = json.loads(line.strip())
+                msg = data.get("message", {})
+                if msg.get("role") != "assistant":
+                    continue
+                # Skip synthetic messages
+                model = str(msg.get("model", "")).lower()
+                if "synthetic" in model:
+                    continue
+
+                usage = msg.get("usage")
+                if usage:
+                    used = (
+                        usage.get("input_tokens", 0)
+                        + usage.get("output_tokens", 0)
+                        + usage.get("cache_read_input_tokens", 0)
+                        + usage.get("cache_creation_input_tokens", 0)
+                    )
+                    if used > 0:
+                        return (used / _DEFAULT_CONTEXT_WINDOW) * 100
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+        return 0.0
+    except Exception:
+        return 0.0
+
+
+def _get_context_multiplier(context_pct: float) -> tuple[float, float]:
+    """Scale adjustments based on context usage.
+
+    Returns (penalty_mult, boost_mult) tuple:
+    - penalty_mult: Multiplier for penalties (higher context = bigger penalties)
+    - boost_mult: Multiplier for boosts (higher context = smaller boosts)
+
+    At high context usage, mistakes are more costly because:
+    - Less room to recover with fresh context
+    - Accumulated complexity increases error probability
+    - User may be frustrated with long unproductive sessions
+    """
+    if context_pct >= 80:
+        # Critical context usage - maximum pressure
+        return (2.0, 0.5)  # Double penalties, halve boosts
+    elif context_pct >= 60:
+        # High context usage - significant pressure
+        return (1.5, 0.75)  # 50% more penalties, 25% less boosts
+    elif context_pct >= 40:
+        # Medium context usage - mild pressure
+        return (1.25, 0.9)  # 25% more penalties, 10% less boosts
+    else:
+        # Low context usage - normal operation
+        return (1.0, 1.0)  # No modification
+
+
 @register_hook("confidence_decay", None, priority=11)
 def check_confidence_decay(
     data: dict, state: SessionState, runner_state: dict
@@ -863,13 +944,29 @@ def check_confidence_decay(
     accumulated_decay = int(state._decay_accumulator)
     state._decay_accumulator -= accumulated_decay  # Keep fractional part
 
-    # Scale penalties by confidence level (higher = harsher)
-    multiplier = _get_penalty_multiplier(state.confidence)
-    scaled_penalty = int(penalty * multiplier)
-    scaled_decay = int(accumulated_decay * multiplier) if accumulated_decay else 0
+    # Get scaling multipliers
+    # 1. Confidence-based: higher confidence = harsher penalties
+    conf_multiplier = _get_penalty_multiplier(state.confidence)
+
+    # 2. Context-based: higher context usage = harsher penalties, smaller boosts
+    transcript_path = data.get("transcript_path", "")
+    context_pct = _get_context_percentage(transcript_path)
+    ctx_penalty_mult, ctx_boost_mult = _get_context_multiplier(context_pct)
+
+    # Combined penalty multiplier (confidence × context)
+    combined_penalty_mult = conf_multiplier * ctx_penalty_mult
+
+    # Apply scaled penalties
+    scaled_penalty = int(penalty * combined_penalty_mult)
+    scaled_decay = (
+        int(accumulated_decay * combined_penalty_mult) if accumulated_decay else 0
+    )
+
+    # Apply scaled boosts (reduced at high context)
+    scaled_boost = int(boost * ctx_boost_mult) if boost else 0
 
     # Net change: boosts are positive, decay and penalty are negative
-    delta = boost - scaled_decay - scaled_penalty
+    delta = scaled_boost - scaled_decay - scaled_penalty
 
     if delta == 0:
         return HookResult.none()
@@ -882,12 +979,16 @@ def check_confidence_decay(
 
         # Build reason string
         reasons = []
-        if boost:
-            reasons.append(f"+{boost} {boost_reason}")
+        if scaled_boost:
+            reasons.append(f"+{scaled_boost} {boost_reason}")
         if accumulated_decay:
-            reasons.append(f"-{accumulated_decay} decay")
+            reasons.append(f"-{scaled_decay} decay")
         if penalty:
-            reasons.append(f"-{penalty} {penalty_reason}")
+            reasons.append(f"-{scaled_penalty} {penalty_reason}")
+
+        # Add context pressure indicator if significant
+        if context_pct >= 40:
+            reasons.append(f"CTX:{context_pct:.0f}%")
 
         direction = "📈" if delta > 0 else "📉"
         return HookResult.with_context(
@@ -1179,16 +1280,35 @@ def check_thinking_confidence(
     if adjustment == 0:
         return HookResult.none()
 
+    # Apply context-based scaling
+    context_pct = _get_context_percentage(transcript_path)
+    ctx_penalty_mult, ctx_boost_mult = _get_context_multiplier(context_pct)
+
+    # Scale adjustment based on context
+    if adjustment < 0:
+        # Penalties: multiply by context pressure
+        scaled_adjustment = int(adjustment * ctx_penalty_mult)
+    else:
+        # Boosts: reduce at high context
+        scaled_adjustment = int(adjustment * ctx_boost_mult)
+
+    if scaled_adjustment == 0:
+        return HookResult.none()
+
     # Apply micro-adjustment
     old_confidence = state.confidence
-    new_confidence = max(0, min(100, old_confidence + adjustment))
+    new_confidence = max(0, min(100, old_confidence + scaled_adjustment))
 
     if new_confidence != old_confidence:
         state.confidence = new_confidence  # Direct assignment
-        direction = "📉" if adjustment < 0 else "📈"
+        direction = "📉" if scaled_adjustment < 0 else "📈"
+
+        # Add context indicator if significant
+        ctx_suffix = f", CTX:{context_pct:.0f}%" if context_pct >= 40 else ""
         return HookResult.with_context(
             f"{direction} **Thinking confidence**: {old_confidence}% → {new_confidence}% "
-            f"({'+' if adjustment > 0 else ''}{adjustment}) [{', '.join(triggered[:3])}]"
+            f"({'+' if scaled_adjustment > 0 else ''}{scaled_adjustment}) "
+            f"[{', '.join(triggered[:3])}{ctx_suffix}]"
         )
 
     return HookResult.none()
