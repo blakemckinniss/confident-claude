@@ -1147,6 +1147,20 @@ def check_confidence_reducer(
             if exit_code != 0:
                 context["tool_failed"] = True
 
+    # Check for Edit/Write tool errors
+    if tool_name in {"Edit", "Write", "MultiEdit"}:
+        result_str = str(tool_result).lower() if tool_result else ""
+        error_patterns = [
+            "file has not been read yet",
+            "error:",
+            "failed to",
+            "permission denied",
+            "no such file",
+            "is not unique",  # Edit old_string not unique
+        ]
+        if any(p in result_str for p in error_patterns):
+            context["tool_failed"] = True
+
     # Check for recent hook blocks (HookBlockReducer)
     if hasattr(state, "consecutive_blocks") and state.consecutive_blocks:
         # Any recent block in last 2 turns triggers
