@@ -616,6 +616,35 @@ BAD_LANGUAGE_PATTERNS = {
             r"\bno\s+problem[!.,]",
         ],
     },
+    "bikeshedding": {
+        "delta": -8,
+        "patterns": [
+            # Naming deliberation
+            r"\bwe\s+could\s+(call|name)\s+it\s+\w+\s+or\s+\w+\b",
+            r"\b(name|call)\s+it\s+(either\s+)?\w+\s+or\s+\w+\b",
+            r"\boption\s+(a|1)[:\s].*\boption\s+(b|2)\b",
+            # Excessive deliberation on trivial matters
+            r"\bon\s+(the\s+)?one\s+hand\b.*\bon\s+the\s+other\s+hand\b",
+            r"\bpros\s+and\s+cons\b.{0,50}\b(naming|style|format)",
+            r"\b(tabs?\s+vs\.?\s+spaces?|spaces?\s+vs\.?\s+tabs?)\b",
+            r"\b(single|double)\s+quotes?\s+vs\.?\s+(single|double)\b",
+        ],
+    },
+    "greenfield_impulse": {
+        "delta": -10,
+        "patterns": [
+            # "Start fresh" when modification is likely better
+            r"\bstart\s+(from\s+)?scratch\b",
+            r"\bbuild\s+(it\s+)?fresh\b",
+            r"\brewrite\s+(it\s+)?from\s+(the\s+)?ground\s+up\b",
+            r"\bscrap\s+(it|this|the)\s+and\s+(start|build)\b",
+            r"\bthrow\s+(it|this)\s+away\s+and\b",
+            # Creating new when existing should be modified
+            r"\bcreate\s+a\s+new\s+\w+\s+(instead|rather)\b",
+            r"\bwrite\s+a\s+new\s+\w+\s+(instead|rather)\b",
+            r"\bbuild\s+a\s+new\s+\w+\s+(instead|rather)\b",
+        ],
+    },
 }
 
 
