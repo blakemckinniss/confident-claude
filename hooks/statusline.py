@@ -227,21 +227,25 @@ def get_gpu_vram():
 def get_comfyui_status():
     """Check if ComfyUI is running."""
     try:
-        # Check for ComfyUI process (python running main.py or containing comfyui)
-        result = subprocess.run(
-            ["pgrep", "-af", "python"], capture_output=True, text=True, timeout=1
-        )
-        if result.returncode == 0:
-            for line in result.stdout.lower().split("\n"):
-                if "comfyui" in line or "comfy" in line:
-                    return f"{C.GREEN}ComfyUI{C.RESET}"
-
-        # Fallback: check if port 8188 is listening (ComfyUI default)
+        # Primary: check if port 8188 is listening (ComfyUI default)
         result = subprocess.run(
             ["ss", "-tlnp"], capture_output=True, text=True, timeout=1
         )
         if result.returncode == 0 and ":8188" in result.stdout:
             return f"{C.GREEN}ComfyUI{C.RESET}"
+
+        # Fallback: check for ComfyUI main.py being executed
+        # Must match the SCRIPT, not just the venv path
+        result = subprocess.run(
+            ["pgrep", "-af", "python"], capture_output=True, text=True, timeout=1
+        )
+        if result.returncode == 0:
+            for line in result.stdout.split("\n"):
+                # Look for actual ComfyUI execution patterns
+                lower = line.lower()
+                # Match: "comfyui/main.py" or "comfy/main.py" in the command args
+                if ("comfyui" in lower or "comfy" in lower) and "main.py" in lower:
+                    return f"{C.GREEN}ComfyUI{C.RESET}"
 
         return ""
     except Exception:
