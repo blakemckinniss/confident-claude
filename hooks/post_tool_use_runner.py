@@ -782,9 +782,10 @@ def check_confidence_decay(
     # Base decay per tool call
     state._decay_accumulator += 0.5
 
-    # Boosts for information gathering
+    # Boosts for good practices
     boost = 0
     boost_reason = ""
+    tool_input = data.get("tool_input", {})
 
     if tool_name == "Read":
         boost = 1
@@ -798,31 +799,76 @@ def check_confidence_decay(
     elif tool_name == "WebSearch" or tool_name == "WebFetch":
         boost = 1
         boost_reason = "web-research"
+    elif tool_name == "Task":
+        # Delegating to agents shows good judgment
+        boost = 2
+        boost_reason = "agent-delegation"
+    elif tool_name == "AskUserQuestion":
+        # Clarifying with user shows humility
+        boost = 2
+        boost_reason = "user-clarification"
+    elif tool_name == "EnterPlanMode":
+        # Planning before acting is good
+        boost = 1
+        boost_reason = "planning"
 
-    # Calculate net adjustment (decay minus boosts)
+    # Penalties for bad practices (in addition to decay)
+    penalty = 0
+    penalty_reason = ""
+
+    if tool_name in ("Edit", "Write"):
+        file_path = tool_input.get("file_path", "")
+        # Edit without reading first = skipping context
+        if file_path and file_path not in state.files_read:
+            penalty = 2
+            penalty_reason = "edit-without-read"
+
+        # Check for stubs in new code
+        new_code = tool_input.get("new_string", "") or tool_input.get("content", "")
+        if new_code:
+            stub_patterns = [
+                "pass  # TODO",
+                "raise NotImplementedError",
+                "# FIXME",
+                "...  # stub",
+            ]
+            if any(p in new_code for p in stub_patterns):
+                penalty += 1
+                penalty_reason = (
+                    (penalty_reason + "+stub") if penalty_reason else "stub-code"
+                )
+
+    # Calculate net adjustment (decay + penalty - boosts)
     # Only apply when accumulator reaches whole number
-    net_decay = int(state._decay_accumulator) - boost
-    state._decay_accumulator -= int(state._decay_accumulator)  # Keep fractional part
+    accumulated_decay = int(state._decay_accumulator)
+    state._decay_accumulator -= accumulated_decay  # Keep fractional part
 
-    if net_decay == 0 and boost == 0:
+    # Net change: boosts are positive, decay and penalty are negative
+    delta = boost - accumulated_decay - penalty
+
+    if delta == 0:
         return HookResult.none()
 
     old_confidence = state.confidence
-    delta = -net_decay + boost
     new_confidence = max(0, min(100, old_confidence + delta))
 
     if new_confidence != old_confidence:
         state.confidence = new_confidence  # Direct assignment, already bounds-checked
-        if boost and net_decay <= 0:
-            return HookResult.with_context(
-                f"📈 **Info boost**: {old_confidence}% → {new_confidence}% "
-                f"(+{boost}) [{boost_reason}]"
-            )
-        elif delta < 0:
-            return HookResult.with_context(
-                f"📉 **Decay**: {old_confidence}% → {new_confidence}% "
-                f"({delta}) [complexity accumulation]"
-            )
+
+        # Build reason string
+        reasons = []
+        if boost:
+            reasons.append(f"+{boost} {boost_reason}")
+        if accumulated_decay:
+            reasons.append(f"-{accumulated_decay} decay")
+        if penalty:
+            reasons.append(f"-{penalty} {penalty_reason}")
+
+        direction = "📈" if delta > 0 else "📉"
+        return HookResult.with_context(
+            f"{direction} **Confidence**: {old_confidence}% → {new_confidence}% "
+            f"({'+' if delta > 0 else ''}{delta}) [{', '.join(reasons)}]"
+        )
 
     return HookResult.none()
 
@@ -984,6 +1030,7 @@ def check_confidence_increaser(
 
 # Patterns that indicate uncertainty/confusion (reduce confidence)
 _THINKING_UNCERTAINTY_PATTERNS = [
+    # Uncertainty & hedging
     (
         re.compile(r"\b(I'm not sure|not certain|unclear|confus)", re.I),
         -1,
@@ -992,20 +1039,66 @@ _THINKING_UNCERTAINTY_PATTERNS = [
     (re.compile(r"\b(maybe|might|could be|possibly|perhaps)\b", re.I), -1, "hedging"),
     (re.compile(r"\b(I think|I believe|I assume)\b", re.I), -1, "assumption"),
     (re.compile(r"\b(should work|hopefully|probably)\b", re.I), -1, "hope-driven"),
-    (re.compile(r"\b(wait|hmm+|let me reconsider)\b", re.I), -2, "confusion"),
+    # Confusion & backtracking
+    (
+        re.compile(r"\b(wait|hmm+|let me reconsider|let me think)\b", re.I),
+        -2,
+        "confusion",
+    ),
     (
         re.compile(r"\b(actually|no wait|I was wrong|that's wrong)\b", re.I),
         -2,
         "backtrack",
     ),
-    (re.compile(r"\b(this is (tricky|complex|difficult))\b", re.I), -1, "complexity"),
+    (
+        re.compile(r"\b(this is (tricky|complex|difficult|confusing))\b", re.I),
+        -1,
+        "complexity",
+    ),
+    # Logical fallacies
+    (
+        re.compile(r"\b(must be|has to be|obviously means)\b", re.I),
+        -1,
+        "jumping-conclusion",
+    ),
+    (re.compile(r"\b(always|never|every time|impossible)\b", re.I), -1, "absolutism"),
+    (re.compile(r"\b(the user (wants|expects|needs))\b", re.I), -1, "mind-reading"),
+    # Indecisive assertions
+    (re.compile(r"\b(I (could|might|may) (try|do|use))\b", re.I), -1, "indecisive"),
+    (
+        re.compile(r"\b(one option|another approach|alternatively)\b", re.I),
+        -1,
+        "waffling",
+    ),
+    # Skipping verification
+    (
+        re.compile(
+            r"\b(skip|don't need to|no need to) (check|verify|read|test)\b", re.I
+        ),
+        -2,
+        "skip-verify",
+    ),
+    (
+        re.compile(r"\b(assume|assuming) (it|this|that) (works|exists|is)\b", re.I),
+        -1,
+        "blind-assumption",
+    ),
 ]
 
 # Patterns that indicate clear reasoning (maintain/boost confidence)
 _THINKING_CONFIDENCE_PATTERNS = [
-    (re.compile(r"\b(definitely|clearly|certainly|obviously)\b", re.I), 1, "clarity"),
-    (re.compile(r"\b(this will|I know|verified|confirmed)\b", re.I), 1, "certainty"),
-    (re.compile(r"\b(the (issue|problem|root cause) is)\b", re.I), 1, "diagnosis"),
+    # Clarity & certainty
+    (re.compile(r"\b(definitely|clearly|certainly)\b", re.I), 1, "clarity"),
+    (re.compile(r"\b(verified|confirmed|tested|checked)\b", re.I), 1, "verified"),
+    (re.compile(r"\b(the (issue|problem|root cause|bug) is)\b", re.I), 1, "diagnosis"),
+    # Good methodology
+    (re.compile(r"\b(let me (read|check|verify) first)\b", re.I), 1, "methodical"),
+    (
+        re.compile(r"\b(based on (the code|the docs|evidence))\b", re.I),
+        1,
+        "evidence-based",
+    ),
+    (re.compile(r"\b(I found|I see|I notice)\b", re.I), 1, "observation"),
 ]
 
 
