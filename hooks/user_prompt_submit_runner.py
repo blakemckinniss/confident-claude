@@ -81,6 +81,14 @@ from session_state import (
 )
 from _hook_result import HookResult
 
+# Fuzzy matching for build-vs-buy detection
+try:
+    from rapidfuzz import fuzz, process as rf_process
+
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    RAPIDFUZZ_AVAILABLE = False
+
 # Confidence system
 from confidence import (
     # Rock bottom system
@@ -839,6 +847,90 @@ _BUILD_FROM_SCRATCH_PATTERNS = [
     ),
     re.compile(r"\b(don't|do not)\s+want\s+to\s+use\s+(any|existing)\b", re.IGNORECASE),
 ]
+
+# Common "wheel reinvention" apps - used for fuzzy matching
+# Each entry: (name, existing_alternatives)
+_COMMON_REINVENTIONS: list[tuple[str, list[str]]] = [
+    ("todo app", ["Todoist", "TickTick", "Things 3", "Microsoft To Do"]),
+    ("task manager", ["Todoist", "Asana", "Trello", "Linear"]),
+    ("note taking app", ["Obsidian", "Notion", "Logseq", "Bear"]),
+    ("bookmark manager", ["Raindrop.io", "Pocket", "Pinboard"]),
+    ("password manager", ["1Password", "Bitwarden", "KeePassXC"]),
+    ("budget tracker", ["YNAB", "Mint", "Lunch Money", "Actual Budget"]),
+    ("expense tracker", ["Expensify", "Splitwise", "Mint"]),
+    ("habit tracker", ["Habitica", "Streaks", "Loop Habit Tracker"]),
+    ("pomodoro timer", ["Forest", "Focus Keeper", "Pomofocus"]),
+    ("calendar app", ["Fantastical", "Google Calendar", "Calendly"]),
+    ("journal app", ["Day One", "Journey", "Notion"]),
+    ("inventory system", ["Sortly", "inFlow", "Zoho Inventory"]),
+    ("kanban board", ["Trello", "Notion", "Linear", "Jira"]),
+    ("crm system", ["HubSpot", "Salesforce", "Pipedrive"]),
+    ("url shortener", ["Bitly", "Short.io", "YOURLS"]),
+    ("chat app", ["Slack", "Discord", "Mattermost"]),
+    ("blog platform", ["Ghost", "WordPress", "Hugo", "11ty"]),
+    ("static site generator", ["Hugo", "11ty", "Astro", "Next.js"]),
+    ("file uploader", ["Dropzone.js", "FilePond", "Uppy"]),
+    ("weather app", ["OpenWeatherMap API", "Weather.com", "wttr.in"]),
+    ("recipe manager", ["Paprika", "Mealime", "Notion templates"]),
+    ("time tracker", ["Toggl", "Clockify", "RescueTime"]),
+    ("invoice generator", ["Invoice Ninja", "Wave", "Zoho Invoice"]),
+    ("markdown editor", ["Typora", "MarkText", "VS Code"]),
+    ("screenshot tool", ["Flameshot", "ShareX", "CleanShot X"]),
+    ("clipboard manager", ["CopyQ", "Ditto", "Maccy"]),
+    ("countdown timer", ["Online-Stopwatch.com", "Countdown apps"]),
+    ("flashcard app", ["Anki", "Quizlet", "RemNote"]),
+    ("rss reader", ["Feedly", "Inoreader", "NewsBlur"]),
+    ("link in bio", ["Linktree", "bio.link", "Carrd"]),
+]
+
+# Flatten for fuzzy search
+_REINVENTION_NAMES = [name for name, _ in _COMMON_REINVENTIONS]
+_REINVENTION_LOOKUP = {name: alts for name, alts in _COMMON_REINVENTIONS}
+
+
+def _fuzzy_match_reinvention(
+    prompt: str, threshold: int = 75
+) -> tuple[str | None, list[str]]:
+    """Check if prompt mentions a common wheel-reinvention app using fuzzy matching.
+
+    Returns (matched_name, alternatives) or (None, []) if no match.
+    """
+    if not RAPIDFUZZ_AVAILABLE:
+        return None, []
+
+    prompt_lower = prompt.lower()
+
+    # Extract potential app type phrases (2-4 word combinations)
+    words = prompt_lower.split()
+    candidates = []
+    for i in range(len(words)):
+        for length in range(2, 5):  # 2-4 word phrases
+            if i + length <= len(words):
+                phrase = " ".join(words[i : i + length])
+                candidates.append(phrase)
+
+    # Also check the whole prompt for shorter queries
+    if len(words) <= 6:
+        candidates.append(prompt_lower)
+
+    # Find best fuzzy match
+    best_match = None
+    best_score = 0
+
+    for candidate in candidates:
+        result = rf_process.extractOne(
+            candidate, _REINVENTION_NAMES, scorer=fuzz.token_sort_ratio
+        )
+        if result and result[1] > best_score and result[1] >= threshold:
+            best_match = result[0]
+            best_score = result[1]
+
+    if best_match:
+        return best_match, _REINVENTION_LOOKUP.get(best_match, [])
+
+    return None, []
+
+
 _TRIVIAL_SIGNALS = [
     re.compile(r"^(fix|typo|update|change|rename)\s+\w+$", re.IGNORECASE),
     re.compile(r"^(run|execute|test)\s+", re.IGNORECASE),
@@ -911,11 +1003,6 @@ def check_build_vs_buy(data: dict, state: SessionState) -> HookResult:
     if not prompt or len(prompt) < 20:
         return HookResult.allow()
 
-    # Check if this looks like a "build from scratch" request
-    matches = [p for p in _BUILD_FROM_SCRATCH_PATTERNS if p.search(prompt)]
-    if not matches:
-        return HookResult.allow()
-
     # Don't trigger if user explicitly mentions learning/practice
     learning_patterns = re.compile(
         r"\b(learn|practice|exercise|tutorial|study|understand|educational)\b",
@@ -924,13 +1011,35 @@ def check_build_vs_buy(data: dict, state: SessionState) -> HookResult:
     if learning_patterns.search(prompt):
         return HookResult.allow()
 
+    # Try fuzzy matching first (catches typos like "toto app" → "todo app")
+    fuzzy_match, alternatives = _fuzzy_match_reinvention(prompt)
+
+    # Fall back to regex patterns
+    regex_match = any(p.search(prompt) for p in _BUILD_FROM_SCRATCH_PATTERNS)
+
+    if not fuzzy_match and not regex_match:
+        return HookResult.allow()
+
+    # Build response with specific alternatives if found
+    if fuzzy_match and alternatives:
+        alt_list = ", ".join(alternatives[:4])
+        return HookResult.allow(
+            f"🔄 **BUILD-VS-BUY CHECK** - Detected: **{fuzzy_match}**\n"
+            f"💡 Existing solutions: {alt_list}\n\n"
+            "Before building custom:\n"
+            "- [ ] Explain why existing solutions don't fit\n"
+            "- [ ] Confirm user wants custom implementation\n\n"
+            "💰 +5 confidence for suggesting alternatives (`premise_challenge`)"
+        )
+
+    # Generic response for regex-only matches
     return HookResult.allow(
         "🔄 **BUILD-VS-BUY CHECK** (Principle #23)\n"
         "Before building custom, verify:\n"
         "- [ ] Searched for existing tools/libraries\n"
         "- [ ] Listed 2-3 alternatives with pros/cons\n"
         "- [ ] User explicitly wants custom OR existing solutions don't fit\n\n"
-        "💡 Earn +5 confidence by suggesting alternatives (`premise_challenge` increaser)"
+        "💰 +5 confidence for suggesting alternatives (`premise_challenge`)"
     )
 
 
