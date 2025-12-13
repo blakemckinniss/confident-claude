@@ -1281,6 +1281,11 @@ def check_confidence_increaser(
         if any(g in command for g in git_explore_cmds):
             context["git_explored"] = True
 
+        # Git commit with message = saving work (+3)
+        if re.match(r"^git\s+(commit|add\s+.*&&\s*git\s+commit)", command.strip()):
+            if "-m" in command or "--message" in command:
+                context["git_committed"] = True
+
         # Productive bash = non-risky inspection commands (+1)
         productive_patterns = [
             r"^ls\b",

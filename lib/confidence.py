@@ -1274,12 +1274,31 @@ class GitExploreIncreaser(ConfidenceIncreaser):
         return context.get("git_explored", False)
 
 
+@dataclass
+class GitCommitIncreaser(ConfidenceIncreaser):
+    """Triggers when committing with a message - saving work."""
+
+    name: str = "git_commit"
+    delta: int = 3
+    description: str = "Committed work with message"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("git_committed", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
     MemoryConsultIncreaser(),
     BeadCreateIncreaser(),
     GitExploreIncreaser(),
+    GitCommitIncreaser(),  # Saving work (+3)
     # Objective signals (high value)
     TestPassIncreaser(),
     BuildSuccessIncreaser(),
