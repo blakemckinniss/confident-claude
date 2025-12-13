@@ -195,11 +195,11 @@ class GoalDriftReducer(ConfidenceReducer):
 
 @dataclass
 class EditOscillationReducer(ConfidenceReducer):
-    """Triggers when same file edited 3+ times in 5 turns."""
+    """Triggers when edits revert previous changes (actual oscillation)."""
 
     name: str = "edit_oscillation"
     delta: int = -12
-    description: str = "Same file edited 3+ times recently (back-forth)"
+    description: str = "Edits reverting previous changes (back-forth pattern)"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -207,10 +207,29 @@ class EditOscillationReducer(ConfidenceReducer):
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
-        # Check edit_counts from session_state
-        for filepath, count in state.edit_counts.items():
-            if count >= 3:
-                return True
+
+        # Check for actual oscillation pattern in edit_history
+        # Oscillation = latest edit's NEW content matches a PREVIOUS state
+        # (i.e., reverting back to something we had before)
+        edit_history = getattr(state, "edit_history", {})
+        for filepath, history in edit_history.items():
+            if len(history) < 3:  # Need at least 3 edits to detect oscillation
+                continue
+            # Collect ALL states from edits before the previous one
+            # (skip immediately previous edit - that's normal iteration)
+            # Track both old and new hashes to catch: v0→v1→v0→v1 patterns
+            previous_states: set[str] = set()
+            for h in history[:-2]:
+                if h[0]:
+                    previous_states.add(h[0])
+                if h[1]:
+                    previous_states.add(h[1])
+            # Check if latest edit's new_hash matches any older state
+            latest = history[-1]
+            latest_new_hash = latest[1]
+            if latest_new_hash and latest_new_hash in previous_states:
+                return True  # Detected revert to previous state
+
         return False
 
 

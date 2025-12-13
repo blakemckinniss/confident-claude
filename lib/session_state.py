@@ -190,6 +190,9 @@ class SessionState:
 
     # Pattern tracking
     edit_counts: dict = field(default_factory=dict)  # file -> count
+    edit_history: dict = field(
+        default_factory=dict
+    )  # file -> [(old_hash, new_hash, ts), ...]
     tool_counts: dict = field(default_factory=dict)  # tool -> count
     tests_run: bool = False
     last_verify: Optional[float] = None
@@ -609,12 +612,36 @@ def track_file_read(state: SessionState, filepath: str):
     add_domain_signal(state, filepath)
 
 
-def track_file_edit(state: SessionState, filepath: str):
-    """Track that a file was edited."""
+def track_file_edit(
+    state: SessionState,
+    filepath: str,
+    old_string: str = "",
+    new_string: str = "",
+):
+    """Track that a file was edited, with optional content hashes for oscillation detection."""
     if filepath:
         if filepath not in state.files_edited:
             state.files_edited.append(filepath)
         state.edit_counts[filepath] = state.edit_counts.get(filepath, 0) + 1
+
+        # Track edit history for oscillation detection
+        # Store hashes to detect when edits revert previous changes
+        if old_string or new_string:
+            import hashlib
+            import time
+
+            old_hash = (
+                hashlib.md5(old_string.encode()).hexdigest()[:8] if old_string else ""
+            )
+            new_hash = (
+                hashlib.md5(new_string.encode()).hexdigest()[:8] if new_string else ""
+            )
+            if filepath not in state.edit_history:
+                state.edit_history[filepath] = []
+            state.edit_history[filepath].append((old_hash, new_hash, time.time()))
+            # Keep only last 10 edits per file
+            state.edit_history[filepath] = state.edit_history[filepath][-10:]
+
     add_domain_signal(state, filepath)
 
 

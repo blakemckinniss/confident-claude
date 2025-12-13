@@ -548,14 +548,14 @@ def check_state_updater(
             _trigger_self_heal(state, target=filepath, error=edit_error)
 
         if filepath:
-            track_file_edit(state, filepath)
-            track_feature_file(state, filepath)
+            old_code = tool_input.get("old_string", "")
             new_code = tool_input.get("new_string", "")
+            track_file_edit(state, filepath, old_code, new_code)
+            track_feature_file(state, filepath)
             if new_code:
                 for lib in extract_libraries_from_code(new_code):
                     track_library_used(state, lib)
                 if filepath.endswith((".py", ".js", ".ts", ".tsx", ".rs", ".go")):
-                    old_code = tool_input.get("old_string", "")
                     old_func_lines = extract_function_def_lines(old_code)
                     new_func_lines = extract_function_def_lines(new_code)
                     for func_name, old_def in old_func_lines.items():
