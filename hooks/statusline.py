@@ -249,13 +249,19 @@ def get_comfyui_status():
 
 
 def get_confidence_status():
-    """Get confidence level from session state."""
+    """Get confidence level from session state - reads directly from file."""
     try:
-        from session_state import load_state
+        # Read directly from JSON to avoid any module-level caching
+        state_file = Path(__file__).parent.parent / "memory" / "session_state_v3.json"
+        if not state_file.exists():
+            return ""
+        with open(state_file) as f:
+            data = json.load(f)
+        confidence = data.get("confidence", 70)
+
+        # Import tier info (no caching issues here)
         from confidence import get_tier_info
 
-        state = load_state()
-        confidence = getattr(state, "confidence", 70)
         tier_name, emoji, _ = get_tier_info(confidence)
         return f"{emoji}{confidence}% {tier_name}"
     except Exception:
