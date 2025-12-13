@@ -1196,6 +1196,7 @@ def check_confidence_increaser(
     """
     tool_name = data.get("tool_name", "")
     tool_result = data.get("tool_result", {})
+    tool_input = data.get("tool_input", {})
 
     # Build context for increasers
     context = {
@@ -1203,7 +1204,38 @@ def check_confidence_increaser(
         "tool_result": tool_result,
     }
 
-    # Check for successful test/build commands
+    # =========================================================================
+    # NATURAL INCREASER SIGNALS - balance the decay with due diligence rewards
+    # =========================================================================
+
+    # File reads = gathering evidence (+1)
+    if tool_name == "Read":
+        context["files_read_count"] = 1
+
+    # Research tools = due diligence (+2)
+    if tool_name in {"WebSearch", "WebFetch", "mcp__crawl4ai__crawl", "mcp__crawl4ai__search"}:
+        context["research_performed"] = True
+
+    # Asking user = epistemic humility (+20)
+    if tool_name == "AskUserQuestion":
+        context["asked_user"] = True
+
+    # Rules/docs updates = system improvement (+3)
+    if tool_name in {"Edit", "Write"}:
+        file_path = tool_input.get("file_path", "")
+        if "CLAUDE.md" in file_path or "/rules/" in file_path or "/.claude/rules" in file_path:
+            context["rules_updated"] = True
+
+    # Custom ops scripts = using tools (+5)
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if "/.claude/ops/" in command or "/ops/" in command:
+            context["custom_script_ran"] = True
+
+    # =========================================================================
+    # OBJECTIVE SIGNAL DETECTION (tests, builds, lints)
+    # =========================================================================
+
     if tool_name == "Bash":
         # Get output from tool_response (Claude Code's actual field), not tool_result
         tool_response = data.get("tool_response", {})
@@ -1223,6 +1255,11 @@ def check_confidence_increaser(
             # Check for build success
             if any(p in stdout for p in ["built", "compiled", "build successful"]):
                 context["build_succeeded"] = True
+            # Check for lint success
+            command = tool_input.get("command", "").lower()
+            if any(t in command for t in ["ruff check", "eslint", "clippy", "pylint"]):
+                if "error" not in stdout and "warning" not in stdout:
+                    context["lint_passed"] = True
 
     # Apply increasers
     triggered = apply_increasers(state, context)

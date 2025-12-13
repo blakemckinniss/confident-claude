@@ -221,6 +221,7 @@ class SessionState:
     ops_turns: dict = field(default_factory=dict)  # op_name -> last turn
     directives_fired: int = 0
     confidence: int = 70  # 0-100%, default to WORKING tier (floor)
+    reputation_debt: int = 0  # Trust debt: accumulates when hitting floor, constrains max tier
     evidence_ledger: list = field(default_factory=list)  # Evidence items
     _decay_accumulator: float = 0.0  # Fractional decay accumulator (persisted)
 

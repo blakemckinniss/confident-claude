@@ -40,8 +40,8 @@ THRESHOLD_MANDATORY_EXTERNAL = 30  # Below this: external LLM MANDATORY
 THRESHOLD_REQUIRE_RESEARCH = 50  # Below this: research REQUIRED
 THRESHOLD_PRODUCTION_ACCESS = 51  # Below this: no production writes
 
-# Rock bottom recovery target
-ROCK_BOTTOM_RECOVERY_TARGET = 85  # Boost to this after realignment
+# Rock bottom recovery target (nerfed from 85 to prevent gaming)
+ROCK_BOTTOM_RECOVERY_TARGET = 65  # Boost to this after realignment (not 85 - exploitable)
 
 # Tier emoji mapping
 TIER_EMOJI = {
@@ -573,10 +573,15 @@ class BuildSuccessIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class UserOkIncreaser(ConfidenceIncreaser):
-    """Triggers on positive user feedback."""
+    """Triggers on positive user feedback.
+
+    Reduced from +5 to +2: Generic politeness ("ok", "thanks") shouldn't
+    inflate confidence as much as objective signals (tests, builds).
+    For specific acceptance ("that fixed it"), user can say CONFIDENCE_BOOST_APPROVED.
+    """
 
     name: str = "user_ok"
-    delta: int = 5
+    delta: int = 2  # Reduced from 5 - generic politeness < objective signals
     description: str = "User confirmed correctness"
     requires_approval: bool = False
     cooldown_turns: int = 2
@@ -637,13 +642,199 @@ class TrustRegainedIncreaser(ConfidenceIncreaser):
         return False
 
 
+# =============================================================================
+# NATURAL INCREASERS (balance the natural decay)
+# =============================================================================
+
+
+@dataclass
+class FileReadIncreaser(ConfidenceIncreaser):
+    """Triggers on file reads - gathering evidence increases confidence."""
+
+    name: str = "file_read"
+    delta: int = 1
+    description: str = "Gathered evidence by reading files"
+    requires_approval: bool = False
+    cooldown_turns: int = 0  # Can fire every turn
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        # Check if files were read this turn
+        files_read_count = context.get("files_read_count", 0)
+        return files_read_count > 0
+
+
+@dataclass
+class ResearchIncreaser(ConfidenceIncreaser):
+    """Triggers on web research - due diligence increases confidence."""
+
+    name: str = "research"
+    delta: int = 2
+    description: str = "Performed web research"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Check for research tools used
+        return context.get("research_performed", False)
+
+
+@dataclass
+class AskUserIncreaser(ConfidenceIncreaser):
+    """Triggers when asking user for clarification - epistemic humility."""
+
+    name: str = "ask_user"
+    delta: int = 20  # Significant boost - consulting user is GOOD
+    description: str = "Consulted user for clarification"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("asked_user", False)
+
+
+@dataclass
+class RulesUpdateIncreaser(ConfidenceIncreaser):
+    """Triggers when updating CLAUDE.md or /rules - improving the system."""
+
+    name: str = "rules_update"
+    delta: int = 3
+    description: str = "Updated system rules/documentation"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("rules_updated", False)
+
+
+@dataclass
+class CustomScriptIncreaser(ConfidenceIncreaser):
+    """Triggers when running custom ops scripts - HUGE boost for using tools."""
+
+    name: str = "custom_script"
+    delta: int = 5
+    description: str = "Ran custom ops script"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("custom_script_ran", False)
+
+
+@dataclass
+class LintPassIncreaser(ConfidenceIncreaser):
+    """Triggers when linting passes."""
+
+    name: str = "lint_pass"
+    delta: int = 3
+    description: str = "Lint check passed"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        if context.get("lint_passed"):
+            return True
+        # Check recent commands
+        for cmd in state.commands_succeeded[-3:]:
+            cmd_str = cmd.get("command", "").lower()
+            if any(t in cmd_str for t in ["ruff check", "eslint", "clippy", "pylint"]):
+                return True
+        return False
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
+    # Objective signals (high value)
     TestPassIncreaser(),
     BuildSuccessIncreaser(),
+    LintPassIncreaser(),
+    CustomScriptIncreaser(),
+    # Due diligence signals
+    FileReadIncreaser(),
+    ResearchIncreaser(),
+    RulesUpdateIncreaser(),
+    # User interaction
+    AskUserIncreaser(),
     UserOkIncreaser(),
     TrustRegainedIncreaser(),
 ]
+
+
+def get_confidence_recovery_options(current_confidence: int, target: int = 70) -> str:
+    """Generate full ledger of ways to recover confidence.
+
+    Called by any gate that blocks on confidence to show ALL options,
+    not just one tunnel-vision path.
+
+    Args:
+        current_confidence: Current confidence level
+        target: Target confidence needed (default 70 for production)
+
+    Returns:
+        Formatted string showing all confidence recovery options
+    """
+    deficit = target - current_confidence
+    if deficit <= 0:
+        return ""
+
+    lines = [
+        f"**Current**: {current_confidence}% | **Need**: {target}% | **Gap**: {deficit}",
+        "",
+        "**Ways to earn confidence:**",
+    ]
+
+    # Objective signals (highest value)
+    lines.append("```")
+    lines.append("📈 +5  test_pass      pytest | jest | cargo test | npm test")
+    lines.append("📈 +5  build_success  npm build | cargo build | tsc | make")
+    lines.append("📈 +5  custom_script  ~/.claude/ops/* (audit, void, think, etc)")
+    lines.append("📈 +3  lint_pass      ruff check | eslint | cargo clippy")
+    lines.append("```")
+
+    # Due diligence signals
+    lines.append("")
+    lines.append("**Due diligence (natural balance to decay):**")
+    lines.append("```")
+    lines.append("📈 +1  file_read      Read files to gather evidence")
+    lines.append("📈 +2  research       WebSearch | WebFetch | crawl4ai")
+    lines.append("📈 +3  rules_update   Edit CLAUDE.md or /rules/")
+    lines.append("```")
+
+    # User interaction (highest)
+    lines.append("")
+    lines.append("**User interaction:**")
+    lines.append("```")
+    lines.append("📈 +20 ask_user       AskUserQuestion (epistemic humility)")
+    lines.append("📈 +2  user_ok        Short positive feedback (ok, thanks)")
+    lines.append("📈 +15 trust_regained CONFIDENCE_BOOST_APPROVED")
+    lines.append("```")
+
+    # Bypass
+    lines.append("")
+    lines.append("**Bypass**: Say `SUDO` (logged) | `FP: <reducer>` to dispute")
+
+    return "\n".join(lines)
 
 
 # =============================================================================
@@ -787,34 +978,32 @@ def check_tool_permission(
     # IGNORANCE (< 30): Only read-only tools - MUST consult external first
     if confidence < 30:
         if tool_name in {"Edit", "Write", "Bash", "NotebookEdit"}:
+            recovery = get_confidence_recovery_options(confidence, target=30)
             return False, (
                 f"{emoji} **BLOCKED: {tool_name}**\n"
-                f"Confidence too low ({confidence}% IGNORANCE).\n"
-                "**MANDATORY**: External consultation REQUIRED first.\n"
-                "Use: mcp__pal__thinkdeep, mcp__pal__debug, or /think\n"
-                "Then confidence will increase and unlock writes."
+                f"Confidence too low ({confidence}% IGNORANCE).\n\n"
+                f"{recovery}"
             )
 
     # HYPOTHESIS (30-50): Scratch only - SHOULD consult external
     elif confidence < 51:
         if tool_name in {"Edit", "Write"} and not is_scratch:
+            recovery = get_confidence_recovery_options(confidence, target=51)
             return False, (
                 f"{emoji} **BLOCKED: {tool_name}** to production\n"
                 f"Confidence ({confidence}% HYPOTHESIS) only allows scratch writes.\n"
-                "**RECOMMENDED**: Consult external LLM to increase confidence:\n"
-                "  • mcp__pal__thinkdeep - deep analysis\n"
-                "  • mcp__pal__debug - debugging help\n"
-                "  • AskUserQuestion - clarify requirements\n"
-                "Or: Write to ~/.claude/tmp/ | Say SUDO to bypass"
+                f"Write to `~/.claude/tmp/` for scratch, or earn confidence:\n\n"
+                f"{recovery}"
             )
         if tool_name == "Bash":
             command = tool_input.get("command", "").lower()
             risky_patterns = ["git push", "git commit", "rm -rf", "deploy", "kubectl"]
             if any(p in command for p in risky_patterns):
+                recovery = get_confidence_recovery_options(confidence, target=51)
                 return False, (
                     f"{emoji} **BLOCKED: Risky Bash command**\n"
-                    f"Confidence ({confidence}% HYPOTHESIS) blocks production commands.\n"
-                    "Consult external LLM first or say SUDO to bypass."
+                    f"Confidence ({confidence}% HYPOTHESIS) blocks production commands.\n\n"
+                    f"{recovery}"
                 )
 
     # WORKING (51-70): Production with quality gates suggested
@@ -1000,6 +1189,8 @@ def apply_increasers(
     """
     Apply all applicable increasers and return list of triggered ones.
 
+    Also handles Trust Debt decay: test_pass and build_success clear debt.
+
     Returns:
         List of (increaser_name, delta, description, requires_approval) tuples
     """
@@ -1023,6 +1214,12 @@ def apply_increasers(
                 if key not in state.nudge_history:
                     state.nudge_history[key] = {}
                 state.nudge_history[key]["last_turn"] = state.turn_count
+
+                # Trust Debt decay: objective signals (test/build) clear debt
+                if increaser.name in ("test_pass", "build_success"):
+                    current_debt = getattr(state, "reputation_debt", 0)
+                    if current_debt > 0:
+                        state.reputation_debt = current_debt - 1
 
     return triggered
 

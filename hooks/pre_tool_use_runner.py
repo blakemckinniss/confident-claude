@@ -78,6 +78,7 @@ from confidence import (
     suggest_alternatives,
     should_mandate_external,
     get_tier_info,
+    get_confidence_recovery_options,
 )
 from _beads import (
     get_open_beads,
@@ -1480,23 +1481,27 @@ def check_production_gate(data: dict, state: SessionState) -> HookResult:
     is_verified, missing = is_production_verified(state, file_path)
     if not is_verified:
         fname = Path(file_path).name
+        # Show full confidence recovery ledger, not just one path
+        recovery_options = get_confidence_recovery_options(state.confidence, target=71)
+
         if missing == "both":
             return HookResult.deny(
-                f"**PRODUCTION GATE**: `{fname}` requires verification.\n"
-                f"Run these commands first:\n"
+                f"**PRODUCTION GATE**: `{fname}` requires verification.\n\n"
+                f"**Quick path** (for this file):\n"
                 f"```bash\n"
                 f"~/.claude/hooks/py ~/.claude/ops/audit.py {file_path}\n"
                 f"~/.claude/hooks/py ~/.claude/ops/void.py {file_path}\n"
-                f"```\n"
-                f"Say SUDO to bypass."
+                f"```\n\n"
+                f"{recovery_options}"
             )
         else:
             return HookResult.deny(
-                f"**PRODUCTION GATE**: `{fname}` needs `{missing}` verification.\n"
+                f"**PRODUCTION GATE**: `{fname}` needs `{missing}` verification.\n\n"
+                f"**Quick path**:\n"
                 f"```bash\n"
                 f"~/.claude/hooks/py ~/.claude/ops/{missing}.py {file_path}\n"
-                f"```\n"
-                f"Say SUDO to bypass."
+                f"```\n\n"
+                f"{recovery_options}"
             )
 
     return HookResult.approve("✓ Production gate passed (audit+void verified)")

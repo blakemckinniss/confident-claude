@@ -521,15 +521,24 @@ def check_rock_bottom(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("confidence_initializer", priority=3)
 def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
-    """Initialize and assess confidence on every prompt."""
+    """Initialize and assess confidence on every prompt.
+
+    Trust Debt System: Hitting the floor has consequences.
+    - Each floor hit increments reputation_debt
+    - While debt > 0: max tier capped at CERTAINTY (can't reach TRUSTED/EXPERT)
+    - Debt decays via test_pass/build_success (+1 debt cleared per success)
+    """
     prompt = data.get("prompt", "")
 
-    # Floor ALWAYS applies, even for short prompts - prevents confidence hell
+    # Floor with Trust Debt - hitting floor has consequences
     CONFIDENCE_FLOOR = 70
     if state.confidence == 0:
         set_confidence(state, DEFAULT_CONFIDENCE, "session initialization")
     elif state.confidence < CONFIDENCE_FLOOR:
-        set_confidence(state, CONFIDENCE_FLOOR, "floor reset (prevent confidence hell)")
+        # Increment trust debt before resetting - repeated floor hits accumulate
+        old_debt = getattr(state, "reputation_debt", 0)
+        state.reputation_debt = old_debt + 1
+        set_confidence(state, CONFIDENCE_FLOOR, f"floor reset (debt now {state.reputation_debt})")
 
     # Skip further analysis for trivial prompts
     if not prompt or len(prompt) < 20:
