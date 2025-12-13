@@ -128,7 +128,7 @@ COMPLETION_PATTERNS = [
     r"\bsuccessfully\s+(implemented|completed|fixed|finished)\b",
     r"\b(all\s+)?(changes|work|tasks?)\s+(are\s+)?(complete|done)\b",
     r"\bnothing\s+(left|more|else)\s+to\s+do\b",
-    r"^\*\*summary[:\s]",  # Summary sections often signal completion
+    r"^\*\*(?:session\s+)?summary\s+(?:of\s+)?(?:completed?\s+)?(?:work|changes|tasks?)",  # More specific
 ]
 
 # Confidence threshold for completion claims

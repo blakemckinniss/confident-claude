@@ -94,12 +94,21 @@ class ToolFailureReducer(ConfidenceReducer):
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
-        # Check for any recent command failures (not just the last one)
-        cutoff = time.time() - 60
-        return any(
-            cmd.get("timestamp", 0) > cutoff
-            for cmd in state.commands_failed[-5:]  # Check last 5 failures
-        )
+        # Check for NEW failures since last trigger (prevents double-fire)
+        last_processed_ts = state.nudge_history.get(f"reducer_{self.name}_last_ts", 0)
+        cutoff = max(time.time() - 60, last_processed_ts)
+        new_failures = [
+            cmd
+            for cmd in state.commands_failed[-5:]
+            if cmd.get("timestamp", 0) > cutoff
+        ]
+        if new_failures:
+            # Update last processed timestamp
+            state.nudge_history[f"reducer_{self.name}_last_ts"] = max(
+                cmd.get("timestamp", 0) for cmd in new_failures
+            )
+            return True
+        return False
 
 
 @dataclass
