@@ -14,7 +14,7 @@ HOOKS INDEX (by priority):
 
   QUALITY GATES (22-50):
     22 assumption_check    - Surface hidden assumptions in code changes
-    25 completion_gate     - Remind to verify after fix iterations
+    25 verification_reminder - Remind to verify after fix iterations
     30 ui_verification     - Remind to screenshot after CSS/UI changes
     35 code_quality_gate   - Detect anti-patterns (N+1, O(n³), blocking I/O, nesting)
     37 state_mutation_guard - Detect React/Python mutation anti-patterns
@@ -1067,7 +1067,7 @@ def check_confidence_decay(
     new_confidence = max(0, min(100, old_confidence + delta))
 
     if new_confidence != old_confidence:
-        set_confidence(state, new_confidence, "thinking_confidence adjustment")
+        set_confidence(state, new_confidence, "confidence_decay")
 
         # Build reason string
         reasons = []
@@ -1480,15 +1480,15 @@ def check_assumptions(
 
 
 # -----------------------------------------------------------------------------
-# COMPLETION GATE (priority 25)
+# VERIFICATION REMINDER (priority 25)
 # -----------------------------------------------------------------------------
 
 
-@register_hook("completion_gate", "Edit|Write|MultiEdit", priority=25)
-def check_completion_gate(
+@register_hook("verification_reminder", "Edit|Write|MultiEdit", priority=25)
+def check_verification_reminder(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Block 'fixed/done/complete' claims without verification."""
+    """Remind to verify after fix iterations."""
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 

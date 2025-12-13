@@ -1955,6 +1955,6 @@ def _apply_mean_reversion_on_load(state: SessionState) -> SessionState:
             "new": new_confidence,
             "reason": reason,
         }
-        state.confidence = new_confidence
+        set_confidence(state, new_confidence, f"mean_reversion: {reason}")
 
     return state
