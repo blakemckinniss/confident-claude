@@ -1883,11 +1883,11 @@ def suggest_crawl4ai(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve()
 
     # Don't spam - use session tracking
-    crawl4ai_suggestions = state.get("crawl4ai_suggestions", 0)
+    crawl4ai_suggestions = getattr(state, "crawl4ai_suggestions", 0)
     if crawl4ai_suggestions >= 2:  # Max 2 suggestions per session
         return HookResult.approve()
 
-    state.set("crawl4ai_suggestions", crawl4ai_suggestions + 1)
+    state.crawl4ai_suggestions = crawl4ai_suggestions + 1
 
     return HookResult.approve(
         "🌟 **Consider crawl4ai instead** - Superior for web content:\n"

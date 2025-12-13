@@ -915,9 +915,7 @@ def check_confidence_decay(
     """
     tool_name = data.get("tool_name", "")
 
-    # Track accumulated fractional decay
-    if not hasattr(state, "_decay_accumulator"):
-        state._decay_accumulator = 0.0
+    # _decay_accumulator is now a SessionState dataclass field with default 0.0
 
     # Base decay per tool call (harsh: every action costs confidence)
     base_decay = 1.0

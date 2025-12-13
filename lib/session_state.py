@@ -273,6 +273,9 @@ class SessionState:
     consecutive_blocks: dict = field(default_factory=dict)
     last_block_turn: int = 0
 
+    # Hook-specific counters
+    crawl4ai_suggestions: int = 0  # Track crawl4ai preference suggestions
+
     # ==========================================================================
     # AUTONOMOUS AGENT PATTERNS (v3.6) - Inspired by Anthropic's agent harness
     # https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents

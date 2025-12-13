@@ -901,13 +901,15 @@ def apply_rate_limit(delta: int, state: "SessionState") -> int:
     state.nudge_history[turn_key] = cumulative + clamped
 
     # Cleanup stale turn keys (keep only last 10 turns to prevent unbounded growth)
-    stale_keys = [
-        k
-        for k in state.nudge_history
-        if k.startswith("_confidence_delta_turn_")
-        and k != turn_key
-        and int(k.split("_")[-1]) < state.turn_count - 10
-    ]
+    stale_keys = []
+    for k in state.nudge_history:
+        if k.startswith("_confidence_delta_turn_") and k != turn_key:
+            try:
+                turn_num = int(k.split("_")[-1])
+                if turn_num < state.turn_count - 10:
+                    stale_keys.append(k)
+            except ValueError:
+                stale_keys.append(k)  # Remove malformed keys
     for k in stale_keys:
         del state.nudge_history[k]
 
