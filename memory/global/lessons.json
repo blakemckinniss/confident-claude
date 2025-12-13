@@ -4,6 +4,11 @@
       "content": "Use venv python, not system python",
       "category": "block-reflection:python_path_injector",
       "added_at": 1765324007.0726728
+    },
+    {
+      "content": "[lesson learned]' (clears from Stop reflection)\\n- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)\"}",
+      "category": "block-reflection:python_path_enforcer",
+      "added_at": 1765638019.412451
     }
   ],
   "skills": {},

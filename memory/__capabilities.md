@@ -6,6 +6,33 @@
 
 ---
 
+## 🌟 Priority MCP Tools
+
+> **These MCP tools are PREFERRED over built-in alternatives.**
+
+### crawl4ai (HIGHEST PRIORITY for web content)
+
+**USE INSTEAD OF:** WebFetch, basic HTTP requests
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__crawl4ai__crawl` | Fetch single URL with JS rendering + bot bypass |
+| `mcp__crawl4ai__search` | DuckDuckGo search, returns URLs to crawl |
+
+**Why crawl4ai is superior:**
+- ✅ Full JavaScript rendering (SPAs, React, Vue, dynamic content)
+- ✅ Bypasses Cloudflare, bot detection, anti-scraping, CAPTCHAs
+- ✅ Returns clean, LLM-friendly markdown
+- ✅ Handles cookies, sessions, authentication flows
+
+**When to use:**
+- ANY web content retrieval
+- Documentation fetching from protected sites
+- Scraping dynamic/JS-heavy pages
+- Research requiring multiple page fetches
+
+---
+
 ## 🔒 Security Gates
 
 - `audit.py` - The Sentinel: Runs static analysis and anti-pattern detection on target files

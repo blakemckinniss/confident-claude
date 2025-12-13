@@ -259,3 +259,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-13 00:50
 - [abandoned_stubs] ⚠️ ABANDONED WORK: db.ts contain stubs/TODOs
+
+### 2025-12-13 10:00
+[block-reflection:python_path_enforcer] [lesson learned]' (clears from Stop reflection)\n- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"}
