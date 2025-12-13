@@ -68,12 +68,15 @@ These fire **mechanically** based on signals - no self-judgment involved.
 |---------|-------|---------|----------|
 | `backup_file` | -10 | Creating .bak, .backup, .old files | 1 turn |
 | `version_file` | -10 | Creating _v2, _new, _copy files | 1 turn |
+| `debt_bash` | -10 | --force, --hard, --no-verify commands | 1 turn |
 | `markdown_creation` | -8 | Creating .md files (except memory/docs) | 1 turn |
+| `large_diff` | -8 | Diffs over 400 LOC (risky changes) | 1 turn |
 | `overconfident_completion` | -15 | "100% done", "completely finished" | 3 turns |
 | `deferral` | -12 | "skip for now", "come back later" | 3 turns |
 | `apologetic` | -5 | "sorry", "my mistake", "I apologize" | 2 turns |
 | `sycophancy` | -8 | "you're absolutely right", "great point" | 2 turns |
 | `unresolved_antipattern` | -10 | Mentioning issues without fixing | 3 turns |
+| `hook_block` | -5 | When hooks block actions | 1 turn |
 
 ## Increasers (Automatic Rewards)
 
@@ -82,9 +85,12 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | Increaser | Delta | Trigger |
 |-----------|-------|---------|
 | `file_read` | +1 | Read tool (gathering evidence) |
+| `productive_bash` | +1 | ls, pwd, which, tree, stat (inspection) |
 | `research` | +2 | WebSearch, WebFetch, crawl4ai |
+| `search_tool` | +2 | Grep, Glob, Task (understanding) |
 | `rules_update` | +3 | Edit CLAUDE.md or /rules/ |
 | `lint_pass` | +3 | ruff check, eslint, cargo clippy passes |
+| `small_diff` | +3 | Diffs under 400 LOC (focused changes) |
 | `custom_script` | +5 | ~/.claude/ops/* scripts (audit, void, etc.) |
 | `test_pass` | +5 | pytest/jest/cargo test passes |
 | `build_success` | +5 | npm build/cargo build/tsc succeeds |
