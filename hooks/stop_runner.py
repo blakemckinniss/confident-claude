@@ -537,6 +537,16 @@ BAD_LANGUAGE_PATTERNS = {
             r"\bwe\s+can\s+(do|address|handle)\s+(this|it)\s+later\b",
             r"\bpostpone\b",
             r"\bdefer\s+(this|it)\b",
+            # "investigate later" variants - absolute cancer
+            r"\b(bug|issue|problem|this)\s+to\s+investigate\s+later\b",
+            r"\binvestigate\s+(this\s+)?(later|another\s+time)\b",
+            r"\blook\s+into\s+(this\s+)?(later|another\s+time)\b",
+            r"\bfix\s+(this\s+)?(later|another\s+time)\b",
+            r"\baddress\s+(this\s+)?(later|another\s+time)\b",
+            r"\btable\s+(this|it)\s+for\s+(now|later)\b",
+            r"\bpunt\s+(on\s+)?(this|it)\b",
+            r"\bshelve\s+(this|it)\b",
+            r"\bbacklog\s+(this|it)\b",
         ],
     },
     "apologetic": {
