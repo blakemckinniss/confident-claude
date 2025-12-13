@@ -667,6 +667,25 @@ BAD_LANGUAGE_PATTERNS = {
             r"\bi\s+can'?t\s+(help|assist)\s+with\s+that\b(?!\s+because)",
         ],
     },
+    "obvious_next_steps": {
+        "delta": -5,
+        "patterns": [
+            # Obvious testing suggestions
+            r"\btest\s+(?:in\s+)?(?:real\s+)?usage\b",
+            r"\btest\s+the\s+(?:new\s+)?(?:patterns?|changes?|implementation)\b",
+            r"\bverify\s+(?:it\s+)?works\b",
+            r"\bplay\s*test\b",
+            r"\btry\s+it\s+out\b",
+            r"\bsee\s+how\s+it\s+(?:works|performs)\b",
+            # Obvious iteration suggestions
+            r"\btune\s+(?:the\s+)?(?:values?|deltas?|parameters?)\b",
+            r"\badjust\s+(?:as\s+)?needed\b",
+            r"\bmonitor\s+(?:for\s+)?(?:issues?|problems?)\b",
+            r"\bwatch\s+(?:for\s+)?(?:issues?|problems?|errors?)\b",
+            # Generic obvious actions
+            r"\b(?:run|do)\s+(?:the\s+)?(?:tests?|builds?)\s+(?:to\s+)?(?:verify|check|confirm)\b",
+        ],
+    },
 }
 
 
@@ -1143,7 +1162,9 @@ def check_session_debt(data: dict, state: SessionState) -> HookResult:
     set_confidence(state, new_confidence, "session debt penalty")
 
     _, emoji, desc = get_tier_info(new_confidence)
-    change_msg = format_confidence_change(old_confidence, new_confidence, "session_debt")
+    change_msg = format_confidence_change(
+        old_confidence, new_confidence, "session_debt"
+    )
 
     debt_list = "\n".join(f"  • {item}" for item in debt_items[:5])
 

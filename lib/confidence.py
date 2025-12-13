@@ -1080,6 +1080,55 @@ class TrivialQuestionReducer(ConfidenceReducer):
         return context.get("trivial_question", False)
 
 
+@dataclass
+class ObviousNextStepsReducer(ConfidenceReducer):
+    """Triggers on useless obvious 'next steps' suggestions.
+
+    Patterns like "test in real usage", "tune values", "monitor for issues"
+    are filler that wastes tokens and provides no actionable guidance.
+    """
+
+    name: str = "obvious_next_steps"
+    delta: int = -5
+    description: str = "Obvious/useless next steps (filler)"
+    cooldown_turns: int = 1
+    patterns: list = field(
+        default_factory=lambda: [
+            r"test\s+(?:in\s+)?(?:real\s+)?usage",
+            r"tune\s+(?:the\s+)?(?:values?|deltas?|parameters?)",
+            r"adjust\s+(?:as\s+)?needed",
+            r"monitor\s+(?:for\s+)?(?:issues?|problems?)",
+            r"verify\s+(?:it\s+)?works",
+            r"play\s*test",
+            r"try\s+it\s+out",
+            r"see\s+how\s+it\s+(?:works|performs)",
+            r"test\s+the\s+(?:new\s+)?(?:patterns?|changes?|implementation)",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        # Only check in "Next Steps" section if present
+        next_steps_match = re.search(
+            r"(?:next\s+steps?|➡️).*$", output, re.IGNORECASE | re.DOTALL
+        )
+        if next_steps_match:
+            section = next_steps_match.group(0)
+        else:
+            # Check last 500 chars as fallback
+            section = output[-500:]
+        for pattern in self.patterns:
+            if re.search(pattern, section, re.IGNORECASE):
+                return True
+        return False
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
@@ -1116,6 +1165,7 @@ REDUCERS: list[ConfidenceReducer] = [
     HugeOutputDumpReducer(),  # Huge output without summary (-2)
     RedundantExplanationReducer(),  # "As I mentioned..." (-2)
     TrivialQuestionReducer(),  # Questions answerable by reading (-5)
+    ObviousNextStepsReducer(),  # "Test in real usage" filler (-5)
 ]
 
 
