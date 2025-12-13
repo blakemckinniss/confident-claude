@@ -436,9 +436,304 @@ class FollowUpQuestionReducer(ConfidenceReducer):
         return False
 
 
+# =============================================================================
+# BAD BEHAVIOR REDUCERS (Anti-patterns we never want to see)
+# =============================================================================
+
+
+@dataclass
+class BackupFileReducer(ConfidenceReducer):
+    """Triggers when creating backup files (technical debt)."""
+
+    name: str = "backup_file"
+    delta: int = -10
+    description: str = "Created backup file (technical debt)"
+    cooldown_turns: int = 1
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\.bak$",
+            r"\.backup$",
+            r"_backup\.",
+            r"\.old$",
+            r"_old\.",
+            r"\.orig$",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        file_path = context.get("file_path", "")
+        if not file_path:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, file_path, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class VersionFileReducer(ConfidenceReducer):
+    """Triggers when creating versioned files instead of editing in place."""
+
+    name: str = "version_file"
+    delta: int = -10
+    description: str = "Created versioned file (technical debt)"
+    cooldown_turns: int = 1
+    patterns: list = field(
+        default_factory=lambda: [
+            r"_v\d+\.",  # file_v2.py
+            r"_new\.",  # file_new.py
+            r"_copy\.",  # file_copy.py
+            r"_updated\.",  # file_updated.py
+            r"_fixed\.",  # file_fixed.py
+            r"\.\d+\.",  # file.2.py
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        file_path = context.get("file_path", "")
+        if not file_path:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, file_path, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class MarkdownCreationReducer(ConfidenceReducer):
+    """Triggers when creating markdown files (documentation theater)."""
+
+    name: str = "markdown_creation"
+    delta: int = -8
+    description: str = "Created markdown file (documentation theater)"
+    cooldown_turns: int = 1
+    # Exempt paths where markdown is acceptable
+    exempt_paths: list = field(
+        default_factory=lambda: [
+            r"\.claude/memory/",  # Memory files OK
+            r"\.claude/skills/",  # Skills OK
+            r"/docs?/",  # Explicit docs folders OK
+            r"README\.md$",  # README OK if explicitly requested
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        file_path = context.get("file_path", "")
+        if not file_path or not file_path.endswith(".md"):
+            return False
+        # Check if exempt
+        for exempt in self.exempt_paths:
+            if re.search(exempt, file_path, re.IGNORECASE):
+                return False
+        # Only trigger on Write (creation), not Edit
+        tool_name = context.get("tool_name", "")
+        return tool_name == "Write"
+
+
+@dataclass
+class OverconfidentCompletionReducer(ConfidenceReducer):
+    """Triggers on '100% done' or similar overconfident claims."""
+
+    name: str = "overconfident_completion"
+    delta: int = -15
+    description: str = "Claimed '100% done' or similar overconfidence"
+    cooldown_turns: int = 3
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\b100%\s*(done|complete|finished|ready)\b",
+            r"\bcompletely\s+(done|finished|ready)\b",
+            r"\bperfectly\s+(done|finished|working)\b",
+            r"\bfully\s+complete[d]?\b",
+            r"\bnothing\s+(left|more|else)\s+to\s+(do|fix|change)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class DeferralReducer(ConfidenceReducer):
+    """Triggers on 'skip for now', 'come back later' deferral patterns."""
+
+    name: str = "deferral"
+    delta: int = -12
+    description: str = "Deferred work ('skip for now', 'come back later')"
+    cooldown_turns: int = 3
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\bskip\s+(this\s+)?(for\s+)?now\b",
+            r"\bcome\s+back\s+(to\s+(this|it)\s+)?later\b",
+            r"\bdo\s+(this|it)\s+later\b",
+            r"\bleave\s+(this|it)\s+for\s+(now|later)\b",
+            r"\bwe\s+can\s+(do|address|handle)\s+(this|it)\s+later\b",
+            r"\bpostpone\b",
+            r"\bdefer\s+(this|it)\b",
+            r"\bput\s+(this|it)\s+off\b",
+            r"\btable\s+(this|it)\s+for\s+now\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class ApologeticReducer(ConfidenceReducer):
+    """Triggers on apologetic language ('sorry', 'my mistake')."""
+
+    name: str = "apologetic"
+    delta: int = -5
+    description: str = "Used apologetic language (banned)"
+    cooldown_turns: int = 2
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\b(i'?m\s+)?sorry\b",
+            r"\bmy\s+(mistake|bad|apologies|fault)\b",
+            r"\bi\s+apologize\b",
+            r"\bapologies\s+for\b",
+            r"\bpardon\s+(me|my)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class SycophancyReducer(ConfidenceReducer):
+    """Triggers on sycophantic agreement patterns."""
+
+    name: str = "sycophancy"
+    delta: int = -8
+    description: str = "Sycophantic agreement ('you're absolutely right')"
+    cooldown_turns: int = 2
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\byou'?re\s+(absolutely|totally|completely|entirely)\s+right\b",
+            r"\babsolutely\s+right\b",
+            r"\byou'?re\s+right,?\s+(i|my)\b",  # "you're right, I should..."
+            r"\bthat'?s\s+(absolutely|totally|completely)\s+(correct|true|right)\b",
+            r"\bgreat\s+(point|observation|catch)\b",
+            r"\bexcellent\s+(point|observation|catch)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class UnresolvedAntiPatternReducer(ConfidenceReducer):
+    """Triggers when mentioning anti-patterns without resolving them."""
+
+    name: str = "unresolved_antipattern"
+    delta: int = -10
+    description: str = "Identified anti-pattern without resolution"
+    cooldown_turns: int = 3
+    # Anti-pattern mentions
+    antipattern_signals: list = field(
+        default_factory=lambda: [
+            r"\banti-?pattern\b",
+            r"\bcode\s+smell\b",
+            r"\btechnical\s+debt\b",
+            r"\bbad\s+practice\b",
+            r"\bshould\s+(be\s+)?(refactor|fix|change|update)ed\b",
+            r"\bneeds\s+(to\s+be\s+)?(refactor|fix|clean)ed\b",
+        ]
+    )
+    # Resolution signals (if present, don't trigger)
+    resolution_signals: list = field(
+        default_factory=lambda: [
+            r"\bfixed\b",
+            r"\bresolved\b",
+            r"\brefactored\b",
+            r"\bupdated\b",
+            r"\bchanged\b",
+            r"\bhere'?s\s+(the|a)\s+fix\b",
+            r"\blet\s+me\s+fix\b",
+            r"\bi'?ll\s+fix\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        # Check if anti-pattern mentioned
+        has_antipattern = any(
+            re.search(p, output, re.IGNORECASE) for p in self.antipattern_signals
+        )
+        if not has_antipattern:
+            return False
+        # Check if resolution also mentioned (within same output)
+        has_resolution = any(
+            re.search(p, output, re.IGNORECASE) for p in self.resolution_signals
+        )
+        # Only trigger if anti-pattern mentioned WITHOUT resolution
+        return not has_resolution
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
+    # Core reducers (existing)
     ToolFailureReducer(),
     CascadeBlockReducer(),
     SunkCostReducer(),
@@ -447,6 +742,15 @@ REDUCERS: list[ConfidenceReducer] = [
     EditOscillationReducer(),
     ContradictionReducer(),  # Uses pattern matching for user-reported contradictions
     FollowUpQuestionReducer(),
+    # Bad behavior reducers (new)
+    BackupFileReducer(),  # Technical debt: .bak, .backup, .old files
+    VersionFileReducer(),  # Technical debt: _v2, _new, _copy files
+    MarkdownCreationReducer(),  # Documentation theater (except memory/skills/docs)
+    OverconfidentCompletionReducer(),  # "100% done" claims
+    DeferralReducer(),  # "skip for now", "come back later"
+    ApologeticReducer(),  # "sorry", "my mistake"
+    SycophancyReducer(),  # "you're absolutely right"
+    UnresolvedAntiPatternReducer(),  # Mentioning issues without fixing
 ]
 
 

@@ -516,6 +516,125 @@ def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
     return HookResult.ok()
 
 
+# Language patterns for bad behavior detection
+BAD_LANGUAGE_PATTERNS = {
+    "overconfident_completion": {
+        "delta": -15,
+        "patterns": [
+            r"\b100%\s*(done|complete|finished|ready)\b",
+            r"\bcompletely\s+(done|finished|ready)\b",
+            r"\bperfectly\s+(done|finished|working)\b",
+            r"\bfully\s+complete[d]?\b",
+        ],
+    },
+    "deferral": {
+        "delta": -12,
+        "patterns": [
+            r"\bskip\s+(this\s+)?(for\s+)?now\b",
+            r"\bcome\s+back\s+(to\s+(this|it)\s+)?later\b",
+            r"\bdo\s+(this|it)\s+later\b",
+            r"\bleave\s+(this|it)\s+for\s+(now|later)\b",
+            r"\bwe\s+can\s+(do|address|handle)\s+(this|it)\s+later\b",
+            r"\bpostpone\b",
+            r"\bdefer\s+(this|it)\b",
+        ],
+    },
+    "apologetic": {
+        "delta": -5,
+        "patterns": [
+            r"\b(i'?m\s+)?sorry\b",
+            r"\bmy\s+(mistake|bad|apologies|fault)\b",
+            r"\bi\s+apologize\b",
+            r"\bapologies\s+for\b",
+        ],
+    },
+    "sycophancy": {
+        "delta": -8,
+        "patterns": [
+            r"\byou'?re\s+(absolutely|totally|completely|entirely)\s+right\b",
+            r"\babsolutely\s+right\b",
+            r"\byou'?re\s+right,?\s+(i|my)\b",
+            r"\bthat'?s\s+(absolutely|totally|completely)\s+(correct|true|right)\b",
+            r"\bgreat\s+(point|observation|catch)\b",
+            r"\bexcellent\s+(point|observation|catch)\b",
+        ],
+    },
+}
+
+
+@register_hook("bad_language_detector", priority=46)
+def check_bad_language(data: dict, state: SessionState) -> HookResult:
+    """Detect and penalize bad language patterns in assistant output.
+
+    Scans transcript for: overconfident completion claims, deferral,
+    apologetic language, and sycophancy patterns.
+    """
+    from confidence import (
+        apply_rate_limit,
+        format_confidence_change,
+        format_dispute_instructions,
+        get_tier_info,
+        set_confidence,
+    )
+
+    # Get recent transcript content
+    transcript_path = data.get("transcript_path", "")
+    if not transcript_path or not Path(transcript_path).exists():
+        return HookResult.ok()
+
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)  # End
+            size = f.tell()
+            f.seek(max(0, size - 20000))  # Last 20KB
+            content = f.read().decode("utf-8", errors="ignore")
+    except (OSError, PermissionError):
+        return HookResult.ok()
+
+    # Track which patterns triggered
+    triggered = []
+
+    for name, config in BAD_LANGUAGE_PATTERNS.items():
+        # Check cooldown
+        cooldown_key = f"bad_lang_{name}_turn"
+        last_turn = state.nudge_history.get(cooldown_key, 0)
+        if state.turn_count - last_turn < 3:  # 3 turn cooldown
+            continue
+
+        for pattern in config["patterns"]:
+            if re.search(pattern, content, re.IGNORECASE):
+                triggered.append((name, config["delta"]))
+                state.nudge_history[cooldown_key] = state.turn_count
+                break  # Only trigger once per category
+
+    if not triggered:
+        return HookResult.ok()
+
+    # Apply penalties with rate limiting
+    old_confidence = state.confidence
+    total_delta = sum(delta for _, delta in triggered)
+    total_delta = apply_rate_limit(total_delta, state)
+    new_confidence = max(0, min(100, old_confidence + total_delta))
+
+    set_confidence(state, new_confidence, "bad language detected")
+
+    # Format feedback
+    reasons = [f"{name}: {delta}" for name, delta in triggered]
+    change_msg = format_confidence_change(
+        old_confidence, new_confidence, ", ".join(reasons)
+    )
+
+    _, emoji, desc = get_tier_info(new_confidence)
+    reducer_names = [name for name, _ in triggered]
+    dispute_hint = format_dispute_instructions(reducer_names)
+
+    return HookResult.warn(
+        f"📉 **Bad Language Detected**\n{change_msg}\n\n"
+        f"Current: {emoji} {new_confidence}% - {desc}"
+        f"{dispute_hint}"
+    )
+
+
 @register_hook("stub_detector", priority=50)
 def check_stubs(data: dict, state: SessionState) -> HookResult:
     """Check created files for stubs."""

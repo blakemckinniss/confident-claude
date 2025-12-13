@@ -1134,6 +1134,12 @@ def check_confidence_reducer(
         "prompt": getattr(state, "last_user_prompt", ""),  # For ContradictionReducer
     }
 
+    # Add file_path for file-based reducers (BackupFile, VersionFile, MarkdownCreation)
+    if tool_name in ("Edit", "Write", "Read"):
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            context["file_path"] = file_path
+
     # Check for tool failure (Bash exit code != 0)
     if tool_name == "Bash":
         if isinstance(tool_result, dict):
