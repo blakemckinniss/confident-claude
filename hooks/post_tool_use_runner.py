@@ -1210,7 +1210,11 @@ def check_confidence_increaser(
 
     # File reads = gathering evidence (+1)
     if tool_name == "Read":
+        file_path = tool_input.get("file_path", "")
         context["files_read_count"] = 1
+        # Memory consultation = leveraging knowledge (+10)
+        if "/.claude/memory" in file_path or "/memory/" in file_path:
+            context["memory_consulted"] = True
 
     # Research tools = due diligence (+2)
     if tool_name in {"WebSearch", "WebFetch", "mcp__crawl4ai__crawl", "mcp__crawl4ai__search"}:
@@ -1226,11 +1230,19 @@ def check_confidence_increaser(
         if "CLAUDE.md" in file_path or "/rules/" in file_path or "/.claude/rules" in file_path:
             context["rules_updated"] = True
 
-    # Custom ops scripts = using tools (+5)
+    # Bash commands with special signals
     if tool_name == "Bash":
         command = tool_input.get("command", "")
+        # Custom ops scripts = using tools (+5)
         if "/.claude/ops/" in command or "/ops/" in command:
             context["custom_script_ran"] = True
+        # Bead creation = planning work (+10)
+        if "bd create" in command or "bd update" in command:
+            context["bead_created"] = True
+        # Git exploration = understanding context (+10)
+        git_explore_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
+        if any(g in command for g in git_explore_cmds):
+            context["git_explored"] = True
 
     # =========================================================================
     # OBJECTIVE SIGNAL DETECTION (tests, builds, lints)

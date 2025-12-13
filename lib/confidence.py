@@ -41,7 +41,9 @@ THRESHOLD_REQUIRE_RESEARCH = 50  # Below this: research REQUIRED
 THRESHOLD_PRODUCTION_ACCESS = 51  # Below this: no production writes
 
 # Rock bottom recovery target (nerfed from 85 to prevent gaming)
-ROCK_BOTTOM_RECOVERY_TARGET = 65  # Boost to this after realignment (not 85 - exploitable)
+ROCK_BOTTOM_RECOVERY_TARGET = (
+    65  # Boost to this after realignment (not 85 - exploitable)
+)
 
 # Tier emoji mapping
 TIER_EMOJI = {
@@ -763,8 +765,66 @@ class LintPassIncreaser(ConfidenceIncreaser):
         return False
 
 
+@dataclass
+class MemoryConsultIncreaser(ConfidenceIncreaser):
+    """Triggers when consulting memory files - leveraging accumulated knowledge."""
+
+    name: str = "memory_consult"
+    delta: int = 10
+    description: str = "Consulted persistent memory"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("memory_consulted", False)
+
+
+@dataclass
+class BeadCreateIncreaser(ConfidenceIncreaser):
+    """Triggers when creating beads - planning and tracking work."""
+
+    name: str = "bead_create"
+    delta: int = 10
+    description: str = "Created task tracking bead"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("bead_created", False)
+
+
+@dataclass
+class GitExploreIncreaser(ConfidenceIncreaser):
+    """Triggers when exploring git history - understanding context."""
+
+    name: str = "git_explore"
+    delta: int = 10
+    description: str = "Explored git history/state"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("git_explored", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
+    # High-value context gathering (+10)
+    MemoryConsultIncreaser(),
+    BeadCreateIncreaser(),
+    GitExploreIncreaser(),
     # Objective signals (high value)
     TestPassIncreaser(),
     BuildSuccessIncreaser(),
@@ -819,6 +879,15 @@ def get_confidence_recovery_options(current_confidence: int, target: int = 70) -
     lines.append("📈 +1  file_read      Read files to gather evidence")
     lines.append("📈 +2  research       WebSearch | WebFetch | crawl4ai")
     lines.append("📈 +3  rules_update   Edit CLAUDE.md or /rules/")
+    lines.append("```")
+
+    # Context-building signals (high value)
+    lines.append("")
+    lines.append("**Context-building (+10 each):**")
+    lines.append("```")
+    lines.append("📈 +10 memory_consult Read ~/.claude/memory/ files")
+    lines.append("📈 +10 bead_create    bd create | bd update (task tracking)")
+    lines.append("📈 +10 git_explore    git log | git diff | git status | git show")
     lines.append("```")
 
     # User interaction (highest)
