@@ -917,12 +917,12 @@ def check_confidence_decay(
 
     # _decay_accumulator is now a SessionState dataclass field with default 0.0
 
-    # Base decay per tool call (harsh: every action costs confidence)
-    base_decay = 1.0
+    # Base decay per tool call (moderate: actions have cost but not punishing)
+    base_decay = 0.4
 
     # High confidence tax: above 85%, decay faster (complacency penalty)
     if state.confidence >= 85:
-        base_decay += 0.5  # 1.5 total at high confidence
+        base_decay += 0.3  # 0.7 total at high confidence
 
     state._decay_accumulator += base_decay
 

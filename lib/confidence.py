@@ -773,44 +773,50 @@ def check_tool_permission(
     # Check confidence-based restrictions
     file_path = tool_input.get("file_path", "")
     is_scratch = ".claude/tmp" in file_path or "/tmp/" in file_path
+    is_production = not is_scratch and ".claude/" not in file_path
 
-    # IGNORANCE (< 30): Only read-only tools
+    # IGNORANCE (< 30): Only read-only tools - MUST consult external first
     if confidence < 30:
         if tool_name in {"Edit", "Write", "Bash", "NotebookEdit"}:
             return False, (
                 f"{emoji} **BLOCKED: {tool_name}**\n"
                 f"Confidence too low ({confidence}% IGNORANCE).\n"
-                "External consultation REQUIRED first.\n"
-                "Use: mcp__pal__thinkdeep, /think, or /oracle"
+                "**MANDATORY**: External consultation REQUIRED first.\n"
+                "Use: mcp__pal__thinkdeep, mcp__pal__debug, or /think\n"
+                "Then confidence will increase and unlock writes."
             )
 
-    # HYPOTHESIS (30-50): Scratch only
+    # HYPOTHESIS (30-50): Scratch only - SHOULD consult external
     elif confidence < 51:
         if tool_name in {"Edit", "Write"} and not is_scratch:
             return False, (
                 f"{emoji} **BLOCKED: {tool_name}** to production\n"
                 f"Confidence ({confidence}% HYPOTHESIS) only allows scratch writes.\n"
-                "Options:\n"
-                "1. Write to ~/.claude/tmp/ instead\n"
-                "2. Research to increase confidence\n"
-                "3. Say SUDO to bypass"
+                "**RECOMMENDED**: Consult external LLM to increase confidence:\n"
+                "  • mcp__pal__thinkdeep - deep analysis\n"
+                "  • mcp__pal__debug - debugging help\n"
+                "  • AskUserQuestion - clarify requirements\n"
+                "Or: Write to ~/.claude/tmp/ | Say SUDO to bypass"
             )
         if tool_name == "Bash":
-            # Check for state-modifying commands
             command = tool_input.get("command", "").lower()
-            risky_patterns = [
-                "git push",
-                "git commit",
-                "rm -rf",
-                "deploy",
-                "kubectl apply",
-            ]
+            risky_patterns = ["git push", "git commit", "rm -rf", "deploy", "kubectl"]
             if any(p in command for p in risky_patterns):
                 return False, (
                     f"{emoji} **BLOCKED: Risky Bash command**\n"
                     f"Confidence ({confidence}% HYPOTHESIS) blocks production commands.\n"
-                    "Research first or say SUDO to bypass."
+                    "Consult external LLM first or say SUDO to bypass."
                 )
+
+    # WORKING (51-70): Production with quality gates suggested
+    elif confidence < 71:
+        if tool_name in {"Edit", "Write"} and is_production:
+            # Allow but suggest gates - this is advisory not blocking
+            pass  # Enforcement via pre_tool_use advisory messages
+
+    # CERTAINTY (71-85): Production allowed, gates enforced by pre_tool_use
+    # TRUSTED (86-94): Production allowed, warnings only
+    # EXPERT (95-100): Maximum freedom
 
     return True, ""
 
