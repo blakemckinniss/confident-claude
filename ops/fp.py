@@ -12,6 +12,8 @@ Examples:
 
 This records the FP, restores confidence, and increases future cooldown
 for that reducer (adaptive learning).
+
+Claude: Use this when you see a false positive confidence reduction.
 """
 
 import sys

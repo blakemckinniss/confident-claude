@@ -1064,16 +1064,27 @@ PATTERN_N_PLUS_ONE = re.compile(
     r"for\s+.*?\s+in\s+.*?:\s*\n?\s*.*?(query|fetch|load|select|find|get)\s*\(",
     re.MULTILINE | re.IGNORECASE,
 )
+# Nested loops: Match actual indented nesting (outer loop then indented inner loop)
 PATTERN_NESTED_LOOPS = re.compile(
-    r"(for|while)\s+[^{:]+[{:]\s*[\s\S]*?(for|while)\s+[^{:]+[{:]", re.MULTILINE
+    r"^[ ]{0,8}(for|while)\s+[^\n]+:\s*\n"  # Outer loop
+    r"(?:[ ]{4,}[^\n]*\n)*?"  # Skip lines until...
+    r"[ ]{4,}(for|while)\s+[^\n]+:",  # Inner loop (more indented)
+    re.MULTILINE,
 )
 
 # NEW: Additional performance anti-patterns from old system
 PATTERN_STRING_CONCAT_LOOP = re.compile(
     r"for\s+.*?[:{]\s*\n?\s*.*?\+=\s*['\"]", re.MULTILINE
 )
+# Triple loop: Match actual indented nesting, not just 3 keywords anywhere
+# Pattern: for/while at col 0-4, then indented for/while, then more indented for/while
 PATTERN_TRIPLE_LOOP = re.compile(
-    r"for\s+.*?(for|while)\s+.*?(for|while)\s+", re.MULTILINE | re.DOTALL
+    r"^[ ]{0,4}(for|while)\s+[^\n]+:\s*\n"  # Outer loop at indent 0-4
+    r"(?:[ ]{4,}[^\n]*\n)*?"  # Skip lines until...
+    r"[ ]{4,8}(for|while)\s+[^\n]+:\s*\n"  # Middle loop at indent 4-8
+    r"(?:[ ]{8,}[^\n]*\n)*?"  # Skip lines until...
+    r"[ ]{8,}(for|while)\s+[^\n]+:",  # Inner loop at indent 8+
+    re.MULTILINE,
 )
 PATTERN_BLOCKING_IO_NODE = re.compile(
     r"\b(readFileSync|writeFileSync|existsSync|execSync)\s*\("
@@ -1145,15 +1156,16 @@ def check_code_quality(
             "⚠️ **Missing Error Handler**: Try block without catch/except clause."
         )
 
-    # Debug statements
+    # Debug statements (skip for CLI tools in ops/ where print IS the output)
     is_python = file_path.endswith(".py")
     is_js = file_path.endswith((".js", ".ts", ".jsx", ".tsx"))
+    is_cli_tool = "/ops/" in file_path or "/.claude/hooks/" in file_path
     debug_count = (
         len(PATTERN_DEBUG_PY.findall(code))
         if is_python
         else (len(PATTERN_DEBUG_JS.findall(code)) if is_js else 0)
     )
-    if debug_count > threshold_debug:
+    if debug_count > threshold_debug and not is_cli_tool:
         stmt = "print()" if is_python else "console.log()"
         hints.append(
             f"🐛 **Debug Statements**: {debug_count} {stmt} found. Remove before committing."
