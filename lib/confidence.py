@@ -94,9 +94,11 @@ class ToolFailureReducer(ConfidenceReducer):
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
-        # Check for recent command failures
-        return len(state.commands_failed) > 0 and (
-            state.commands_failed[-1].get("timestamp", 0) > time.time() - 60
+        # Check for any recent command failures (not just the last one)
+        cutoff = time.time() - 60
+        return any(
+            cmd.get("timestamp", 0) > cutoff
+            for cmd in state.commands_failed[-5:]  # Check last 5 failures
         )
 
 
@@ -575,7 +577,8 @@ class UserOkIncreaser(ConfidenceIncreaser):
             return False
         prompt = context.get("prompt", "").lower().strip()
         # Short positive responses only (avoid false positives in long prompts)
-        if len(prompt) > 50:
+        # Allow up to 100 chars for "thanks, looks good - also check tests" type messages
+        if len(prompt) > 100:
             return False
         for pattern in self.patterns:
             if re.search(pattern, prompt, re.IGNORECASE):
@@ -899,6 +902,17 @@ def apply_rate_limit(delta: int, state: "SessionState") -> int:
 
     # Update cumulative tracking
     state.nudge_history[turn_key] = cumulative + clamped
+
+    # Cleanup stale turn keys (keep only last 10 turns to prevent unbounded growth)
+    stale_keys = [
+        k
+        for k in state.nudge_history
+        if k.startswith("_confidence_delta_turn_")
+        and k != turn_key
+        and int(k.split("_")[-1]) < state.turn_count - 10
+    ]
+    for k in stale_keys:
+        del state.nudge_history[k]
 
     return clamped
 

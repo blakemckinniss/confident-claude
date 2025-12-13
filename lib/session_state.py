@@ -222,6 +222,7 @@ class SessionState:
     directives_fired: int = 0
     confidence: int = 0  # 0-100%
     evidence_ledger: list = field(default_factory=list)  # Evidence items
+    _decay_accumulator: float = 0.0  # Fractional decay accumulator (persisted)
 
     # Meta-cognition: Goal Anchor (v3.1)
     original_goal: str = ""  # First substantive user prompt
