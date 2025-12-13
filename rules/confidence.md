@@ -47,6 +47,8 @@ This "stasis zone" represents balanced operation where:
 
 These fire **mechanically** based on signals - no self-judgment involved.
 
+**Core reducers:**
+
 | Reducer | Delta | Trigger | Cooldown |
 |---------|-------|---------|----------|
 | `tool_failure` | -5 | Bash exit code != 0 | 1 turn |
@@ -59,6 +61,19 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `bash-risk` | -1 | Any bash command (state change risk) | None |
 | `edit-risk` | -1 | Any file edit | None |
 | `decay` | -1 | Natural drift toward uncertainty | None |
+
+**Bad behavior reducers (BANNED patterns):**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `backup_file` | -10 | Creating .bak, .backup, .old files | 1 turn |
+| `version_file` | -10 | Creating _v2, _new, _copy files | 1 turn |
+| `markdown_creation` | -8 | Creating .md files (except memory/docs) | 1 turn |
+| `overconfident_completion` | -15 | "100% done", "completely finished" | 3 turns |
+| `deferral` | -12 | "skip for now", "come back later" | 3 turns |
+| `apologetic` | -5 | "sorry", "my mistake", "I apologize" | 2 turns |
+| `sycophancy` | -8 | "you're absolutely right", "great point" | 2 turns |
+| `unresolved_antipattern` | -10 | Mentioning issues without fixing | 3 turns |
 
 ## Increasers (Automatic Rewards)
 
