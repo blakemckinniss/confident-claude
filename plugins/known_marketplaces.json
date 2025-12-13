@@ -5,7 +5,7 @@
       "repo": "thedotmack/claude-mem"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/thedotmack",
-    "lastUpdated": "2025-12-13T20:28:06.551Z"
+    "lastUpdated": "2025-12-13T20:34:49.936Z"
   },
   "claude-code-plugins": {
     "source": {
@@ -45,6 +45,6 @@
       "repo": "sawyerhood/dev-browser"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/dev-browser-marketplace",
-    "lastUpdated": "2025-12-13T20:25:04.283Z"
+    "lastUpdated": "2025-12-13T20:31:18.648Z"
   }
 }
