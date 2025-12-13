@@ -169,6 +169,80 @@ class UserCorrectionReducer(ConfidenceReducer):
         return False
 
 
+def _extract_semantic_keywords(activity: str) -> set[str]:
+    """Extract semantic keywords from file paths and commands.
+
+    Converts '/home/user/.claude/lib/confidence.py' → {'confidence', 'lib', 'claude'}
+    Converts 'git commit -m "fix bug"' → {'git', 'commit', 'fix', 'bug'}
+    """
+    # Common stop words to filter out
+    stop_words = {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "need",
+        "dare",
+        "home",
+        "user",
+        "users",
+        "tmp",
+        "var",
+        "etc",
+        "usr",
+        "bin",
+        "src",
+        "lib",
+        "test",
+        "tests",
+        "spec",
+        "specs",
+        "py",
+        "js",
+        "ts",
+        "tsx",
+        "jsx",
+        "md",
+        "json",
+        "yaml",
+        "yml",
+        "txt",
+        "css",
+        "html",
+        "xml",
+    }
+
+    # Extract words from the activity string
+    # Split on path separators, spaces, underscores, hyphens, dots
+    words = re.findall(r"[a-zA-Z]{3,}", activity.lower())
+
+    # Filter out stop words and very short words
+    keywords = {w for w in words if w not in stop_words and len(w) >= 3}
+
+    return keywords
+
+
 @dataclass
 class GoalDriftReducer(ConfidenceReducer):
     """Triggers when activity diverges from original goal."""
@@ -188,13 +262,25 @@ class GoalDriftReducer(ConfidenceReducer):
             return False
         if state.turn_count - state.goal_set_turn < 5:
             return False
-        # Check keyword overlap
-        current = context.get("current_activity", "").lower()
+
+        # Get current activity and extract semantic keywords
+        current = context.get("current_activity", "")
         if not current:
             return False
-        matches = sum(1 for kw in state.goal_keywords if kw in current)
-        overlap = matches / len(state.goal_keywords) if state.goal_keywords else 0
-        return overlap < 0.2
+
+        # Extract keywords from file paths/commands (semantic matching)
+        activity_keywords = _extract_semantic_keywords(current)
+        if not activity_keywords:
+            return False
+
+        # Check overlap between goal keywords and activity keywords
+        goal_set = set(state.goal_keywords)
+        matches = len(goal_set & activity_keywords)
+        overlap = matches / len(goal_set) if goal_set else 0
+
+        # Only trigger if very low overlap (< 10% instead of 20%)
+        # This is more lenient since semantic extraction is imperfect
+        return overlap < 0.1
 
 
 @dataclass
@@ -264,15 +350,27 @@ class FollowUpQuestionReducer(ConfidenceReducer):
     delta: int = -5
     description: str = "User asked follow-up question (answer was incomplete)"
     cooldown_turns: int = 2
+    # More specific patterns to reduce false positives
+    # Removed: r"\?$" (too broad - catches all questions)
+    # Removed: r"^(why|how|what|where|when|which|who)\b" (too broad - catches new questions)
     patterns: list = field(
         default_factory=lambda: [
+            # Follow-up starters (continuing previous topic)
             r"^(but |and |also |what about|how about|can you also)",
-            r"\?$",  # Ends with question mark
-            r"^(why|how|what|where|when|which|who)\b",
+            r"^(so |then |ok so |okay so )",
+            r"^(wait|hold on|actually)",
+            # Clarification requests
             r"\bwhat do you mean\b",
             r"\bcan you (explain|clarify|elaborate)",
+            r"\bwhat('s| is) (that|this)\b",
             r"\bi (don't understand|still don't|am confused)",
-            r"\bthat doesn't (work|help|answer)",
+            # Dissatisfaction signals
+            r"\bthat doesn't (work|help|answer|make sense)",
+            r"\bthat's (not|wrong|incorrect)",
+            r"^(no|nope),? (that|it|this)",
+            # Incompleteness signals
+            r"\byou (didn't|forgot|missed|skipped)",
+            r"\bwhat about the\b",
         ]
     )
 
@@ -292,16 +390,14 @@ class FollowUpQuestionReducer(ConfidenceReducer):
 
 
 # Registry of all reducers
-# NOTE: GoalDriftReducer and ContradictionReducer DISABLED - need better infrastructure:
-#   - GoalDriftReducer: goal_keywords (prompt words) vs current_activity (file paths) rarely overlap
-#     FIX NEEDED: Either semantic matching or extract keywords from file paths too
-#   - ContradictionReducer: requires semantic contradiction detection (LLM or NLP)
+# NOTE: ContradictionReducer DISABLED - requires semantic contradiction detection (LLM or NLP)
+# GoalDriftReducer now uses _extract_semantic_keywords() for file path matching
 REDUCERS: list[ConfidenceReducer] = [
     ToolFailureReducer(),
     CascadeBlockReducer(),
     SunkCostReducer(),
     UserCorrectionReducer(),
-    # GoalDriftReducer(),  # DISABLED: keyword matching too naive (prompt vs file path mismatch)
+    GoalDriftReducer(),  # Uses semantic keyword extraction from file paths
     EditOscillationReducer(),
     # ContradictionReducer(),  # DISABLED: requires semantic contradiction detection
     FollowUpQuestionReducer(),
