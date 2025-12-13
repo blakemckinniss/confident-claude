@@ -55,7 +55,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": ".*",
+        "matcher": "Bash|Read|Write|Edit|MultiEdit|Task|TodoWrite|NotebookEdit",
         "hooks": [
           {
             "type": "command",
