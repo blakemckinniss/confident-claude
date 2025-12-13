@@ -233,4 +233,5 @@ class KeyedCooldownManager:
 toolchain_keyed = KeyedCooldownManager("toolchain", ttl=300, max_keys=20)
 large_file_keyed = KeyedCooldownManager("large_file", ttl=600, max_keys=20)
 tool_awareness_keyed = KeyedCooldownManager("tool_awareness", ttl=300, max_keys=10)
+crawl4ai_promo_keyed = KeyedCooldownManager("crawl4ai_promo", ttl=600, max_keys=20)
 beads_sync_cooldown = CooldownManager("beads_sync", ttl=300)

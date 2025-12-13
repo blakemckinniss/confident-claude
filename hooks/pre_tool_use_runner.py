@@ -25,6 +25,7 @@ HOOKS INDEX (by priority):
     35 integration_gate    - Require grep after function edits
     40 error_suppression   - Block until errors resolved
     45 content_gate        - Block eval/exec/SQL injection
+    47 crawl4ai_preference - Suggest crawl4ai over WebFetch
     50 gap_detector        - Block edit without read
 
   QUALITY (55-95):
@@ -1770,6 +1771,42 @@ def check_modularization(data: dict, state: SessionState) -> HookResult:
 
     return HookResult.approve(
         "📦 MODULARIZATION: Search first, separate concerns, use descriptive filenames."
+    )
+
+
+# =============================================================================
+# CRAWL4AI PREFERENCE (Priority 47) - Suggest crawl4ai over WebFetch
+# =============================================================================
+
+
+@register_hook("crawl4ai_preference", "WebFetch", priority=47)
+def suggest_crawl4ai(data: dict, state: SessionState) -> HookResult:
+    """
+    Proactively suggest crawl4ai MCP before WebFetch executes.
+
+    Crawl4ai is superior for web content retrieval:
+    - Full JavaScript rendering (SPAs, dynamic content)
+    - Bypasses Cloudflare, bot detection, anti-scraping
+    - Returns clean LLM-friendly markdown
+    """
+    tool_input = data.get("tool_input", {})
+    url = tool_input.get("url", "")
+
+    if not url:
+        return HookResult.approve()
+
+    # Don't spam - use session tracking
+    crawl4ai_suggestions = state.get("crawl4ai_suggestions", 0)
+    if crawl4ai_suggestions >= 2:  # Max 2 suggestions per session
+        return HookResult.approve()
+
+    state.set("crawl4ai_suggestions", crawl4ai_suggestions + 1)
+
+    return HookResult.approve(
+        "🌟 **Consider crawl4ai instead** - Superior for web content:\n"
+        "  • `mcp__crawl4ai__crawl` - JS rendering + bot bypass\n"
+        "  • `mcp__crawl4ai__search` - Discover related URLs\n"
+        "  WebFetch proceeding, but crawl4ai handles protected sites better."
     )
 
 

@@ -16,6 +16,7 @@ HOOKS INDEX (by priority):
     37 state_mutation_guard - Detect React/Python mutation anti-patterns
     40 dev_toolchain_suggest - Suggest lint/format/typecheck per language
     45 large_file_helper   - Line range guidance for big files
+    48 crawl4ai_promo      - Promote crawl4ai over WebFetch for web content
     50 tool_awareness      - Remind about Playwright, Zen MCP, WebSearch, Task agents
 
   TRACKERS (55-80):
@@ -49,6 +50,7 @@ from _cooldown import (
     toolchain_keyed,
     large_file_keyed,
     tool_awareness_keyed,
+    crawl4ai_promo_keyed,
     beads_sync_cooldown,
 )
 from _patterns import is_scratch_path
@@ -1234,6 +1236,40 @@ def check_large_file(data: dict, state: SessionState, runner_state: dict) -> Hoo
         f"📄 **Large File** ({line_count}+ lines): `{filename}`\n"
         f"  For edits, use line-range reads: `Read {filename} lines X-Y`\n"
         f"  Look for section markers: `// === SECTION ===` or `# --- SECTION ---`"
+    )
+
+
+# -----------------------------------------------------------------------------
+# CRAWL4AI PROMOTION (priority 48) - Suggest crawl4ai over WebFetch
+# -----------------------------------------------------------------------------
+
+
+@register_hook("crawl4ai_promo", "WebFetch", priority=48)
+def promote_crawl4ai(data: dict, state: SessionState, runner_state: dict) -> HookResult:
+    """Promote crawl4ai MCP when WebFetch is used - crawl4ai is superior for web content."""
+    tool_input = data.get("tool_input", {})
+    url = tool_input.get("url", "")
+
+    if not url:
+        return HookResult.none()
+
+    # Extract domain for keyed cooldown
+    domain_match = re.search(r"https?://([^/]+)", url)
+    domain = domain_match.group(1) if domain_match else "unknown"
+
+    # Skip if recently promoted for this domain
+    if crawl4ai_promo_keyed.is_active(domain):
+        return HookResult.none()
+
+    crawl4ai_promo_keyed.reset(domain)
+
+    return HookResult.with_context(
+        "🌟 **Crawl4AI Available** - Superior to WebFetch:\n"
+        "  • Full JavaScript rendering (SPAs, dynamic content)\n"
+        "  • Bypasses Cloudflare, bot detection, CAPTCHAs\n"
+        "  • Returns clean LLM-friendly markdown\n"
+        "  → `mcp__crawl4ai__crawl` for this URL\n"
+        "  → `mcp__crawl4ai__search` to discover related URLs"
     )
 
 

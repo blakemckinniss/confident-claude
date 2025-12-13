@@ -1400,6 +1400,45 @@ _TOOL_TRIGGERS = {
         "command": "mcp__pal__chat",
         "reason": "PAL MCP: General consultation with external LLM",
     },
+    # Crawl4AI MCP - PRIORITY: User's most important MCP for web data retrieval
+    "crawl4ai": {
+        "patterns": [
+            # Direct web operations
+            re.compile(
+                r"(scrape|crawl|fetch|extract)\s+.*(web|page|site|url)", re.IGNORECASE
+            ),
+            re.compile(
+                r"(get|read|pull)\s+.*(from\s+)?(url|website|page|article)",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"(content|data|text)\s+(from|of)\s+.*(url|site|page)", re.IGNORECASE
+            ),
+            # URL mentions (very broad - any URL discussion)
+            re.compile(r"https?://", re.IGNORECASE),
+            re.compile(r"\burl\b.*\b(content|fetch|get|read)\b", re.IGNORECASE),
+            # Documentation/article fetching
+            re.compile(
+                r"(read|fetch|get)\s+.*(docs?|documentation|readme)", re.IGNORECASE
+            ),
+            re.compile(r"(article|blog|post)\s+(content|text)", re.IGNORECASE),
+            # Bypass/protection keywords (crawl4ai's strength)
+            re.compile(
+                r"(bypass|avoid|get\s+around)\s+.*(guard|block|protection|captcha)",
+                re.IGNORECASE,
+            ),
+            re.compile(r"(cloudflare|bot\s+detect|anti-bot)", re.IGNORECASE),
+            # Generic web data retrieval
+            re.compile(r"(web|online)\s+(data|content|info)", re.IGNORECASE),
+            re.compile(r"(download|retrieve)\s+.*(page|content)", re.IGNORECASE),
+            # Competitive intelligence / research
+            re.compile(
+                r"(check|look\s+at|see)\s+(what|how)\s+.*(site|page|url)", re.IGNORECASE
+            ),
+        ],
+        "command": "mcp__crawl4ai__crawl (single URL) or mcp__crawl4ai__search (discover URLs)",
+        "reason": "🌟 Crawl4AI: JS rendering + bot bypass - BEST tool for web content retrieval",
+    },
 }
 
 
