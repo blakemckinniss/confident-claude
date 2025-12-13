@@ -58,7 +58,6 @@ import re
 import time
 from pathlib import Path
 from typing import Optional, Callable
-from dataclasses import dataclass
 from session_state import (
     load_state,
     save_state,
@@ -143,23 +142,7 @@ _FLAW_PATTERNS = [
 # HOOK RESULT TYPE
 # =============================================================================
 
-
-@dataclass
-class HookResult:
-    """Result from a hook check."""
-
-    decision: str = "approve"  # "approve" or "deny"
-    reason: str = ""  # Reason for deny
-    context: str = ""  # Additional context to inject
-
-    @staticmethod
-    def approve(context: str = "") -> "HookResult":
-        return HookResult(decision="approve", context=context)
-
-    @staticmethod
-    def deny(reason: str) -> "HookResult":
-        return HookResult(decision="deny", reason=reason)
-
+from _hook_result import HookResult
 
 # =============================================================================
 # HOOK REGISTRY
@@ -886,6 +869,13 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     - Small edits: Single-line changes get nudge, not block
     - SUDO bypass always available
     """
+    # SUDO bypass
+    from synapse_core import check_sudo_in_transcript
+
+    transcript_path = data.get("transcript_path", "")
+    if check_sudo_in_transcript(transcript_path):
+        return HookResult.approve()
+
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
