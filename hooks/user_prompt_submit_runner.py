@@ -523,6 +523,15 @@ def check_rock_bottom(data: dict, state: SessionState) -> HookResult:
 def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
     """Initialize and assess confidence on every prompt."""
     prompt = data.get("prompt", "")
+
+    # Floor ALWAYS applies, even for short prompts - prevents confidence hell
+    CONFIDENCE_FLOOR = 70
+    if state.confidence == 0:
+        set_confidence(state, DEFAULT_CONFIDENCE, "session initialization")
+    elif state.confidence < CONFIDENCE_FLOOR:
+        set_confidence(state, CONFIDENCE_FLOOR, "floor reset (prevent confidence hell)")
+
+    # Skip further analysis for trivial prompts
     if not prompt or len(prompt) < 20:
         return HookResult.allow()
 
@@ -530,14 +539,6 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
     state.last_user_prompt = prompt
 
     parts = []
-
-    # Initialize confidence if not set, or enforce floor to prevent confidence hell
-    # Floor at 70% (WORKING) - can still work but maintains some caution
-    CONFIDENCE_FLOOR = 70
-    if state.confidence == 0:
-        set_confidence(state, DEFAULT_CONFIDENCE, "session initialization")
-    elif state.confidence < CONFIDENCE_FLOOR:
-        set_confidence(state, CONFIDENCE_FLOOR, "floor reset (prevent confidence hell)")
 
     # Assess prompt complexity and adjust
     delta, reasons = assess_prompt_complexity(prompt)
