@@ -90,6 +90,7 @@ from session_state import (
     # Ops tool tracking (v3.9)
     track_ops_tool,
     mark_production_verified,
+    set_confidence,
 )
 from _hook_result import HookResult
 
@@ -1066,7 +1067,7 @@ def check_confidence_decay(
     new_confidence = max(0, min(100, old_confidence + delta))
 
     if new_confidence != old_confidence:
-        state.confidence = new_confidence  # Direct assignment, already bounds-checked
+        set_confidence(state, new_confidence, "thinking_confidence adjustment")
 
         # Build reason string
         reasons = []
@@ -1137,7 +1138,7 @@ def check_confidence_reducer(
     new_confidence = max(0, min(100, old_confidence + total_delta))
 
     # Update state
-    state.confidence = new_confidence  # Direct assignment
+    set_confidence(state, new_confidence, "reducer triggered")
 
     # Format feedback
     reasons = [f"{name}: {delta}" for name, delta, _ in triggered]
@@ -1221,7 +1222,7 @@ def check_confidence_increaser(
         total_auto = sum(d for _, d, _ in auto_increases)
         total_auto = apply_rate_limit(total_auto, state)  # Cap per-turn gains
         new_confidence = min(100, old_confidence + total_auto)
-        state.confidence = new_confidence  # Direct assignment
+        set_confidence(state, new_confidence, "increaser triggered")
 
         reasons = [f"{name}: +{delta}" for name, delta, _ in auto_increases]
         change_msg = format_confidence_change(
@@ -1405,7 +1406,7 @@ def check_thinking_confidence(
     new_confidence = max(0, min(100, old_confidence + scaled_adjustment))
 
     if new_confidence != old_confidence:
-        state.confidence = new_confidence  # Direct assignment
+        set_confidence(state, new_confidence, "thinking_confidence micro-adjustment")
         direction = "📉" if scaled_adjustment < 0 else "📈"
 
         # Add context indicator if significant

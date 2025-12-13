@@ -1061,6 +1061,22 @@ def update_confidence(state: SessionState, delta: int, reason: str = ""):
         )
 
 
+def set_confidence(state: SessionState, value: int, reason: str = ""):
+    """Set confidence to absolute value with audit trail.
+
+    Use this instead of direct state.confidence = X assignments
+    to ensure all confidence changes are tracked.
+    """
+    old = state.confidence
+    state.confidence = max(0, min(100, value))
+    if old != state.confidence:
+        add_evidence(
+            state,
+            "confidence_set",
+            f"{old} -> {state.confidence}: {reason or 'direct set'}",
+        )
+
+
 # =============================================================================
 # GOAL ANCHOR (v3.1)
 # =============================================================================

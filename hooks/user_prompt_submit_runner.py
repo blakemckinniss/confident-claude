@@ -77,6 +77,7 @@ from session_state import (
     get_ops_tool_stats,
     get_unused_ops_tools,
     update_confidence,
+    set_confidence,
 )
 from _hook_result import HookResult
 
@@ -352,14 +353,14 @@ def check_confidence_override(data: dict, state: SessionState) -> HookResult:
         return HookResult.allow()
 
     old_confidence = state.confidence
-    state.confidence = new_confidence
+    set_confidence(state, new_confidence, "manual override")
 
     old_tier, old_emoji, _ = get_tier_info(old_confidence)
-    new_tier, new_emoji, _ = get_tier_info(new_confidence)
+    new_tier, new_emoji, _ = get_tier_info(state.confidence)
 
     return HookResult.allow(
         f"🎛️ **CONFIDENCE OVERRIDE**\n"
-        f"{old_emoji} {old_confidence}% ({old_tier}) → {new_emoji} {new_confidence}% ({new_tier})"
+        f"{old_emoji} {old_confidence}% ({old_tier}) → {new_emoji} {state.confidence}% ({new_tier})"
     )
 
 
@@ -493,11 +494,11 @@ def check_rock_bottom(data: dict, state: SessionState) -> HookResult:
         # User answered - restore confidence!
         new_confidence = mark_realignment_complete(state)
         old_confidence = state.confidence
-        state.confidence = new_confidence
+        set_confidence(state, new_confidence, "rock bottom realignment complete")
 
         return HookResult.allow(
             f"🔄 **REALIGNMENT COMPLETE**\n"
-            f"Confidence restored: {old_confidence}% → {new_confidence}%\n\n"
+            f"Confidence restored: {old_confidence}% → {state.confidence}%\n\n"
             f"Ready to proceed with renewed focus."
         )
 
@@ -529,7 +530,7 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
 
     # Initialize confidence if not set
     if state.confidence == 0:
-        state.confidence = DEFAULT_CONFIDENCE
+        set_confidence(state, DEFAULT_CONFIDENCE, "session initialization")
 
     # Assess prompt complexity and adjust
     delta, reasons = assess_prompt_complexity(prompt)
@@ -587,7 +588,9 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
             )
         else:
             # Cap it - no recent verified boost
-            state.confidence = PROMPT_CONFIDENCE_CAP
+            set_confidence(
+                state, PROMPT_CONFIDENCE_CAP, "prompt cap (no verified boost)"
+            )
             parts.append(
                 f"⚖️ Confidence capped at {PROMPT_CONFIDENCE_CAP}% "
                 "(earn higher via verified success)"
