@@ -89,6 +89,16 @@ try:
 except ImportError:
     RAPIDFUZZ_AVAILABLE = False
 
+# Intent classifier (lazy-loaded HuggingFace model)
+try:
+    from _intent_classifier import classify_intent, prewarm as intent_prewarm
+
+    INTENT_CLASSIFIER_AVAILABLE = True
+except ImportError:
+    INTENT_CLASSIFIER_AVAILABLE = False
+    classify_intent = None
+    intent_prewarm = None
+
 # Confidence system
 from confidence import (
     # Rock bottom system
@@ -2313,6 +2323,51 @@ def check_expert_probe(data: dict, state: SessionState) -> HookResult:
 
     header = "🧠 **PROBE BEFORE ACTING** (assume user needs guidance):\n"
     return HookResult.allow(header + "\n".join(probes))
+
+
+@register_hook("intent_classifier", priority=88)
+def check_intent_classifier(data: dict, state: SessionState) -> HookResult:
+    """Classify user intent via HuggingFace model and inject mode-specific context."""
+    if not INTENT_CLASSIFIER_AVAILABLE or classify_intent is None:
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 20:
+        return HookResult.allow()
+
+    # Skip slash commands and trivial prompts
+    if prompt.startswith("/") or re.match(
+        r"^(yes|no|ok|hi|hello|thanks)\b", prompt.lower()
+    ):
+        return HookResult.allow()
+
+    # Cooldown: only classify every 3rd prompt to reduce latency
+    if state.turn_count % 3 != 1:
+        return HookResult.allow()
+
+    try:
+        result = classify_intent(prompt, threshold=0.35)
+        if result is None:
+            return HookResult.allow()
+
+        intent = result["intent"]
+        confidence = result["confidence"]
+        message = result.get("message")
+
+        # Store intent in state for other hooks to use
+        state.set("detected_intent", intent)
+        state.set("intent_confidence", confidence)
+
+        # Only inject message if confidence is high enough
+        if message and confidence >= 0.45:
+            return HookResult.allow(
+                f"🎯 **INTENT [{intent.upper()}]** ({confidence:.0%}): {message}"
+            )
+
+        return HookResult.allow()
+    except Exception:
+        # Fail silently - classifier is optional enhancement
+        return HookResult.allow()
 
 
 @register_hook("work_patterns", priority=91)
