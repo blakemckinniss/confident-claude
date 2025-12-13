@@ -1,51 +1,8 @@
 # Capabilities Index
 
-**Generated:** 2025-12-04 21:42 | **Updated:** 2025-12-12
+**Generated:** 2025-12-13 09:43
 
 **PURPOSE:** Before proposing new functionality, check if it exists here.
-
----
-
-## 📐 Rules System (Path-Specific)
-
-Modular rules in `~/.claude/rules/` that load based on file paths being worked on.
-
-| Rule File | Lines | Paths | Purpose |
-|-----------|-------|-------|---------|
-| `beads.md` | 40 | (global) | Task tracking with `bd` commands |
-| `hooks.md` | 116 | `**/.claude/hooks/**` | Hook development patterns |
-| `nextjs.md` | 271 | `**/app/**/*.tsx` | Next.js 15+ App Router |
-| `python.md` | 47 | `**/*.py` | Python style & patterns |
-| `react.md` | 212 | `**/*.tsx, **/*.jsx` | React 19+ with compiler |
-| `shadcn.md` | 278 | `**/components/ui/**` | shadcn/ui + Tailwind v4 |
-| `tailwind.md` | 251 | `**/*.css` | Tailwind v4 CSS-first config |
-| `tools.md` | 67 | (global) | Operational tools reference |
-| `typescript.md` | 56 | `**/*.ts, **/*.tsx` | TypeScript patterns |
-
-**Total:** 1,338 lines of path-specific rules + 149 line CLAUDE.md core.
-
-**How it works:** Rules load automatically when working with matching file paths. Global rules (beads, tools) always load. Path-specific rules (react, tailwind, etc.) only load when relevant.
-
----
-
-## 🎯 Skills System (Intent-Based)
-
-Skills in `~/.claude/skills/` auto-activate based on semantic intent matching.
-
-| Skill | Triggers | Maps To |
-|-------|----------|---------|
-| `browser-automation` | UI test, screenshot, DevTools, console, DOM, network | `bdg.py`, `playwright.py` |
-| `code-quality` | review, audit, security, gaps, missing, anti-pattern | `audit.py`, `void.py`, `gaps.py`, `drift.py` |
-| `decision-support` | decide, trade-off, architecture, second opinion | `council.py`, `oracle.py`, `think.py` |
-| `research-docs` | documentation, API, how to use, latest version | `docs.py`, `research.py`, `probe.py` |
-| `verification` | verify, check exists, confirm, reality check | `verify.py`, `xray.py` |
-| `project-scaffold` | new project, create app, initialize, scaffold | `setup_claude.sh`, `setup_project.sh` |
-| `system-maintenance` | disk space, cleanup, health, slow system | `sysinfo.py`, `housekeeping.py` |
-| `memory-workflow` | remember, recall, what did we do, lessons | `remember.py`, `spark.py`, `evidence.py` |
-| `hook-development` | create hook, add gate, hook patterns | Hook system + `hooks.py` |
-| `task-tracking` | track task, todo, blockers, dependencies | `bd` commands |
-
-**How it works:** Skills are model-invoked based on description matching. Say "check the browser" and `browser-automation` activates automatically.
 
 ---
 
@@ -53,106 +10,65 @@ Skills in `~/.claude/skills/` auto-activate based on semantic intent matching.
 
 - `audit.py` - The Sentinel: Runs static analysis and anti-pattern detection on target files
 - `audit_hooks.py` - System Auditor (The Hook Sheriff)
-- **content_gate** - Content Gate Hook v4: AST-based semantic security blocking for Write/Edit operat
 - `orchestrate.py` - Orchestrate: Claude-powered programmatic tool orchestration
-- **security_claim_gate** - Security Claim Gate Hook: Require audit for security-sensitive code
 
 ## 📋 Workflow Gates
 
 - `coderabbit.py` - CodeRabbit: AI-powered code review and commit workflow
-- **commit_gate** - Commit Gate Hook: Block git commit without running upkeep first
-- **deferral_gate** - Deferral Gate Hook: Block deferral theater language
+- **pre_tool_use_runner** - Composite PreToolUse Runner: Runs all PreToolUse hooks in a single process
 - `upkeep.py` - The Janitor: Pre-commit health checks and project maintenance
 
 ## ✅ Quality Gates
 
-- **auto_learn** - Auto Learn Hook v3: PostToolUse hook that captures lessons from errors
-- **completion_gate** - Completion Gate Hook: Block "fixed/done/complete" claims without verification
-- **error_suppression_gate** - Error Suppression Gate: PreToolUse hook blocking work until errors are resolved
 - `groq.py` - Groq: Zero-Dependency Groq API Client
-- **import_gate** - Import Gate Hook: Verifies imports exist before allowing Write operations
-- **integration_gate** - Integration Gate: PreToolUse hook enforcing grep after function edits
 
 ## 🎯 Scope Control
 
 - `drift.py` - The Court: Detects stylistic drift by comparing code against reference templates
-- `drift_check.py` - The Court: Detects stylistic drift by comparing code against reference templates
-- **goal_anchor** - Goal Anchor Hook: Prevents drift from original user intent
 - `scope.py` - The Project Manager: Manages the Definition of Done (DoD) for the current task
+- **user_prompt_submit_runner** - Composite UserPromptSubmit Runner: Runs all UserPromptSubmit hooks in a single p
 
 ## 🧠 Reasoning Guards
 
-- **counterfactual_check** - Counterfactual Pre-Check: Force contingency planning BEFORE action
 - `think.py` - The Thinker: Decomposes complex problems into atomic steps using Chain of Though
-- **thinking_coach** - Thinking Coach Hook v3: Analyzes Claude's thinking blocks for reasoning flaws
 
 ## 💉 Context Injectors
 
-- **assumption_ledger** - Assumption Ledger: Surface hidden assumptions before code changes
-- **context_injector** - Context Injector Hook v3: UserPromptSubmit hook for smart context injection
 - `council.py` - Deliberative Council: Multi-Round Decision Framework with Convergence
 - `docs.py` - The Documentation Hunter: Retrieves latest documentation using Context7 REST API
-- **intake_protocol** - Intake Protocol Hook - Structured checklist for every user prompt
 - **pre_compact** - PreCompact Hook: Fires before compaction
-- **project_context** - Project Context Hook v3: Provide git/folder/file awareness
-- **prompt_disclaimer** - Static disclaimer injected into every user prompt
-- **python_path_injector** - Python Path Enforcer: PreToolUse hook that rejects bare python/pip commands
-- **reminder_injector** - Reminder Injector Hook: Dynamic context injection based on trigger patterns
-- **resource_pointer** - Resource Pointer Hook: Surface availability, not content
-- **ui_verification_gate** - UI Verification Gate Hook: Require browser screenshot after CSS/UI changes
+- **statusline** - System Assistant Statusline - Full WSL2 system status at a glance
 
 ## 🧠 Memory Injectors
 
-- **doc_theater_gate** - Documentation Theater Gate: Blocks creation of standalone documentation files
-- **memory_injector** - Memory Injector Hook v3: Auto-surface relevant memories on every prompt
 - `remember.py` - The Elephant: Manages persistent project memory (Context, Decisions, Lessons)
 - `spark.py` - The Synapse: Scans prompt for keywords and retrieves associated memories and pro
 
 ## 🔧 Ops Awareness
 
-- **background_enforcer** - Background Enforcer Hook v3.2: PreToolUse blocker for slow Bash commands
 - `bdg.py` - Browser Debugger CLI (bdg): Direct Chrome DevTools Protocol access for AI agents
-- `browser.py` - Browser Debugger CLI (bdg): Direct Chrome DevTools Protocol access for AI agents
 - `detour.py` - CLI management tool for the Detour Protocol - status tracking, resolution, and t
 - `hooks.py` - System Tool - Unified audit and testing for Claude Code hooks
-- **loop_detector** - Loop Detector: PreToolUse hook blocking bash loops
-- **modularization_gate** - Modularization Gate - Reminds Claude to modularize before creating/editing code
-- **ops_awareness** - Ops Awareness Hook v3: Remind Claude to use existing ops scripts
-- **ops_nudge** - Ops Tool Nudge Hook: Suggest appropriate .claude/ops/ tools based on prompt patt
-- **oracle_gate** - Oracle Gate Hook: Enforce oracle consultation after repeated failures
 - `playwright.py` - The Playwright Enforcer: Browser automation setup and verification tool
-- **probe_gate** - Probe Gate Hook v3: Suggest probe before using unfamiliar library APIs
-- **production_gate** - Production Gate Hook v4: PreToolUse hook enforcing audit+void before .claude/ops
-- **recursion_guard** - Recursion Guard: PreToolUse hook blocking catastrophic folder duplication
-- **research_gate** - Research Gate Hook: BLOCK writes using unverified external libraries
-- **root_pollution_gate** - Root Pollution Gate: PreToolUse hook blocking writes to repository root
-- **scratch_enforcer** - Scratch Enforcer Hook v3: Detect repetitive manual work, suggest scripts
-- **script_nudge** - Nudge Hook: Suggests writing scripts for complex manual work
 - **subagent_stop** - SubagentStop Hook: Fires when Task tool agents finish
-- **sunk_cost_detector** - Sunk Cost Detector Hook: Breaks "I've invested too much to quit" loops
 
 ## 📊 Trackers
 
-- **info_gain_tracker** - Information Gain Tracker Hook: Detects "spinning" - reads without progress
-- **intention_tracker** - Intention Tracker Hook v3.2: UserPromptSubmit hook for pending file/search extra
-- **state_updater** - State Updater Hook v3: PostToolUse hook that updates session state
-- **velocity_tracker** - Velocity Tracker Hook: Detect spinning vs actual progress
+- **post_tool_use_runner** - Composite PostToolUse Runner: Runs all PostToolUse hooks in a single process
+- `sysinfo.py` - The System Probe - WSL2 system information and health monitoring
 
 ## 🔄 Lifecycle Hooks
 
-- **beads_integration** - Beads Integration Hook: Surface ready work and maintain agent memory
-- **epistemic_boundary** - Epistemic Boundary Enforcer: Catches claims not backed by session evidence
+- `compress_session.py` - compress_session.py - Preservation-focused session compression with token-effici
 - `evidence.py` - Evidence Ledger Viewer - Review evidence gathered during sessions
-- **proactive_nudge** - Proactive Nudge Hook: Surfaces actionable suggestions based on session state
-- **recommendation_gate** - Recommendation Gate Hook: Blocks "create X" suggestions without verification
+- `housekeeping.py` - The Housekeeper - Disk space management for .claude runtime directories
 - **session_cleanup** - Session Cleanup Hook v3: SessionEnd hook for cleanup and persistence
 - **session_init** - Session Init Hook v3: SessionStart hook for initialization
-- **stop_cleanup** - Stop Cleanup Hook: Fires when Claude stops responding
+- **stop_runner** - Composite Stop Runner: Runs all Stop hooks in a single process
 - `test_hooks.py` - Test Suite: Comprehensive testing for Claude Code hooks
 
 ## 🔍 Verification Tools
 
-- **gap_detector** - Gap Detector Hook v3: PreToolUse hook with directive injection system
 - `gaps.py` - The Void Hunter: Scans code for missing functionality, stubs, and logical gaps
 - `verify.py` - The Fact-Checker: Validates system state assertions. Returns True/False. Use thi
 - `void.py` - The Void Hunter: Scans code for missing functionality, stubs, and logical gaps
@@ -162,11 +78,9 @@ Skills in `~/.claude/skills/` auto-activate based on semantic intent matching.
 - `firecrawl.py` - The Firecrawler: Scrape and crawl websites using Firecrawl API
 - `probe.py` - The Probe: Introspects Python modules/objects to reveal the ACTUAL runtime API
 - `research.py` - The Researcher: Performs deep web search using Tavily to retrieve up-to-date doc
-- **tool_preference** - Preference Hook: PreToolUse intercept for better tool choices
 
 ## ⚖️ Decision Tools
 
-- `agents.py` - Oracle Swarm: Massive Parallel External Reasoning
 - `oracle.py` - Oracle: Generic OpenRouter LLM Consultation
 - `recruiter.py` - Council Recruiter: Selects optimal personas for a given proposal
 - `swarm.py` - Oracle Swarm: Massive Parallel External Reasoning
@@ -175,11 +89,15 @@ Skills in `~/.claude/skills/` auto-activate based on semantic intent matching.
 
 - `/audit` - description: 🛡️ The Sheriff - Code quality audit (security, complexity, style)
 - `/audit-hooks` - description: 🔍 The Hook Sheriff - Audit hooks against official Claude Code spec
+- `/bd` - description: 📋 Beads - Persistent task tracking (create, list, close, dependenci
+- `/bdg` - description: Browser Debugger - Chrome DevTools Protocol CLI (start, navigate, e
 - `/bestway` - description: 🧭 Best Way - Evaluates optimal approaches for implementing X
 - `/better` - description: 🔬 Improvement Analyzer - Identifies concrete ways to make things be
+- `/capabilities` - description: "Capabilities: Regenerate hook/ops functionality index"
 - `/cc` - description: 🏭 Command Creator - Creates new slash commands from description
+- `/comfy` - Manage ComfyUI service. Argument: `start`, `restart`, or `stop`
 - `/commit` - description: 📦 Smart Commit - Stage, commit all changes, offer push
-- `/confidence` - description: 📉 Confidence Tracker - Check epistemological protocol state (status
+- `/compress` - description: 📦 Compress Session - Convert JSONL session to token-efficient forma
 - `/consult` - description: 🔮 The Oracle - High-level reasoning via OpenRouter
 - `/council` - description: 🏛️ The Council - Parallel multi-perspective analysis (Judge, Critic
 - `/cr` - description: 🐰 CodeRabbit - Run AI code review on uncommitted changes
@@ -187,27 +105,40 @@ Skills in `~/.claude/skills/` auto-activate based on semantic intent matching.
 - `/cs` - description: 🤔 Can/Should - Quick feasibility and advisability check for X
 - `/cwms` - description: ✅ Can We Make Sure - Verify and enforce X is true
 - `/dc` - description: 🔍 Double Check - Verify work, fix critical gaps, present remaining 
+- `/detour` - description: "Detour: Manage blocking issue stack (status, resolve, abandon)"
+- `/docs` - description: "Docs: Fetch latest library documentation via Context7"
 - `/doit` - description: ⚡ Do It - Execute the last discussed action without re-explaining
 - `/drift` - description: ⚖️ The Court - Checks project consistency and style drift
 - `/dyr` - description: 🪞 Do You Respect - Verify Claude follows a specific principle/rule
 - `/evidence` - description: 📚 Evidence Ledger - Review evidence gathered (review, session <id>)
 - `/f` - description: 🔧 Fix Console Errors - Diagnose and fix browser console errors
+- `/find` - description: 🔍 Everything Search - Instant file search across Windows + WSL2
+- `/firecrawl` - description: "Firecrawl: Scrape websites to clean markdown/HTML/JSON"
 - `/fix` - description: 🔧 The Fixer - Fix all issues, fill gaps, and verify work
 - `/gaps` - description: 🔍 Gap Hunter - Completeness check (finds stubs, missing CRUD, error
+- `/groq` - description: "Groq: Fast LLM inference via Groq API (kimi-k2, llama-3.3, qwen3)"
 - `/har` - description: 💡 HAR - Have Any Recommendations for improving X?
+- `/hooks` - description: "Hooks: Audit, test, and fix Claude Code hooks"
+- `/housekeeping` - description: 🧹 The Housekeeper - Manage .claude disk space (--status, --execute)
 - `/imp` - description: 🔧 Implement - Research + optimal setup of X for this project
 - `/inventory` - description: 🖇️ MacGyver Scan - Scans for available binaries and system tools
 - `/judge` - description: ⚖️ The Judge - Value assurance, ROI, YAGNI, anti-bikeshedding
 - `/no` - description: 🚫 No - Reject proposal and get alternatives
 - `/opt` - description: ⚖️ Optimality Check - Evaluates if X is the best choice for this pr
+- `/oracle` - description: "Oracle: External LLM consultation via OpenRouter (judge, critic, s
 - `/orchestrate` - description: 🎯 Orchestrate - Claude API code_execution for batch/aggregate tasks
+- `/playwright` - description: "Playwright: Browser automation setup and verification"
 - `/probe` - description: 🔬 The Probe - Runtime introspection (inspect object APIs before cod
+- `/recall` - Search past session transcripts for relevant context.
+- `/reddit` - description: 🌐 Reddit - Open reddit.com/r/all in Chrome
 - `/remember` - description: 🐘 The Elephant - Persistent memory (add lessons|decisions|context, 
 - `/research` - description: 🌐 The Researcher - Live web search via Tavily API
 - `/roi` - description: 💰 ROI Maximizer - Implements highest-value concepts by impact/effor
 - `/scope` - description: 🏁 The Finish Line - Manage DoD with checkpoints (init, check, statu
 - `/skeptic` - description: 🔍 The Skeptic - Hostile review, finds ways things will fail
 - `/spark` - description: ⚡ Synapse Fire - Retrieve associative memories for a topic
+- `/swarm` - description: "Swarm: Massive parallel oracle reasoning (10-1000 agents)"
+- `/sysinfo` - description: 🖥️ The System Probe - WSL2 system health (CPU/mem/disk/services)
 - `/test` - description: 🧪 Test Worth - Evaluate if something deserves test coverage
 - `/think` - description: 🧠 The Thinker - Decomposes complex problems into sequential steps
 - `/upkeep` - description: 🧹 The Janitor - Project upkeep (sync requirements, tool index, chec
@@ -216,14 +147,10 @@ Skills in `~/.claude/skills/` auto-activate based on semantic intent matching.
 - `/vo` - description: 🔍 Gap Oracle - Runs gaps.py + oracle analysis on changes
 - `/void` - description: 🕳️ The Void Hunter - Completeness check (finds stubs, missing CRUD,
 - `/wcwd` - description: 🛠️ Implementation Brainstorm - Explores options for implementing X 
+- `/win` - description: 🪟 Windows Manager - Install/uninstall Windows programs via winget
 - `/worth` - description: 💎 Worth Check - Is X worth adding to this project?
 - `/xray` - description: 🔬 X-Ray - AST-based structural code search (--type class|function|i
 - `/yes` - description: 🚀 Autonomous Mode - Execute what's best for project health and succ
-
-## 🖥️ System Administration
-
-- `housekeeping.py` - The Housekeeper: Manages disk space for .claude runtime directories (debug/, file-history/, session-env/, shell-snapshots/, todos/) with configurable retention policies. Use --status for usage, --execute to clean.
-- `sysinfo.py` - The System Probe: WSL2 system information and health monitoring (CPU, memory, disk, services, network). Use --quick for summary, --json for scripts.
 
 ## 📦 Other
 

@@ -202,6 +202,14 @@ class SessionState:
     # Ops scripts available
     ops_scripts: list = field(default_factory=list)
 
+    # Ops tool usage tracking (v3.9) - per-session counts for analytics
+    # Format: {tool_name: {count, last_turn, successes, failures}}
+    ops_tool_usage: dict = field(default_factory=dict)
+
+    # Production verification tracking (v3.9) - files that passed audit+void
+    # Format: {filepath: {audit_turn, void_turn}}
+    verified_production_files: dict = field(default_factory=dict)
+
     # Synapse tracking (v3)
     turn_count: int = 0
     last_5_tools: list = field(default_factory=list)  # For iteration detection
@@ -727,6 +735,133 @@ def track_command(state: SessionState, command: str, success: bool, output: str 
             if part in ["research.py", "probe.py"] and i + 1 < len(parts):
                 topic = parts[i + 1].strip("'\"")
                 track_library_researched(state, topic)
+
+
+# =============================================================================
+# OPS TOOL TRACKING (v3.9)
+# =============================================================================
+
+OPS_USAGE_FILE = Path.home() / ".claude" / "memory" / "tool_usage.json"
+
+
+def track_ops_tool(state: SessionState, tool_name: str, success: bool = True):
+    """Track ops tool usage for analytics and self-maintenance.
+
+    Updates both session state and persistent cross-session file.
+    """
+    # Update session state
+    if tool_name not in state.ops_tool_usage:
+        state.ops_tool_usage[tool_name] = {
+            "count": 0,
+            "last_turn": 0,
+            "successes": 0,
+            "failures": 0,
+        }
+    state.ops_tool_usage[tool_name]["count"] += 1
+    state.ops_tool_usage[tool_name]["last_turn"] = state.turn_count
+    if success:
+        state.ops_tool_usage[tool_name]["successes"] += 1
+    else:
+        state.ops_tool_usage[tool_name]["failures"] += 1
+
+    # Persist to cross-session file (async-safe with atomic write)
+    _persist_ops_tool_usage(tool_name, success)
+
+
+def _persist_ops_tool_usage(tool_name: str, success: bool):
+    """Persist ops tool usage to cross-session file."""
+    try:
+        # Load existing data
+        data = {}
+        if OPS_USAGE_FILE.exists():
+            data = json.loads(OPS_USAGE_FILE.read_text())
+
+        # Update tool entry
+        if tool_name not in data:
+            data[tool_name] = {
+                "total_uses": 0,
+                "successes": 0,
+                "failures": 0,
+                "first_used": time.strftime("%Y-%m-%d"),
+                "last_used": "",
+                "sessions": 0,
+            }
+        data[tool_name]["total_uses"] += 1
+        data[tool_name]["last_used"] = time.strftime("%Y-%m-%d %H:%M")
+        if success:
+            data[tool_name]["successes"] += 1
+        else:
+            data[tool_name]["failures"] += 1
+
+        # Atomic write
+        tmp = OPS_USAGE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2))
+        tmp.rename(OPS_USAGE_FILE)
+    except Exception:
+        pass  # Non-critical, don't break hooks
+
+
+def get_ops_tool_stats() -> dict:
+    """Get cross-session ops tool usage statistics."""
+    if OPS_USAGE_FILE.exists():
+        try:
+            return json.loads(OPS_USAGE_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def get_unused_ops_tools(days_threshold: int = 30) -> list:
+    """Get ops tools not used in the last N days."""
+    from datetime import datetime, timedelta
+
+    stats = get_ops_tool_stats()
+    cutoff = datetime.now() - timedelta(days=days_threshold)
+    unused = []
+
+    # Get all ops tools
+    ops_dir = Path.home() / ".claude" / "ops"
+    if ops_dir.exists():
+        all_tools = {f.stem for f in ops_dir.glob("*.py")}
+        for tool in all_tools:
+            if tool not in stats:
+                unused.append(tool)
+            else:
+                last_used = stats[tool].get("last_used", "")
+                if last_used:
+                    try:
+                        last_dt = datetime.strptime(last_used[:10], "%Y-%m-%d")
+                        if last_dt < cutoff:
+                            unused.append(tool)
+                    except Exception:
+                        pass
+    return unused
+
+
+def mark_production_verified(state: SessionState, filepath: str, tool: str):
+    """Mark a file as having passed audit or void this session."""
+    if filepath not in state.verified_production_files:
+        state.verified_production_files[filepath] = {}
+    state.verified_production_files[filepath][f"{tool}_turn"] = state.turn_count
+
+
+def is_production_verified(state: SessionState, filepath: str) -> tuple[bool, str]:
+    """Check if a file has passed both audit and void this session.
+
+    Returns (is_verified, missing_tool) where missing_tool is 'audit', 'void', or 'both'.
+    """
+    verified = state.verified_production_files.get(filepath, {})
+    has_audit = "audit_turn" in verified
+    has_void = "void_turn" in verified
+
+    if has_audit and has_void:
+        return True, ""
+    elif has_audit:
+        return False, "void"
+    elif has_void:
+        return False, "audit"
+    else:
+        return False, "both"
 
 
 # =============================================================================

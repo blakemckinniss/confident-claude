@@ -81,6 +81,9 @@ from session_state import (
     # Adaptive threshold learning (v3.7)
     get_adaptive_threshold,
     record_threshold_trigger,
+    # Ops tool tracking (v3.9)
+    track_ops_tool,
+    mark_production_verified,
 )
 from _hook_result import HookResult
 
@@ -591,6 +594,29 @@ def check_state_updater(
         exit_code = result.get("exit_code", 0)
         success = exit_code == 0
         track_command(state, command, success, output)
+
+        # Track ops tool usage (v3.9)
+        if ".claude/ops/" in command:
+            # Extract tool name from command
+            ops_match = re.search(r"\.claude/ops/(\w+)\.py", command)
+            if ops_match:
+                tool_name_ops = ops_match.group(1)
+                track_ops_tool(state, tool_name_ops, success)
+
+                # Track audit/void verification for production files
+                if success and tool_name_ops in ("audit", "void"):
+                    # Extract target file from command args
+                    # Pattern: audit.py <filepath> or void.py <filepath>
+                    parts = command.split()
+                    for i, part in enumerate(parts):
+                        if part.endswith(f"{tool_name_ops}.py") and i + 1 < len(parts):
+                            target_file = parts[i + 1]
+                            # Normalize path
+                            if not target_file.startswith("-"):
+                                mark_production_verified(
+                                    state, target_file, tool_name_ops
+                                )
+                            break
 
         # Track files read via cat/head/tail
         if success:

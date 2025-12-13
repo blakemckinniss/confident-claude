@@ -97,8 +97,61 @@ STALE_SESSION_THRESHOLD = 3600  # 1 hour
 ERROR_CARRY_OVER_MAX = 600  # 10 minutes
 
 # =============================================================================
+# SYSTEM HEALTH CHECK (v3.9)
+# =============================================================================
+
+
+def check_system_health() -> str | None:
+    """Quick system health check at session start.
+
+    Returns warning message if resources are constrained, None otherwise.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [str(Path.home() / ".claude" / "hooks" / "py"),
+             str(Path.home() / ".claude" / "ops" / "sysinfo.py"), "--quick"],
+            capture_output=True, text=True, timeout=3
+        )
+        if result.returncode != 0:
+            return None
+
+        output = result.stdout.strip()
+        # Parse: "CPU: 2.26 2.02 2.02 | Mem: 22% | Disk: 48%"
+        warnings = []
+
+        # Check memory
+        if "Mem:" in output:
+            import re
+            mem_match = re.search(r"Mem:\s*(\d+)%", output)
+            if mem_match and int(mem_match.group(1)) > 85:
+                warnings.append(f"⚠️ Memory: {mem_match.group(1)}% used")
+
+        # Check disk
+        if "Disk:" in output:
+            import re
+            disk_match = re.search(r"Disk:\s*(\d+)%", output)
+            if disk_match and int(disk_match.group(1)) > 90:
+                warnings.append(f"⚠️ Disk: {disk_match.group(1)}% used")
+
+        # Check CPU load (first value is 1-min avg)
+        if "CPU:" in output:
+            import re
+            cpu_match = re.search(r"CPU:\s*([\d.]+)", output)
+            if cpu_match and float(cpu_match.group(1)) > 4.0:
+                warnings.append(f"⚠️ CPU Load: {cpu_match.group(1)}")
+
+        return " | ".join(warnings) if warnings else None
+
+    except Exception:
+        return None  # Non-critical, don't fail session start
+
+
+# =============================================================================
 # MEMORY PRE-WARMING
 # =============================================================================
+
 
 def prewarm_memory_cache():
     """Pre-load synapse map and warm cache with common patterns.
@@ -595,6 +648,9 @@ def main():
     except (json.JSONDecodeError, ValueError):
         pass
 
+    # === SYSTEM HEALTH CHECK (v3.9) ===
+    health_warning = check_system_health()
+
     # === PROJECT-AWARE INITIALIZATION ===
     project_context = None
     if PROJECT_AWARE:
@@ -660,6 +716,12 @@ def main():
             output["message"] = f"🔁 Resuming: {context}"
 
     # Note: Duplication prevention removed - this is a system assistant, not a template project
+
+    # Append health warning if resources are constrained (v3.9)
+    if health_warning and output.get("message"):
+        output["message"] += f"\n\n🖥️ **SYSTEM**: {health_warning}"
+    elif health_warning:
+        output["message"] = f"🖥️ **SYSTEM**: {health_warning}"
 
     print(json.dumps(output))
     sys.exit(0)

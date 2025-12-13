@@ -65,6 +65,7 @@ from session_state import (
     track_block,
     clear_blocks,
     check_cascade_failure,
+    is_production_verified,
 )
 from _hook_result import HookResult
 from _beads import (
@@ -1349,7 +1350,7 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
     )
 
 
-@register_hook("production_gate", "Write", priority=55)
+@register_hook("production_gate", "Write|Edit", priority=55)
 def check_production_gate(data: dict, state: SessionState) -> HookResult:
     """Enforce audit+void before writing to .claude/ops/ or .claude/lib/."""
     from pathlib import Path
@@ -1366,14 +1367,18 @@ def check_production_gate(data: dict, state: SessionState) -> HookResult:
     if not is_protected:
         return HookResult.approve()
 
+    # SUDO bypass
+    if data.get("_sudo_bypass"):
+        return HookResult.approve()
+
     # New files get a warning, not a block
     if not Path(file_path).exists():
         return HookResult.approve(
-            "⚠️ New production file - run audit+void after creation"
+            "⚠️ New production file - run `audit` + `void` after creation"
         )
 
     # Check content for stubs
-    content = tool_input.get("content", "")
+    content = tool_input.get("content", "") or tool_input.get("new_string", "")
     if content:
         STUB_PATTERNS = ["# TODO", "# FIXME", "raise NotImplementedError", "pass  #"]
         for pattern in STUB_PATTERNS:
@@ -1383,7 +1388,30 @@ def check_production_gate(data: dict, state: SessionState) -> HookResult:
                     f"Complete all TODOs before writing to production."
                 )
 
-    return HookResult.approve("✓ Production gate passed")
+    # Check if audit+void have been run this session (v3.9)
+    is_verified, missing = is_production_verified(state, file_path)
+    if not is_verified:
+        fname = Path(file_path).name
+        if missing == "both":
+            return HookResult.deny(
+                f"**PRODUCTION GATE**: `{fname}` requires verification.\n"
+                f"Run these commands first:\n"
+                f"```bash\n"
+                f"~/.claude/hooks/py ~/.claude/ops/audit.py {file_path}\n"
+                f"~/.claude/hooks/py ~/.claude/ops/void.py {file_path}\n"
+                f"```\n"
+                f"Say SUDO to bypass."
+            )
+        else:
+            return HookResult.deny(
+                f"**PRODUCTION GATE**: `{fname}` needs `{missing}` verification.\n"
+                f"```bash\n"
+                f"~/.claude/hooks/py ~/.claude/ops/{missing}.py {file_path}\n"
+                f"```\n"
+                f"Say SUDO to bypass."
+            )
+
+    return HookResult.approve("✓ Production gate passed (audit+void verified)")
 
 
 @register_hook("deferral_gate", "Edit|Write|MultiEdit", priority=60)
