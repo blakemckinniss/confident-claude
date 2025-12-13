@@ -862,6 +862,27 @@ class HookBlockReducer(ConfidenceReducer):
         return context.get("hook_blocked", False)
 
 
+@dataclass
+class SequentialRepetitionReducer(ConfidenceReducer):
+    """Triggers when same tool is used sequentially (not parallel).
+
+    Parallel tool calls (same turn) are fine - sequential single calls are inefficient.
+    For Bash, also checks if the command pattern is similar.
+    """
+
+    name: str = "sequential_repetition"
+    delta: int = -3
+    description: str = "Same tool used sequentially (should batch/parallelize)"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("sequential_repetition", False)
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
@@ -887,6 +908,7 @@ REDUCERS: list[ConfidenceReducer] = [
     DebtBashReducer(),  # --force, --hard, --no-verify commands
     LargeDiffReducer(),  # Diffs > 400 LOC
     HookBlockReducer(),  # Soft/hard hook blocks
+    SequentialRepetitionReducer(),  # Same tool used sequentially (not parallel)
 ]
 
 

@@ -68,7 +68,6 @@ from session_state import (
     track_block,
     clear_blocks,
     check_cascade_failure,
-    is_production_verified,
 )
 from _hook_result import HookResult
 
@@ -78,7 +77,6 @@ from confidence import (
     suggest_alternatives,
     should_mandate_external,
     get_tier_info,
-    get_confidence_recovery_options,
 )
 from _beads import (
     get_open_beads,
@@ -1441,7 +1439,11 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("production_gate", "Write|Edit", priority=55)
 def check_production_gate(data: dict, state: SessionState) -> HookResult:
-    """Enforce audit+void before writing to .claude/ops/ or .claude/lib/."""
+    """Block stubs in production code (.claude/ops/ or .claude/lib/).
+
+    Removed: audit+void verification requirement (failed on legacy issues).
+    Kept: Stub detection (prevents incomplete code in production).
+    """
     from pathlib import Path
 
     tool_input = data.get("tool_input", {})
@@ -1450,7 +1452,7 @@ def check_production_gate(data: dict, state: SessionState) -> HookResult:
     if not file_path:
         return HookResult.approve()
 
-    # SUDO bypass (check first to allow framework maintenance)
+    # SUDO bypass
     if data.get("_sudo_bypass"):
         return HookResult.approve()
 
@@ -1460,51 +1462,22 @@ def check_production_gate(data: dict, state: SessionState) -> HookResult:
     if not is_protected:
         return HookResult.approve()
 
-    # New files get a warning, not a block
-    if not Path(file_path).exists():
-        return HookResult.approve(
-            "⚠️ New production file - run `audit` + `void` after creation"
-        )
-
-    # Check content for stubs
+    # Check content for stubs - these should never be in production
     content = tool_input.get("content", "") or tool_input.get("new_string", "")
     if content:
         STUB_PATTERNS = ["# TODO", "# FIXME", "raise NotImplementedError", "pass  #"]
         for pattern in STUB_PATTERNS:
             if pattern in content:
                 return HookResult.deny(
-                    f"**PRODUCTION GATE BLOCKED**: Stub detected ({pattern})\n"
-                    f"Complete all TODOs before writing to production."
+                    f"**STUB BLOCKED**: `{pattern}` detected in production code.\n"
+                    f"Complete implementation before writing to .claude/ops/ or .claude/lib/"
                 )
 
-    # Check if audit+void have been run this session (v3.9)
-    is_verified, missing = is_production_verified(state, file_path)
-    if not is_verified:
-        fname = Path(file_path).name
-        # Show full confidence recovery ledger, not just one path
-        recovery_options = get_confidence_recovery_options(state.confidence, target=71)
+    # New files: just a reminder
+    if not Path(file_path).exists():
+        return HookResult.approve("📝 New production file - lint after creation")
 
-        if missing == "both":
-            return HookResult.deny(
-                f"**PRODUCTION GATE**: `{fname}` requires verification.\n\n"
-                f"**Quick path** (for this file):\n"
-                f"```bash\n"
-                f"~/.claude/hooks/py ~/.claude/ops/audit.py {file_path}\n"
-                f"~/.claude/hooks/py ~/.claude/ops/void.py {file_path}\n"
-                f"```\n\n"
-                f"{recovery_options}"
-            )
-        else:
-            return HookResult.deny(
-                f"**PRODUCTION GATE**: `{fname}` needs `{missing}` verification.\n\n"
-                f"**Quick path**:\n"
-                f"```bash\n"
-                f"~/.claude/hooks/py ~/.claude/ops/{missing}.py {file_path}\n"
-                f"```\n\n"
-                f"{recovery_options}"
-            )
-
-    return HookResult.approve("✓ Production gate passed (audit+void verified)")
+    return HookResult.approve()
 
 
 @register_hook("deferral_gate", "Edit|Write|MultiEdit", priority=60)

@@ -249,6 +249,10 @@ class SessionState:
     )  # Searches mentioned but not run
     last_message_tool_count: int = 0  # Tools in last message
 
+    # Sequential Repetition Tracking (v4.1) - detect inefficient sequential same-tool usage
+    # Format: {tool_name, turn, bash_cmd (for Bash only)}
+    last_tool_info: dict = field(default_factory=dict)
+
     # Integration Blindness Prevention (v3.3)
     pending_integration_greps: list = field(
         default_factory=list

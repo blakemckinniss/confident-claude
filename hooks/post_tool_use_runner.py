@@ -754,6 +754,16 @@ def check_state_updater(
         prompt = tool_input.get("prompt", "")
         add_domain_signal(state, prompt[:200])
 
+    # Track last tool for sequential repetition detection
+    bash_cmd = ""
+    if tool_name == "Bash":
+        bash_cmd = tool_input.get("command", "")[:50]  # First 50 chars for pattern matching
+    state.last_tool_info = {
+        "tool_name": tool_name,
+        "turn": state.turn_count,
+        "bash_cmd": bash_cmd,
+    }
+
     return HookResult.with_context(warning) if warning else HookResult.none()
 
 
@@ -1169,6 +1179,23 @@ def check_confidence_reducer(
             if state.turn_count - last_turn <= 2:
                 context["hook_blocked"] = True
                 break
+
+    # Check for sequential repetition (same tool used in consecutive turns)
+    last_info = getattr(state, "last_tool_info", {})
+    if last_info:
+        last_tool = last_info.get("tool_name", "")
+        last_turn = last_info.get("turn", 0)
+        # Sequential = same tool in different turn (parallel = same turn, which is fine)
+        if last_tool == tool_name and last_turn < state.turn_count:
+            # For Bash, also check if command is similar (same prefix)
+            if tool_name == "Bash":
+                last_cmd = last_info.get("bash_cmd", "")
+                curr_cmd = tool_input.get("command", "")[:50]
+                # Similar command = same first 20 chars (likely same tool/pattern)
+                if last_cmd[:20] == curr_cmd[:20]:
+                    context["sequential_repetition"] = True
+            else:
+                context["sequential_repetition"] = True
 
     # Apply reducers
     triggered = apply_reducers(state, context)
