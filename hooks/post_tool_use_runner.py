@@ -760,6 +760,75 @@ def check_state_updater(
 # -----------------------------------------------------------------------------
 
 
+@register_hook("confidence_decay", None, priority=11)
+def check_confidence_decay(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Natural confidence decay and information gathering boosts.
+
+    Decay: -0.5 per tool call (complexity accumulates over conversation)
+    Boosts:
+    - Read file: +1 (gathering information)
+    - Memory search: +1 (leveraging past knowledge)
+    - Grep/Glob: +0.5 (exploring codebase)
+
+    This creates a natural flow where confidence decays unless
+    actively counteracted by information gathering.
+    """
+    tool_name = data.get("tool_name", "")
+
+    # Track accumulated fractional decay
+    if not hasattr(state, "_decay_accumulator"):
+        state._decay_accumulator = 0.0
+
+    # Base decay per tool call
+    state._decay_accumulator += 0.5
+
+    # Boosts for information gathering
+    boost = 0
+    boost_reason = ""
+
+    if tool_name == "Read":
+        boost = 1
+        boost_reason = "file-read"
+    elif tool_name in ("Grep", "Glob"):
+        boost = 0.5
+        boost_reason = "codebase-search"
+    elif tool_name.startswith("mcp__") and "mem" in tool_name.lower():
+        boost = 1
+        boost_reason = "memory-access"
+    elif tool_name == "WebSearch" or tool_name == "WebFetch":
+        boost = 1
+        boost_reason = "web-research"
+
+    # Calculate net adjustment (decay minus boosts)
+    # Only apply when accumulator reaches whole number
+    net_decay = int(state._decay_accumulator) - boost
+    state._decay_accumulator -= int(state._decay_accumulator)  # Keep fractional part
+
+    if net_decay == 0 and boost == 0:
+        return HookResult.none()
+
+    old_confidence = state.confidence
+    new_confidence = max(0, min(100, old_confidence - net_decay + boost))
+
+    if new_confidence != old_confidence:
+        update_confidence(state, new_confidence)
+        delta = new_confidence - old_confidence
+        if boost and net_decay <= 0:
+            return HookResult.with_context(
+                f"📈 **Info boost**: {old_confidence}% → {new_confidence}% "
+                f"(+{boost}) [{boost_reason}]"
+            )
+        elif delta < 0:
+            return HookResult.with_context(
+                f"📉 **Decay**: {old_confidence}% → {new_confidence}% "
+                f"({delta}) [complexity accumulation]"
+            )
+
+    return HookResult.none()
+
+
 @register_hook("confidence_reducer", None, priority=12)
 def check_confidence_reducer(
     data: dict, state: SessionState, runner_state: dict
