@@ -645,6 +645,98 @@ def check_bad_language(data: dict, state: SessionState) -> HookResult:
     )
 
 
+# Positive language patterns for verification behavior
+GOOD_LANGUAGE_PATTERNS = {
+    "verification_intent": {
+        "delta": 3,
+        "patterns": [
+            r"\blet\s+me\s+(just\s+)?(check|verify|confirm|validate|inspect)\b",
+            r"\bi'?ll\s+(just\s+)?(check|verify|confirm|validate|inspect)\b",
+            r"\blet\s+me\s+(first\s+)?(read|look\s+at|examine|review)\b",
+            r"\bbefore\s+(i|we)\s+(proceed|continue|start)\b.*\b(check|verify|confirm)\b",
+            r"\bfirst,?\s+(let\s+me\s+)?(check|verify|read|confirm)\b",
+        ],
+    },
+    "evidence_gathering": {
+        "delta": 2,
+        "patterns": [
+            r"\bto\s+understand\s+(this|the|how)\b",
+            r"\bto\s+see\s+(what|how|if|whether)\b",
+            r"\bto\s+confirm\s+(that|this|the|whether)\b",
+            r"\bto\s+verify\s+(that|this|the|whether)\b",
+        ],
+    },
+}
+
+
+@register_hook("good_language_detector", priority=47)
+def check_good_language(data: dict, state: SessionState) -> HookResult:
+    """Detect and reward verification language patterns in assistant output.
+
+    Rewards: "let me check", "let me verify", evidence-gathering statements.
+    """
+    from confidence import (
+        apply_rate_limit,
+        format_confidence_change,
+        get_tier_info,
+        set_confidence,
+    )
+
+    # Get recent transcript content
+    transcript_path = data.get("transcript_path", "")
+    if not transcript_path or not Path(transcript_path).exists():
+        return HookResult.ok()
+
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)  # End
+            size = f.tell()
+            f.seek(max(0, size - 20000))  # Last 20KB
+            content = f.read().decode("utf-8", errors="ignore")
+    except (OSError, PermissionError):
+        return HookResult.ok()
+
+    # Track which patterns triggered
+    triggered = []
+
+    for name, config in GOOD_LANGUAGE_PATTERNS.items():
+        # Check cooldown (longer cooldown to prevent gaming)
+        cooldown_key = f"good_lang_{name}_turn"
+        last_turn = state.nudge_history.get(cooldown_key, 0)
+        if state.turn_count - last_turn < 5:  # 5 turn cooldown
+            continue
+
+        for pattern in config["patterns"]:
+            if re.search(pattern, content, re.IGNORECASE):
+                triggered.append((name, config["delta"]))
+                state.nudge_history[cooldown_key] = state.turn_count
+                break  # Only trigger once per category
+
+    if not triggered:
+        return HookResult.ok()
+
+    # Apply rewards with rate limiting
+    old_confidence = state.confidence
+    total_delta = sum(delta for _, delta in triggered)
+    total_delta = apply_rate_limit(total_delta, state)
+    new_confidence = max(0, min(100, old_confidence + total_delta))
+
+    set_confidence(state, new_confidence, "verification language detected")
+
+    # Format feedback
+    reasons = [f"{name}: +{delta}" for name, delta in triggered]
+    change_msg = format_confidence_change(
+        old_confidence, new_confidence, ", ".join(reasons)
+    )
+
+    _, emoji, desc = get_tier_info(new_confidence)
+
+    return HookResult.ok(
+        f"📈 **Verification Language**\n{change_msg}\n\n"
+        f"Current: {emoji} {new_confidence}% - {desc}"
+    )
+
+
 @register_hook("stub_detector", priority=50)
 def check_stubs(data: dict, state: SessionState) -> HookResult:
     """Check created files for stubs."""
