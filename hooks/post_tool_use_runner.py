@@ -88,8 +88,6 @@ from session_state import (
     # Ops tool tracking (v3.9)
     track_ops_tool,
     mark_production_verified,
-    # Confidence system (v4.0)
-    update_confidence,
 )
 from _hook_result import HookResult
 
@@ -810,11 +808,11 @@ def check_confidence_decay(
         return HookResult.none()
 
     old_confidence = state.confidence
-    new_confidence = max(0, min(100, old_confidence - net_decay + boost))
+    delta = -net_decay + boost
+    new_confidence = max(0, min(100, old_confidence + delta))
 
     if new_confidence != old_confidence:
-        update_confidence(state, new_confidence)
-        delta = new_confidence - old_confidence
+        state.confidence = new_confidence  # Direct assignment, already bounds-checked
         if boost and net_decay <= 0:
             return HookResult.with_context(
                 f"📈 **Info boost**: {old_confidence}% → {new_confidence}% "
@@ -866,10 +864,10 @@ def check_confidence_reducer(
     # Calculate total reduction and apply
     old_confidence = state.confidence
     total_delta = sum(delta for _, delta, _ in triggered)
-    new_confidence = max(0, old_confidence + total_delta)
+    new_confidence = max(0, min(100, old_confidence + total_delta))
 
     # Update state
-    update_confidence(state, new_confidence)
+    state.confidence = new_confidence  # Direct assignment
 
     # Format feedback
     reasons = [f"{name}: {delta}" for name, delta, _ in triggered]
@@ -952,7 +950,7 @@ def check_confidence_increaser(
     if auto_increases:
         total_auto = sum(d for _, d, _ in auto_increases)
         new_confidence = min(100, old_confidence + total_auto)
-        update_confidence(state, new_confidence)
+        state.confidence = new_confidence  # Direct assignment
 
         reasons = [f"{name}: +{delta}" for name, delta, _ in auto_increases]
         change_msg = format_confidence_change(
@@ -1068,7 +1066,7 @@ def check_thinking_confidence(
     new_confidence = max(0, min(100, old_confidence + adjustment))
 
     if new_confidence != old_confidence:
-        update_confidence(state, new_confidence)
+        state.confidence = new_confidence  # Direct assignment
         direction = "📉" if adjustment < 0 else "📈"
         return HookResult.with_context(
             f"{direction} **Thinking confidence**: {old_confidence}% → {new_confidence}% "
