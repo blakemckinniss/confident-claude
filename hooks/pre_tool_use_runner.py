@@ -67,6 +67,12 @@ from session_state import (
     check_cascade_failure,
 )
 from _hook_result import HookResult
+from _beads import (
+    get_open_beads,
+    get_in_progress_beads,
+    get_independent_beads,
+    generate_parallel_task_calls,
+)
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -178,20 +184,17 @@ def register_hook(name: str, matcher: Optional[str], priority: int = 50):
 @register_hook("loop_detector", "Bash", priority=10)
 def check_loop_detector(data: dict, state: SessionState) -> HookResult:
     """Block bash loops (Hard Block #6)."""
-    from synapse_core import check_sudo_in_transcript
-
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
     description = tool_input.get("description", "")
-    transcript_path = data.get("transcript_path", "")
 
     if not command:
         return HookResult.approve()
 
-    # SUDO bypass
+    # SUDO bypass (pre-computed in run_hooks)
     if "SUDO LOOP" in description.upper() or "SUDO_LOOP" in description.upper():
         return HookResult.approve()
-    if check_sudo_in_transcript(transcript_path):
+    if data.get("_sudo_bypass"):
         return HookResult.approve()
 
     # Strip heredocs first, then quotes
@@ -523,10 +526,7 @@ def check_self_heal_enforcer(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve()
 
     # SUDO bypass - clear self-heal and continue
-    from synapse_core import check_sudo_in_transcript
-
-    transcript_path = data.get("transcript_path", "")
-    if check_sudo_in_transcript(transcript_path):
+    if data.get("_sudo_bypass"):
         state.self_heal_required = False
         state.self_heal_target = ""
         state.self_heal_error = ""
@@ -807,48 +807,6 @@ def check_beads_parallel(data: dict, state: SessionState) -> HookResult:
 # BEAD-ENFORCED PARALLEL WORKFLOW
 # =============================================================================
 
-# Cache for bd queries (avoid repeated subprocess calls)
-_BD_CACHE: dict = {}
-_BD_CACHE_TURN: int = 0
-
-
-def _get_open_beads(state: SessionState) -> list:
-    """Get open beads, cached per turn."""
-    global _BD_CACHE, _BD_CACHE_TURN
-
-    current_turn = state.turn_count
-    if _BD_CACHE_TURN == current_turn and "open_beads" in _BD_CACHE:
-        return _BD_CACHE.get("open_beads", [])
-
-    # Cache miss - query bd (separate queries since bd doesn't support comma-separated status)
-    try:
-        import subprocess
-
-        all_beads = []
-        for status in ["open", "in_progress"]:
-            result = subprocess.run(
-                ["bd", "list", f"--status={status}", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                all_beads.extend(json.loads(result.stdout))
-
-        _BD_CACHE = {"open_beads": all_beads}
-        _BD_CACHE_TURN = current_turn
-        return all_beads
-    except Exception:
-        pass
-
-    return []
-
-
-def _get_in_progress_beads(state: SessionState) -> list:
-    """Get beads currently being worked on."""
-    beads = _get_open_beads(state)
-    return [b for b in beads if b.get("status") == "in_progress"]
-
 
 @register_hook("bead_enforcement", "Edit|Write", priority=4)
 def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
@@ -865,10 +823,7 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     - SUDO bypass always available
     """
     # SUDO bypass
-    from synapse_core import check_sudo_in_transcript
-
-    transcript_path = data.get("transcript_path", "")
-    if check_sudo_in_transcript(transcript_path):
+    if data.get("_sudo_bypass"):
         return HookResult.approve()
 
     tool_name = data.get("tool_name", "")
@@ -919,7 +874,7 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     is_grace_period = state.turn_count <= 2
 
     # === CHECK FOR IN_PROGRESS BEADS ===
-    in_progress = _get_in_progress_beads(state)
+    in_progress = get_in_progress_beads(state)
 
     if in_progress:
         # Reset enforcement counter - user is tracking work properly
@@ -933,7 +888,7 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
         state.bead_enforcement_blocks = 0
 
     # === DEGRADED MODE (bd binary failed or cascade) ===
-    open_beads = _get_open_beads(state)
+    open_beads = get_open_beads(state)
     bd_failed = open_beads == [] and state.bead_enforcement_blocks >= 3
 
     if bd_failed:
@@ -963,87 +918,6 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     )
 
 
-def _get_independent_beads(state: SessionState) -> list:
-    """
-    Get beads that can be worked in parallel (no blockers).
-
-    FILTERS:
-    - Status: open or in_progress only
-    - Dependencies: No unresolved blockers
-    - Recency: Updated in last 24 hours preferred
-    - Limit: Max 4 for parallel work
-    """
-    import subprocess
-    from datetime import datetime
-
-    beads = _get_open_beads(state)
-    if not beads:
-        return []
-
-    # Get blocked beads to exclude
-    blocked_ids = set()
-    try:
-        result = subprocess.run(
-            ["bd", "blocked", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            blocked = json.loads(result.stdout)
-            blocked_ids = {b.get("id") for b in blocked}
-    except Exception:
-        pass
-
-    # Filter to independent beads
-    independent = [b for b in beads if b.get("id") not in blocked_ids]
-
-    # Sort by recency (updated_at or created_at)
-    def get_timestamp(b):
-        ts = b.get("updated_at") or b.get("created_at") or ""
-        try:
-            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        except Exception:
-            return datetime.min
-
-    independent.sort(key=get_timestamp, reverse=True)
-
-    # Cap at 4 for parallel work
-    return independent[:4]
-
-
-def _generate_parallel_task_calls(beads: list) -> str:
-    """Generate copy-pasteable parallel Task invocation structure."""
-    if not beads:
-        return ""
-
-    lines = ["**Suggested parallel Task calls** (spawn ALL in one message):"]
-    lines.append("```")
-
-    for i, b in enumerate(beads, 1):
-        bead_id = b.get("id", "???")[:16]
-        title = b.get("title", "untitled")[:50]
-        bead_type = b.get("type", "task")
-
-        lines.append(f"# Task {i}: {title}")
-        lines.append("Task(")
-        lines.append('    subagent_type="general-purpose",')
-        lines.append(f'    description="Work on {bead_type}: {title[:30]}",')
-        lines.append(f'    prompt="Work on bead `{bead_id}`: {title}. ')
-        lines.append(
-            f"            First run `bd update {bead_id} --status=in_progress`, "
-        )
-        lines.append(
-            f'            then complete the work, then `bd close {bead_id}`.",'
-        )
-        lines.append(")")
-        if i < len(beads):
-            lines.append("")
-
-    lines.append("```")
-    return "\n".join(lines)
-
-
 @register_hook("parallel_bead_delegation", "Task", priority=3)
 def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResult:
     """
@@ -1066,7 +940,7 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
         return HookResult.approve()
 
     # Get independent beads (filtered for parallel work)
-    independent_beads = _get_independent_beads(state)
+    independent_beads = get_independent_beads(state)
     bead_count = len(independent_beads)
 
     if bead_count < 2:
@@ -1076,7 +950,7 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     # This counter is managed by parallel_nudge (priority 4); we just read and escalate
 
     # Generate the parallel task structure
-    task_structure = _generate_parallel_task_calls(independent_beads)
+    task_structure = generate_parallel_task_calls(independent_beads)
 
     # Escalate based on shared sequential pattern counter
     # Note: parallel_nudge (priority 4) runs after us and updates the counter
@@ -1152,14 +1026,11 @@ def check_recursion_guard(data: dict, state: SessionState) -> HookResult:
 def check_oracle_gate(data: dict, state: SessionState) -> HookResult:
     """Enforce oracle consultation after repeated failures."""
     from session_state import get_turns_since_op
-    from synapse_core import check_sudo_in_transcript
 
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
-    transcript_path = data.get("transcript_path", "")
-
     # SUDO bypass
-    if check_sudo_in_transcript(transcript_path):
+    if data.get("_sudo_bypass"):
         return HookResult.approve()
 
     # Skip diagnostic bash commands
@@ -1263,11 +1134,8 @@ def check_error_suppression(data: dict, state: SessionState) -> HookResult:
 @register_hook("content_gate", "Edit|Write", priority=45)
 def check_content_gate(data: dict, state: SessionState) -> HookResult:
     """Block dangerous code patterns (eval, SQL injection, etc.)."""
-    from synapse_core import check_sudo_in_transcript
 
     tool_input = data.get("tool_input", {})
-    transcript_path = data.get("transcript_path", "")
-
     content = tool_input.get("content", "") or tool_input.get("new_string", "")
     file_path = tool_input.get("file_path", "")
 
@@ -1282,7 +1150,7 @@ def check_content_gate(data: dict, state: SessionState) -> HookResult:
     if ".claude/tmp/" in file_path:
         return HookResult.approve()
 
-    has_sudo = check_sudo_in_transcript(transcript_path)
+    has_sudo = data.get("_sudo_bypass")
 
     # For Python files: Use AST analysis (more accurate, ignores strings/comments)
     if file_path.endswith(".py"):
@@ -1357,10 +1225,7 @@ def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve()
 
     # SUDO bypass
-    from synapse_core import check_sudo_in_transcript
-
-    transcript_path = data.get("transcript_path", "")
-    if check_sudo_in_transcript(transcript_path):
+    if data.get("_sudo_bypass"):
         return HookResult.approve()
 
     # Get the content that WILL exist after the edit
@@ -1524,12 +1389,9 @@ def check_production_gate(data: dict, state: SessionState) -> HookResult:
 @register_hook("deferral_gate", "Edit|Write|MultiEdit", priority=60)
 def check_deferral_gate(data: dict, state: SessionState) -> HookResult:
     """Block deferral theater language."""
-    from synapse_core import check_sudo_in_transcript
 
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
-    transcript_path = data.get("transcript_path", "")
-
     # Get content
     content = ""
     if tool_name == "Write":
@@ -1541,7 +1403,7 @@ def check_deferral_gate(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve()
 
     # Bypass
-    if "SUDO DEFER" in content.upper() or check_sudo_in_transcript(transcript_path):
+    if "SUDO DEFER" in content.upper() or data.get("_sudo_bypass"):
         return HookResult.approve()
 
     DEFERRAL_PATTERNS = [
@@ -1566,17 +1428,15 @@ def check_deferral_gate(data: dict, state: SessionState) -> HookResult:
 @register_hook("doc_theater_gate", "Write", priority=65)
 def check_doc_theater_gate(data: dict, state: SessionState) -> HookResult:
     """Block creation of standalone documentation files."""
-    from synapse_core import check_sudo_in_transcript
     from pathlib import Path
 
     tool_input = data.get("tool_input", {})
-    transcript_path = data.get("transcript_path", "")
     file_path = tool_input.get("file_path", "")
 
     if not file_path or not file_path.endswith(".md"):
         return HookResult.approve()
 
-    if check_sudo_in_transcript(transcript_path):
+    if data.get("_sudo_bypass"):
         return HookResult.approve()
 
     # Allowed locations
@@ -1693,12 +1553,10 @@ def check_recommendation_gate(data: dict, state: SessionState) -> HookResult:
 @register_hook("security_claim_gate", "Edit|Write", priority=80)
 def check_security_claim_gate(data: dict, state: SessionState) -> HookResult:
     """Require audit for security-sensitive code."""
-    from synapse_core import check_sudo_in_transcript
     from pathlib import Path
 
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
-    transcript_path = data.get("transcript_path", "")
     file_path = tool_input.get("file_path", "")
 
     content = ""
@@ -1708,7 +1566,7 @@ def check_security_claim_gate(data: dict, state: SessionState) -> HookResult:
         content = tool_input.get("new_string", "")
 
     # Bypass
-    if "SUDO SECURITY" in content.upper() or check_sudo_in_transcript(transcript_path):
+    if "SUDO SECURITY" in content.upper() or data.get("_sudo_bypass"):
         return HookResult.approve()
 
     # Skip trusted paths
@@ -1902,6 +1760,15 @@ def matches_tool(matcher: Optional[str], tool_name: str) -> bool:
 def run_hooks(data: dict, state: SessionState) -> dict:
     """Run all applicable hooks and return aggregated result."""
     tool_name = data.get("tool_name", "")
+
+    # Pre-compute SUDO bypass once for all hooks (avoids 18 redundant transcript reads)
+    transcript_path = data.get("transcript_path", "")
+    if transcript_path:
+        from synapse_core import check_sudo_in_transcript
+
+        data["_sudo_bypass"] = check_sudo_in_transcript(transcript_path)
+    else:
+        data["_sudo_bypass"] = False
 
     # Sort by priority
     sorted_hooks = sorted(HOOKS, key=lambda x: x[3])

@@ -174,7 +174,5 @@ def is_protected_path(path: str) -> bool:
     return any(p in path for p in protected)
 
 
-def is_scratch_path(path: str) -> bool:
-    """Check if path is in scratch/temp locations."""
-    scratch = get_patterns("scratch_paths")
-    return any(p in path for p in scratch)
+# NOTE: is_scratch_path moved to _patterns.py (single source of truth)
+# Use: from _patterns import is_scratch_path

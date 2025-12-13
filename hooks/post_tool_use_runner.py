@@ -51,6 +51,7 @@ from _cooldown import (
     tool_awareness_keyed,
     beads_sync_cooldown,
 )
+from _patterns import is_scratch_path
 
 from session_state import (
     load_state,
@@ -727,7 +728,7 @@ def check_assumptions(
     file_path = tool_input.get("file_path", "")
 
     # Skip scratch/temp files
-    if ".claude/tmp/" in file_path or ".claude/memory/" in file_path:
+    if is_scratch_path(file_path):
         return HookResult.none()
 
     code = tool_input.get("new_string", "") or tool_input.get("content", "")
@@ -1047,7 +1048,7 @@ def check_state_mutations(
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    if ".claude/tmp/" in file_path or ".claude/memory/" in file_path:
+    if is_scratch_path(file_path):
         return HookResult.none()
 
     code = tool_input.get("new_string", "") or tool_input.get("content", "")
@@ -1137,7 +1138,7 @@ def check_dev_toolchain(
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    if ".claude/tmp/" in file_path or ".claude/memory/" in file_path:
+    if is_scratch_path(file_path):
         return HookResult.none()
 
     # Find matching extension
