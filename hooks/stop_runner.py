@@ -645,6 +645,28 @@ BAD_LANGUAGE_PATTERNS = {
             r"\bbuild\s+a\s+new\s+\w+\s+(instead|rather)\b",
         ],
     },
+    "passive_deflection": {
+        "delta": -8,
+        "patterns": [
+            # Deflecting to user
+            r"\b(up\s+to\s+you|your\s+(choice|call|decision))\b",
+            r"\blet\s+me\s+know\s+(what\s+you\s+prefer|your\s+preference)\b",
+            r"\bwhatever\s+you\s+(think|prefer|want)\b",
+            r"\bi'?ll\s+leave\s+(it|that)\s+(up\s+)?to\s+you\b",
+            # Apathetic hedging
+            r"\bit\s+depends\b(?!\s+on\s+(the|whether))",  # allow "it depends on X"
+            r"\bthere\s+are\s+many\s+(ways|approaches|options)\b(?!\.\s+i\s+recommend)",
+            r"\bi'?m\s+not\s+(sure|certain)\b(?!\s*(,\s*)?(but|so)\s+let\s+me)",  # allow "not sure, let me check"
+            r"\bi\s+don'?t\s+know\b(?!\s*(,\s*)?(but|so)\s+(let\s+me|i'?ll))",  # allow "don't know, let me investigate"
+            # Open-ended non-answers
+            r"\byou\s+could\s+(try|do|use)\s+\w+\s+or\s+\w+\b(?!\.\s*(i\s+)?(recommend|suggest))",
+            r"\beither\s+(way|option)\s+(works|is\s+fine)\b",
+            r"\bboth\s+(approaches|options)\s+(are|have)\s+(valid|merit)\b",
+            # Lazy deflection
+            r"\bthat'?s\s+beyond\s+(my|the)\s+scope\b",
+            r"\bi\s+can'?t\s+(help|assist)\s+with\s+that\b(?!\s+because)",
+        ],
+    },
 }
 
 
@@ -775,6 +797,27 @@ GOOD_LANGUAGE_PATTERNS = {
             # File/code removal
             r"\bdeleted\s+(the\s+)?(deprecated|legacy|old)\s+(code|file|module)\b",
             r"\bremoved\s+(commented|commented-out)\s+code\b",
+        ],
+    },
+    "assertive_stance": {
+        "delta": 5,
+        "patterns": [
+            # Direct recommendations
+            r"\bi\s+recommend\b",
+            r"\byou\s+should\b",
+            r"\bthe\s+(best|right|correct)\s+(approach|way|solution)\s+is\b",
+            r"\buse\s+this\b",
+            r"\bdo\s+this\b",
+            r"\bhere'?s\s+(the|my)\s+(fix|solution|recommendation)\b",
+            # Taking ownership
+            r"\bi'?ll\s+(do|handle|fix|implement)\s+(this|it|that)\b",
+            r"\bdoing\s+(this|it)\s+now\b",
+            r"\bfixing\s+(this|it)\s+now\b",
+            # Direct assertions
+            r"\bthis\s+is\s+(the|a)\s+(bug|issue|problem|cause)\b",
+            r"\bthe\s+(issue|problem|bug)\s+is\b",
+            r"\bi\s+disagree\b",
+            r"\bthat'?s\s+(incorrect|wrong|not\s+right)\b",
         ],
     },
 }
