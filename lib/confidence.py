@@ -402,22 +402,19 @@ class FollowUpQuestionReducer(ConfidenceReducer):
     # Removed: r"^(why|how|what|where|when|which|who)\b" (too broad - catches new questions)
     patterns: list = field(
         default_factory=lambda: [
-            # Follow-up starters (continuing previous topic)
-            r"^(but |and |also |what about|how about|can you also)",
-            r"^(so |then |ok so |okay so )",
-            r"^(wait|hold on|actually)",
-            # Clarification requests
+            # Clarification requests (answer was unclear)
             r"\bwhat do you mean\b",
-            r"\bcan you (explain|clarify|elaborate)",
-            r"\bwhat('s| is) (that|this)\b",
-            r"\bi (don't understand|still don't|am confused)",
-            # Dissatisfaction signals
-            r"\bthat doesn't (work|help|answer|make sense)",
-            r"\bthat's (not|wrong|incorrect)",
-            r"^(no|nope),? (that|it|this)",
-            # Incompleteness signals
-            r"\byou (didn't|forgot|missed|skipped)",
-            r"\bwhat about the\b",
+            r"\bcan you (explain|clarify|elaborate)\b.*\?",
+            r"\bi (don't understand|still don't get|am confused about)\b",
+            # Dissatisfaction signals (answer was wrong/unhelpful)
+            r"\bthat doesn't (work|help|answer|make sense)\b",
+            r"\bthat's (not right|wrong|incorrect|not what i)\b",
+            r"^(no|nope),?\s+(that's not|it's not|this isn't)",
+            # Explicit incompleteness (I missed something)
+            r"\byou (didn't|forgot to|missed|skipped|left out)\b",
+            r"\bwhat about the\s+\w+\s+(you|i|we)\s+(mentioned|discussed|said)\b",
+            r"\byou said you would\b",
+            r"\bwasn't that supposed to\b",
         ]
     )
 
