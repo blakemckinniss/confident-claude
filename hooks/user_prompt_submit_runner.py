@@ -825,6 +825,41 @@ def check_confidence_dispute(data: dict, state: SessionState) -> HookResult:
     return HookResult.allow(message)
 
 
+@register_hook("verified_library_unlock", priority=9)
+def check_verified_library(data: dict, state: SessionState) -> HookResult:
+    """Unlock research_gate when user says VERIFIED.
+
+    When research_gate blocks a write, it stores the blocked libraries.
+    User saying VERIFIED marks those libraries as researched.
+    """
+    from session_state import track_library_researched
+
+    prompt = data.get("prompt", "").strip()
+    if not prompt:
+        return HookResult.allow()
+
+    # Check for VERIFIED (case-insensitive, standalone word)
+    if not re.search(r"\bverified\b", prompt, re.IGNORECASE):
+        return HookResult.allow()
+
+    # Get blocked libraries from state
+    blocked_libs = state.get("research_gate_blocked_libs", [])
+    if not blocked_libs:
+        return HookResult.allow()
+
+    # Mark all blocked libraries as researched
+    for lib in blocked_libs:
+        track_library_researched(state, lib)
+
+    # Clear the blocked list
+    state.set("research_gate_blocked_libs", [])
+
+    return HookResult.allow(
+        f"✅ **VERIFIED**: Marked as researched: {', '.join(blocked_libs)}\n"
+        f"Research gate unlocked for these libraries."
+    )
+
+
 # Complexity patterns for intake_protocol (pre-compiled for performance)
 _COMPLEX_SIGNALS = [
     re.compile(r"\b(architect|design|refactor|migrate|restructure)\b", re.IGNORECASE),

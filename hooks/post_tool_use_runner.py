@@ -104,6 +104,16 @@ from confidence import (
     format_dispute_instructions,
 )
 
+# Security scanner (lazy-loaded HuggingFace model)
+try:
+    from _security_scanner import scan_code as security_scan, is_ready as security_ready
+
+    SECURITY_SCANNER_AVAILABLE = True
+except ImportError:
+    SECURITY_SCANNER_AVAILABLE = False
+    security_scan = None
+    security_ready = None
+
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
 # =============================================================================
@@ -896,6 +906,35 @@ def _get_context_multiplier(context_pct: float) -> tuple[float, float]:
         return (1.0, 1.0)  # No modification
 
 
+def _track_researched_libraries(tool_name: str, tool_input: dict, state: SessionState):
+    """Extract library names from research queries and mark as researched.
+
+    This unlocks the research_gate for these libraries in pre_tool_use.
+    """
+    from session_state import RESEARCH_REQUIRED_LIBS, track_library_researched
+
+    # Get the text to search for library mentions
+    text = ""
+    if tool_name == "WebSearch":
+        text = tool_input.get("query", "")
+    elif tool_name == "WebFetch":
+        text = tool_input.get("url", "") + " " + tool_input.get("prompt", "")
+    elif tool_name == "mcp__crawl4ai__crawl":
+        text = tool_input.get("url", "")
+    elif tool_name == "mcp__crawl4ai__search":
+        text = tool_input.get("query", "")
+
+    if not text:
+        return
+
+    text_lower = text.lower()
+
+    # Check for each required library in the search/fetch
+    for lib in RESEARCH_REQUIRED_LIBS:
+        if lib.lower() in text_lower:
+            track_library_researched(state, lib)
+
+
 @register_hook("confidence_decay", None, priority=11)
 def check_confidence_decay(
     data: dict, state: SessionState, runner_state: dict
@@ -1341,6 +1380,8 @@ def check_confidence_increaser(
         "mcp__crawl4ai__search",
     }:
         context["research_performed"] = True
+        # Track researched libraries to unlock research_gate
+        _track_researched_libraries(tool_name, tool_input, state)
 
     # Search tools = gathering understanding (+2)
     if tool_name in {"Grep", "Glob", "Task"}:
@@ -1960,6 +2001,68 @@ def check_code_quality(
         )
 
     return HookResult.none()
+
+
+# -----------------------------------------------------------------------------
+# SECURITY SCANNER (priority 36) - CodeBERT insecure code detection
+# -----------------------------------------------------------------------------
+
+
+@register_hook("security_scanner", "Edit|Write", priority=36)
+def check_security_scan(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Scan code for security vulnerabilities using CodeBERT model.
+
+    Non-blocking: Model loads in background on first call.
+    Advisory only (~65% accuracy) - warns but doesn't block.
+    """
+    if not SECURITY_SCANNER_AVAILABLE or security_scan is None:
+        return HookResult.none()
+
+    tool_input = data.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
+
+    # Only scan code files
+    code_extensions = (
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".c",
+        ".cpp",
+    )
+    if not file_path.endswith(code_extensions):
+        return HookResult.none()
+
+    # Skip scratch/tmp files
+    if is_scratch_path(file_path):
+        return HookResult.none()
+
+    code = tool_input.get("content", "") or tool_input.get("new_string", "")
+    if not code or len(code) < 50:
+        return HookResult.none()
+
+    # Scan code (non-blocking - returns None while model loads)
+    result = security_scan(code, threshold=0.6)
+
+    if result is None:
+        # Model not ready yet or code is secure
+        return HookResult.none()
+
+    # Security issue detected - advisory warning
+    confidence = result["confidence"]
+    recommendation = result["recommendation"]
+
+    return HookResult.with_context(
+        f"🔒 **SECURITY SCAN** ({confidence:.0%} confidence)\n"
+        f"{recommendation}\n"
+        f"💡 Model: CodeBERT (~65% accuracy) - verify manually"
+    )
 
 
 # -----------------------------------------------------------------------------

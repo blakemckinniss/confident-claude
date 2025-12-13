@@ -1742,6 +1742,10 @@ def check_epistemic_boundary(data: dict, state: SessionState) -> HookResult:
 @register_hook("research_gate", "Edit|Write", priority=88)
 def check_research_gate(data: dict, state: SessionState) -> HookResult:
     """Block writes using unverified external libraries."""
+    # SUDO bypass
+    if data.get("_sudo_bypass"):
+        return HookResult.approve()
+
     from session_state import RESEARCH_REQUIRED_LIBS, extract_libraries_from_code
 
     tool_input = data.get("tool_input", {})
@@ -1781,6 +1785,8 @@ def check_research_gate(data: dict, state: SessionState) -> HookResult:
             unresearched.append(lib)
 
     if unresearched:
+        # Store blocked libs so VERIFIED can unlock them
+        state.set("research_gate_blocked_libs", unresearched[:3])
         return HookResult.deny(
             f"**RESEARCH GATE BLOCKED**\n"
             f"Unverified: {', '.join(unresearched[:3])}\n"
