@@ -97,6 +97,7 @@ from _hook_result import HookResult
 from confidence import (
     apply_reducers,
     apply_increasers,
+    apply_rate_limit,
     format_confidence_change,
     get_tier_info,
     format_dispute_instructions,
@@ -956,11 +957,18 @@ def check_confidence_decay(
         boost = 1.5
         boost_reason = "agent-delegation"
 
-    # === INFORMATION GATHERING (modest boosts) ===
+    # === INFORMATION GATHERING (modest boosts with diminishing returns) ===
 
     elif tool_name == "Read":
-        boost = 0.5
-        boost_reason = "file-read"
+        # Diminishing returns: first 3 reads = +0.5, then +0.25, then +0.1
+        read_count = len([f for f in state.files_read if f])  # Count files read
+        if read_count <= 3:
+            boost = 0.5
+        elif read_count <= 6:
+            boost = 0.25
+        else:
+            boost = 0.1  # Spam reads barely help
+        boost_reason = f"file-read({read_count})"
 
     elif tool_name.startswith("mcp__") and "mem" in tool_name.lower():
         boost = 0.5
@@ -1048,6 +1056,12 @@ def check_confidence_decay(
     if delta == 0:
         return HookResult.none()
 
+    # Apply rate limiting to prevent death spirals
+    delta = apply_rate_limit(delta, state)
+
+    if delta == 0:
+        return HookResult.none()
+
     old_confidence = state.confidence
     new_confidence = max(0, min(100, old_confidence + delta))
 
@@ -1116,9 +1130,10 @@ def check_confidence_reducer(
     if not triggered:
         return HookResult.none()
 
-    # Calculate total reduction and apply
+    # Calculate total reduction and apply with rate limiting
     old_confidence = state.confidence
     total_delta = sum(delta for _, delta, _ in triggered)
+    total_delta = apply_rate_limit(total_delta, state)  # Prevent death spirals
     new_confidence = max(0, min(100, old_confidence + total_delta))
 
     # Update state
@@ -1201,9 +1216,10 @@ def check_confidence_increaser(
     messages = []
     old_confidence = state.confidence
 
-    # Apply auto-increases
+    # Apply auto-increases with rate limiting
     if auto_increases:
         total_auto = sum(d for _, d, _ in auto_increases)
+        total_auto = apply_rate_limit(total_auto, state)  # Cap per-turn gains
         new_confidence = min(100, old_confidence + total_auto)
         state.confidence = new_confidence  # Direct assignment
 

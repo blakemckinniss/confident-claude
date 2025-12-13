@@ -252,6 +252,41 @@ class ContradictionReducer(ConfidenceReducer):
         return context.get("contradiction_detected", False)
 
 
+@dataclass
+class FollowUpQuestionReducer(ConfidenceReducer):
+    """Triggers when user asks follow-up questions (indicating incomplete answer)."""
+
+    name: str = "follow_up_question"
+    delta: int = -5
+    description: str = "User asked follow-up question (answer was incomplete)"
+    cooldown_turns: int = 2
+    patterns: list = field(
+        default_factory=lambda: [
+            r"^(but |and |also |what about|how about|can you also)",
+            r"\?$",  # Ends with question mark
+            r"^(why|how|what|where|when|which|who)\b",
+            r"\bwhat do you mean\b",
+            r"\bcan you (explain|clarify|elaborate)",
+            r"\bi (don't understand|still don't|am confused)",
+            r"\bthat doesn't (work|help|answer)",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        prompt = context.get("prompt", "").lower().strip()
+        # Only trigger on short-to-medium prompts (follow-ups are usually brief)
+        if len(prompt) > 200 or len(prompt) < 5:
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, prompt, re.IGNORECASE):
+                return True
+        return False
+
+
 # Registry of all reducers
 REDUCERS: list[ConfidenceReducer] = [
     ToolFailureReducer(),
@@ -261,7 +296,20 @@ REDUCERS: list[ConfidenceReducer] = [
     GoalDriftReducer(),
     EditOscillationReducer(),
     ContradictionReducer(),
+    FollowUpQuestionReducer(),
 ]
+
+
+# =============================================================================
+# RATE LIMITING (prevents death spirals)
+# =============================================================================
+
+# Maximum confidence change per turn (prevents compound penalty death spirals)
+MAX_CONFIDENCE_DELTA_PER_TURN = 15
+
+# Mean reversion target (confidence drifts toward this when no strong signals)
+MEAN_REVERSION_TARGET = 70
+MEAN_REVERSION_RATE = 0.1  # Pull 10% toward target per idle period
 
 
 # =============================================================================
@@ -320,6 +368,29 @@ class BuildSuccessIncreaser(ConfidenceIncreaser):
     description: str = "Build completed successfully"
     requires_approval: bool = False
     cooldown_turns: int = 1
+    # Strict patterns - must be actual build commands, not substrings
+    build_commands: list = field(
+        default_factory=lambda: [
+            "npm run build",
+            "npm build",
+            "yarn build",
+            "pnpm build",
+            "cargo build",
+            "cargo test",  # Rust tests are builds
+            "go build",
+            "go test",
+            "tsc",
+            "webpack",
+            "vite build",
+            "next build",
+            "make all",
+            "make build",
+            "cmake --build",
+            "gradle build",
+            "mvn package",
+            "dotnet build",
+        ]
+    )
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -328,9 +399,9 @@ class BuildSuccessIncreaser(ConfidenceIncreaser):
             return False
         for cmd in state.commands_succeeded[-5:]:
             cmd_str = cmd.get("command", "").lower()
+            # Must match actual build command, not just contain substring
             if any(
-                t in cmd_str
-                for t in ["npm build", "cargo build", "make", "tsc", "go build"]
+                cmd_str.startswith(t) or f" {t}" in cmd_str for t in self.build_commands
             ):
                 return True
         return False
@@ -695,6 +766,57 @@ def assess_prompt_complexity(prompt: str) -> tuple[int, list[str]]:
             reasons.append(reason)
 
     return delta, reasons
+
+
+# =============================================================================
+# RATE LIMITING HELPERS
+# =============================================================================
+
+
+def apply_rate_limit(delta: int, state: "SessionState") -> int:
+    """Apply rate limiting to prevent death spirals.
+
+    Caps the maximum confidence change per turn and tracks cumulative
+    changes to prevent compound penalties from destroying confidence.
+
+    Returns the clamped delta.
+    """
+    # Track cumulative delta this turn
+    turn_key = f"_confidence_delta_turn_{state.turn_count}"
+    cumulative = state.nudge_history.get(turn_key, 0)
+
+    # Calculate remaining budget
+    if delta < 0:
+        # For penalties, limit total negative change
+        remaining = -MAX_CONFIDENCE_DELTA_PER_TURN - cumulative
+        clamped = max(delta, remaining)
+    else:
+        # For boosts, limit total positive change
+        remaining = MAX_CONFIDENCE_DELTA_PER_TURN - cumulative
+        clamped = min(delta, remaining)
+
+    # Update cumulative tracking
+    state.nudge_history[turn_key] = cumulative + clamped
+
+    return clamped
+
+
+def apply_mean_reversion(confidence: int, idle_turns: int = 0) -> int:
+    """Gently pull confidence toward baseline when no strong signals.
+
+    Prevents getting stuck at extremes. Only applies after idle periods.
+    """
+    if idle_turns < 3:  # Need at least 3 idle turns
+        return confidence
+
+    # Calculate reversion amount
+    distance = MEAN_REVERSION_TARGET - confidence
+    reversion = int(distance * MEAN_REVERSION_RATE * idle_turns)
+
+    # Cap at 5 per application
+    reversion = max(-5, min(5, reversion))
+
+    return confidence + reversion
 
 
 # =============================================================================
