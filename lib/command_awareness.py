@@ -6,7 +6,6 @@ Parses .claude/commands/*.md frontmatter and provides assertive suggestions
 like "Use /bdg to control Chrome" or "Use /commit for smart git commit".
 """
 
-import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -32,7 +31,7 @@ COMMAND_TRIGGERS = {
         "/bd", "Use `/bd close <id>` to mark tasks complete"
     ),
     r"depends on|blocked by|blocking|prerequisite|before (i|we) can": (
-        "/bd", "Use `/bd dep add <issue> <blocks>` to track dependencies"
+        "/bd", "Use `/bd dep add <issue> <depends-on>` to track dependencies"
     ),
     # Browser/UI testing
     r"browser|chrome|devtools|dom|screenshot|ui test": (

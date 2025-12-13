@@ -10,7 +10,7 @@
 | Create task | `bd create "Title"` |
 | Start work | `bd update <id> --status=in_progress` |
 | Complete | `bd close <id>` |
-| Dependencies | `bd dep add <issue> <blocks>` |
+| Dependencies | `bd dep add <issue> <depends-on>` |
 | Check status | `bd list` |
 
 ## Session Workflow

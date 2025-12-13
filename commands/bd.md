@@ -20,7 +20,7 @@ Run beads commands for persistent task tracking across sessions.
 | `bd close <id>` | Mark task complete |
 | `bd close <id1> <id2> ...` | Close multiple tasks |
 | `bd show <id>` | Show task details |
-| `bd dep add <issue> <blocks>` | Add dependency |
+| `bd dep add <issue> <depends-on>` | Add dependency |
 | `bd blocked` | Show blocked tasks |
 | `bd stats` | Project statistics |
 
