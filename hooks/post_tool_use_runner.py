@@ -912,6 +912,104 @@ def check_confidence_increaser(
 
 
 # -----------------------------------------------------------------------------
+# THINKING CONFIDENCE (priority 16) - Micro-adjust based on reasoning quality
+# -----------------------------------------------------------------------------
+
+# Patterns that indicate uncertainty/confusion (reduce confidence)
+_THINKING_UNCERTAINTY_PATTERNS = [
+    (
+        re.compile(r"\b(I'm not sure|not certain|unclear|confus)", re.I),
+        -1,
+        "uncertainty",
+    ),
+    (re.compile(r"\b(maybe|might|could be|possibly|perhaps)\b", re.I), -1, "hedging"),
+    (re.compile(r"\b(I think|I believe|I assume)\b", re.I), -1, "assumption"),
+    (re.compile(r"\b(should work|hopefully|probably)\b", re.I), -1, "hope-driven"),
+    (re.compile(r"\b(wait|hmm+|let me reconsider)\b", re.I), -2, "confusion"),
+    (
+        re.compile(r"\b(actually|no wait|I was wrong|that's wrong)\b", re.I),
+        -2,
+        "backtrack",
+    ),
+    (re.compile(r"\b(this is (tricky|complex|difficult))\b", re.I), -1, "complexity"),
+]
+
+# Patterns that indicate clear reasoning (maintain/boost confidence)
+_THINKING_CONFIDENCE_PATTERNS = [
+    (re.compile(r"\b(definitely|clearly|certainly|obviously)\b", re.I), 1, "clarity"),
+    (re.compile(r"\b(this will|I know|verified|confirmed)\b", re.I), 1, "certainty"),
+    (re.compile(r"\b(the (issue|problem|root cause) is)\b", re.I), 1, "diagnosis"),
+]
+
+
+@register_hook("thinking_confidence", None, priority=16)
+def check_thinking_confidence(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Micro-adjust confidence based on reasoning quality in thinking blocks.
+
+    Analyzes the thinking that led to this tool call for:
+    - Uncertainty markers: hedging, assumptions, confusion (-1 to -2)
+    - Clarity markers: certainty, verified reasoning (+1)
+
+    Max adjustment per tool call: -5 to +2
+    """
+    from synapse_core import extract_thinking_blocks
+
+    transcript_path = data.get("transcript_path", "")
+    if not transcript_path:
+        return HookResult.none()
+
+    thinking_blocks = extract_thinking_blocks(transcript_path)
+    if not thinking_blocks:
+        return HookResult.none()
+
+    # Analyze most recent thinking (last 2 blocks, last 2000 chars)
+    recent_thinking = " ".join(thinking_blocks[-2:])[-2000:]
+    if not recent_thinking:
+        return HookResult.none()
+
+    # Calculate adjustment
+    adjustment = 0
+    triggered = []
+
+    # Check uncertainty patterns (penalties)
+    for pattern, delta, label in _THINKING_UNCERTAINTY_PATTERNS:
+        matches = len(pattern.findall(recent_thinking))
+        if matches > 0:
+            # Cap at 2 matches per pattern to avoid over-penalizing
+            adj = delta * min(matches, 2)
+            adjustment += adj
+            triggered.append(f"{label}:{adj}")
+
+    # Check confidence patterns (small boosts)
+    for pattern, delta, label in _THINKING_CONFIDENCE_PATTERNS:
+        if pattern.search(recent_thinking):
+            adjustment += delta
+            triggered.append(f"{label}:+{delta}")
+
+    # Cap total adjustment to avoid wild swings
+    adjustment = max(-5, min(2, adjustment))
+
+    if adjustment == 0:
+        return HookResult.none()
+
+    # Apply micro-adjustment
+    old_confidence = state.confidence
+    new_confidence = max(0, min(100, old_confidence + adjustment))
+
+    if new_confidence != old_confidence:
+        update_confidence(state, new_confidence)
+        direction = "📉" if adjustment < 0 else "📈"
+        return HookResult.with_context(
+            f"{direction} **Thinking confidence**: {old_confidence}% → {new_confidence}% "
+            f"({'+' if adjustment > 0 else ''}{adjustment}) [{', '.join(triggered[:3])}]"
+        )
+
+    return HookResult.none()
+
+
+# -----------------------------------------------------------------------------
 # ASSUMPTION CHECK (priority 22) - Heuristic-based, no Groq call
 # -----------------------------------------------------------------------------
 
