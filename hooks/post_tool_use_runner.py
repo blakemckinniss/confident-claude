@@ -781,6 +781,28 @@ def _get_penalty_multiplier(confidence: int) -> float:
         return 0.5  # Half penalties when in crisis
 
 
+def _get_boost_multiplier(confidence: int) -> float:
+    """Scale boosts based on confidence level - INVERSE of penalty scaling.
+
+    Lower confidence = BIGGER boosts (survival mode, desperate for trust).
+    Higher confidence = SMALLER boosts (already trusted, hard to justify more).
+
+    Creates a self-correcting system:
+    - When struggling: every bit of research/consultation is precious
+    - When comfortable: coasting won't increase trust
+    """
+    if confidence < 30:
+        return 3.0  # Desperate mode - every insight is gold
+    elif confidence < 50:
+        return 2.0  # Struggling - info gathering is rewarded heavily
+    elif confidence < 70:
+        return 1.5  # Working hard - research still pays off
+    elif confidence < 85:
+        return 1.0  # Normal - standard boost values
+    else:
+        return 0.5  # Comfortable - can't easily boost higher
+
+
 # Default context window for Claude models (used when model info unavailable)
 _DEFAULT_CONTEXT_WINDOW = 200000
 
@@ -864,23 +886,30 @@ def _get_context_multiplier(context_pct: float) -> tuple[float, float]:
 def check_confidence_decay(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Harsh confidence decay - confidence is hard to maintain.
+    """Dynamic confidence system with survival mechanics.
 
-    Base decay: -1.0 per tool call (every action costs confidence)
-    High confidence tax: +0.5 extra decay above 85% (complacency penalty)
+    DECAY (harsh - every action costs):
+    - Base: -1.0 per tool call
+    - High confidence tax: +0.5 extra above 85%
 
-    Boosts (small, reading-focused):
-    - Read file: +0.5 (actually gaining context)
-    - Memory/Web: +0.5 (external knowledge)
-    - Task/AskUser: +1 (delegation/clarification)
+    RECOVERY ACTIONS (amplified when struggling):
+    - PAL consultation (thinkdeep/debug/etc): +2 base
+    - AskUserQuestion: +2 base
+    - Task delegation: +1.5 base
+    - Read/Memory/Web: +0.5 base
 
-    Penalties (risky actions):
-    - Edit/Write: -1 base (could introduce bugs)
-    - Edit without read: -2 extra (skipping context)
-    - Stub code: -1 extra (incomplete work)
-    - Bash: -1 (state changes, failure risk)
+    PENALTIES (scaled by confidence):
+    - Edit/Write: -1 base, -2 extra without read, -1 stub
+    - Bash: -1
 
-    All penalties scale with confidence × context multipliers.
+    SURVIVAL MODE (prevents death spiral):
+    - Below 30%: 3x boost multiplier (desperate)
+    - Below 50%: 2x boost multiplier (struggling)
+    - Below 70%: 1.5x boost multiplier (working hard)
+    - 70-84%: 1x (normal)
+    - 85%+: 0.5x (can't coast to higher)
+
+    Shows 🆘 indicator when survival boost is active.
     """
     tool_name = data.get("tool_name", "")
 
@@ -897,34 +926,55 @@ def check_confidence_decay(
 
     state._decay_accumulator += base_decay
 
-    # Boosts for information gathering ONLY (halved from original)
-    # Philosophy: searching ≠ understanding, only reading gives insight
+    # Boosts for RECOVERY ACTIONS - these help regain trust
+    # Base values are modest; boost_multiplier amplifies when struggling
     boost = 0
     boost_reason = ""
     tool_input = data.get("tool_input", {})
 
-    if tool_name == "Read":
-        # Reading files = actually gaining context
+    # === RECOVERY ACTIONS (rewarded more when struggling) ===
+
+    # PAL external consultation - shows humility, seeking help
+    if tool_name.startswith("mcp__pal__"):
+        pal_tool = tool_name.replace("mcp__pal__", "")
+        if pal_tool in ("thinkdeep", "debug", "codereview", "consensus", "precommit"):
+            # Heavy consultation = major recovery action
+            boost = 2
+            boost_reason = f"pal-{pal_tool}"
+        elif pal_tool in ("chat", "challenge", "apilookup"):
+            # Light consultation
+            boost = 1
+            boost_reason = f"pal-{pal_tool}"
+
+    # User clarification - reaching out shows humility
+    elif tool_name == "AskUserQuestion":
+        boost = 2
+        boost_reason = "user-clarification"
+
+    # Agent delegation - distributing work wisely
+    elif tool_name == "Task":
+        boost = 1.5
+        boost_reason = "agent-delegation"
+
+    # === INFORMATION GATHERING (modest boosts) ===
+
+    elif tool_name == "Read":
         boost = 0.5
         boost_reason = "file-read"
-    # Grep/Glob removed - searching isn't understanding
+
     elif tool_name.startswith("mcp__") and "mem" in tool_name.lower():
-        # Memory access = leveraging past knowledge
         boost = 0.5
         boost_reason = "memory-access"
-    elif tool_name == "WebSearch" or tool_name == "WebFetch":
-        # Research = gathering external info
+
+    elif tool_name in ("WebSearch", "WebFetch"):
         boost = 0.5
         boost_reason = "web-research"
-    elif tool_name == "Task":
-        # Delegating shows judgment, but reduced
-        boost = 1
-        boost_reason = "agent-delegation"
-    elif tool_name == "AskUserQuestion":
-        # Clarifying with user is valuable
-        boost = 1
-        boost_reason = "user-clarification"
-    # EnterPlanMode removed - planning is expected, not rewarded
+
+    elif tool_name.startswith("mcp__crawl4ai__"):
+        boost = 0.5
+        boost_reason = "web-crawl"
+
+    # Grep/Glob/EnterPlanMode - no boost (searching/planning ≠ understanding)
 
     # Penalties for risky actions (in addition to decay)
     penalty = 0
@@ -966,16 +1016,22 @@ def check_confidence_decay(
     state._decay_accumulator -= accumulated_decay  # Keep fractional part
 
     # Get scaling multipliers
-    # 1. Confidence-based: higher confidence = harsher penalties
-    conf_multiplier = _get_penalty_multiplier(state.confidence)
+    # 1. Confidence-based penalty scaling (higher confidence = harsher penalties)
+    conf_penalty_mult = _get_penalty_multiplier(state.confidence)
+    # 2. Confidence-based boost scaling (lower confidence = BIGGER boosts - survival mode)
+    conf_boost_mult = _get_boost_multiplier(state.confidence)
 
-    # 2. Context-based: higher context usage = harsher penalties, smaller boosts
+    # 3. Context-based: higher context usage = harsher penalties, smaller boosts
     transcript_path = data.get("transcript_path", "")
     context_pct = _get_context_percentage(transcript_path)
     ctx_penalty_mult, ctx_boost_mult = _get_context_multiplier(context_pct)
 
     # Combined penalty multiplier (confidence × context)
-    combined_penalty_mult = conf_multiplier * ctx_penalty_mult
+    combined_penalty_mult = conf_penalty_mult * ctx_penalty_mult
+
+    # Combined boost multiplier (confidence survival × context)
+    # Low confidence AMPLIFIES boosts; high context REDUCES them
+    combined_boost_mult = conf_boost_mult * ctx_boost_mult
 
     # Apply scaled penalties
     scaled_penalty = int(penalty * combined_penalty_mult)
@@ -983,8 +1039,8 @@ def check_confidence_decay(
         int(accumulated_decay * combined_penalty_mult) if accumulated_decay else 0
     )
 
-    # Apply scaled boosts (reduced at high context)
-    scaled_boost = int(boost * ctx_boost_mult) if boost else 0
+    # Apply scaled boosts (amplified when struggling, reduced at high context)
+    scaled_boost = int(boost * combined_boost_mult) if boost else 0
 
     # Net change: boosts are positive, decay and penalty are negative
     delta = scaled_boost - scaled_decay - scaled_penalty
@@ -1001,7 +1057,13 @@ def check_confidence_decay(
         # Build reason string
         reasons = []
         if scaled_boost:
-            reasons.append(f"+{scaled_boost} {boost_reason}")
+            # Show survival mode amplification
+            if conf_boost_mult > 1.0:
+                reasons.append(
+                    f"+{scaled_boost} {boost_reason} 🆘x{conf_boost_mult:.1f}"
+                )
+            else:
+                reasons.append(f"+{scaled_boost} {boost_reason}")
         if accumulated_decay:
             reasons.append(f"-{scaled_decay} decay")
         if penalty:
