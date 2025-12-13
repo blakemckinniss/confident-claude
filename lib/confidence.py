@@ -292,13 +292,16 @@ class FollowUpQuestionReducer(ConfidenceReducer):
 
 
 # Registry of all reducers
-# NOTE: ContradictionReducer still DISABLED - requires semantic contradiction detection
+# NOTE: GoalDriftReducer and ContradictionReducer DISABLED - need better infrastructure:
+#   - GoalDriftReducer: goal_keywords (prompt words) vs current_activity (file paths) rarely overlap
+#     FIX NEEDED: Either semantic matching or extract keywords from file paths too
+#   - ContradictionReducer: requires semantic contradiction detection (LLM or NLP)
 REDUCERS: list[ConfidenceReducer] = [
     ToolFailureReducer(),
     CascadeBlockReducer(),
     SunkCostReducer(),
     UserCorrectionReducer(),
-    GoalDriftReducer(),  # RE-ENABLED: current_activity now populated in post_tool_use_runner
+    # GoalDriftReducer(),  # DISABLED: keyword matching too naive (prompt vs file path mismatch)
     EditOscillationReducer(),
     # ContradictionReducer(),  # DISABLED: requires semantic contradiction detection
     FollowUpQuestionReducer(),
