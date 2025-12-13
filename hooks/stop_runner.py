@@ -11,6 +11,7 @@ HOOKS INDEX (by priority):
   VALIDATION (30-60):
     30 session_blocks     - Require reflection on blocks
     40 dismissal_check    - Catch false positive claims without fix
+    45 completion_gate    - Block completion if confidence < 85%
     50 stub_detector      - Files created with stubs
 
   WARNINGS (70-90):
@@ -119,6 +120,19 @@ DISMISSAL_PATTERNS = [
     (r"ignore (this|the) (warning|hook|gate)", "ignore_warning"),
     (r"(that|this) warning (is )?(incorrect|wrong)", "false_positive"),
 ]
+
+# Completion claim patterns - detect when Claude claims task is done
+COMPLETION_PATTERNS = [
+    r"\b(task|work|implementation|feature|fix|bug)\s+(is\s+)?(now\s+)?(complete|done|finished)\b",
+    r"\b(that'?s?|this)\s+(should\s+)?(be\s+)?(all|everything|it)\b",
+    r"\bsuccessfully\s+(implemented|completed|fixed|finished)\b",
+    r"\b(all\s+)?(changes|work|tasks?)\s+(are\s+)?(complete|done)\b",
+    r"\bnothing\s+(left|more|else)\s+to\s+do\b",
+    r"^\*\*summary[:\s]",  # Summary sections often signal completion
+]
+
+# Confidence threshold for completion claims
+COMPLETION_CONFIDENCE_THRESHOLD = 85  # TRUSTED zone
 
 
 # =============================================================================
@@ -441,6 +455,64 @@ def check_dismissal(data: dict, state: SessionState) -> HookResult:
     )
 
     return HookResult.block("\n".join(lines))
+
+
+@register_hook("completion_gate", priority=45)
+def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
+    """Block completion claims if confidence < 85% (TRUSTED zone).
+
+    This prevents lazy completion and reward hacking - Claude must earn
+    confidence through actual verification (test pass, build success, user OK)
+    before claiming a task is complete.
+    """
+    # Import confidence utilities
+    from confidence import get_tier_info, INCREASERS
+
+    # Check current confidence
+    confidence = getattr(state, "confidence", 70)
+    if confidence >= COMPLETION_CONFIDENCE_THRESHOLD:
+        return HookResult.ok()
+
+    # Scan recent assistant output for completion claims
+    transcript_path = data.get("transcript_path", "")
+    if not transcript_path or not Path(transcript_path).exists():
+        return HookResult.ok()
+
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)  # End
+            size = f.tell()
+            f.seek(max(0, size - 15000))  # Last 15KB
+            content = f.read().decode("utf-8", errors="ignore").lower()
+    except (OSError, PermissionError):
+        return HookResult.ok()
+
+    # Check for completion patterns
+    for pattern in COMPLETION_PATTERNS:
+        if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
+            tier_name, emoji, _ = get_tier_info(confidence)
+
+            # Build guidance on how to raise confidence
+            boost_options = []
+            for inc in INCREASERS:
+                if not inc.requires_approval:
+                    boost_options.append(
+                        f"  • {inc.name}: {inc.description} (+{inc.delta})"
+                    )
+
+            return HookResult.block(
+                f"🚫 **COMPLETION BLOCKED** - Confidence too low\n\n"
+                f"Current: {emoji} {confidence}% ({tier_name})\n"
+                f"Required: 💚 {COMPLETION_CONFIDENCE_THRESHOLD}% (TRUSTED)\n\n"
+                f"**You cannot claim completion without earning confidence.**\n"
+                f"This prevents lazy completion and reward hacking.\n\n"
+                f"**How to raise confidence:**\n"
+                + "\n".join(boost_options[:4])
+                + "\n\n"
+                "Or get explicit user approval: 'CONFIDENCE_BOOST_APPROVED'"
+            )
+
+    return HookResult.ok()
 
 
 @register_hook("stub_detector", priority=50)
