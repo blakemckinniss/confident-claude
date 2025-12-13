@@ -235,6 +235,7 @@ def check_loop_detector(data: dict, state: SessionState) -> HookResult:
                 f"Use `parallel.py` or `swarm` instead.\n"
                 f"Bypass: Include 'SUDO LOOP' in description."
             )
+    return HookResult.approve()
 
 
 @register_hook("python_path_enforcer", "Bash", priority=12)
@@ -263,6 +264,7 @@ def check_python_path_enforcer(data: dict, state: SessionState) -> HookResult:
         return HookResult.deny(
             reason + format_block_acknowledgment("python_path_enforcer")
         )
+    return HookResult.approve()
 
 
 @register_hook("script_nudge", "Bash", priority=14)
@@ -291,6 +293,7 @@ def check_script_nudge(data: dict, state: SessionState) -> HookResult:
                 "⚡ SCRIPT OPPORTUNITY: loop/iteration detected\n"
                 "→ Consider: .claude/tmp/solve_$(date +%s).py"
             )
+    return HookResult.approve()
 
 
 @register_hook("background_enforcer", "Bash", priority=15)
@@ -337,6 +340,7 @@ def check_background_enforcer(data: dict, state: SessionState) -> HookResult:
                 f"Command contains `{slow}` which is slow.\n"
                 f"Re-issue with: run_in_background=true"
             )
+    return HookResult.approve()
 
 
 @register_hook("probe_gate", "Bash", priority=18)
@@ -383,6 +387,7 @@ def check_probe_gate(data: dict, state: SessionState) -> HookResult:
             + "\n".join(suggestions)
             + '\n→ `probe "<lib>.<object>"` prevents API guessing'
         )
+    return HookResult.approve()
 
 
 @register_hook("commit_gate", "Bash", priority=20)
@@ -403,6 +408,7 @@ def check_commit_gate(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve(
             "⚠️ COMMIT GATE: Consider running `upkeep` before committing."
         )
+    return HookResult.approve()
 
 
 @register_hook("tool_preference", "Bash|TodoWrite", priority=25)
@@ -430,6 +436,7 @@ def check_tool_preference(data: dict, state: SessionState) -> HookResult:
             return HookResult.approve(
                 "💡 Prefer `Grep` tool over bash grep for searching."
             )
+    return HookResult.approve()
 
 
 @register_hook("sunk_cost_detector", None, priority=80)
@@ -440,6 +447,7 @@ def check_sunk_cost(data: dict, state: SessionState) -> HookResult:
     is_trapped, message = _check(state)
     if is_trapped:
         return HookResult.approve(message)
+    return HookResult.approve()
 
 
 @register_hook("thinking_coach", None, priority=90)
@@ -470,6 +478,7 @@ def check_thinking_coach(data: dict, state: SessionState) -> HookResult:
             return HookResult.approve(
                 f"⚠️ THINKING COACH: Detected `{flaw_type}` pattern. Verify before proceeding."
             )
+    return HookResult.approve()
 
 
 # =============================================================================
@@ -512,6 +521,7 @@ def check_read_cache(data: dict, state: SessionState) -> HookResult:
             )
     except Exception:
         pass
+    return HookResult.approve()
 
 
 # =============================================================================
@@ -665,6 +675,7 @@ def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
                 return HookResult.approve(grounding.to_markdown())
         except Exception:
             pass
+    return HookResult.approve()
 
 
 @register_hook("parallel_nudge", "Task", priority=4)
@@ -1149,6 +1160,7 @@ def check_recursion_guard(data: dict, state: SessionState) -> HookResult:
                     f"Path: {path}\n"
                     f"Use flat paths instead of nested duplicates."
                 )
+    return HookResult.approve()
 
 
 @register_hook("oracle_gate", "Edit|Write|Bash", priority=30)
@@ -1197,6 +1209,7 @@ def check_oracle_gate(data: dict, state: SessionState) -> HookResult:
             f"**{failures} failures** without oracle/think consultation.\n"
             f'Run `think "Debug: <problem>"` or user says "SUDO CONTINUE".'
         )
+    return HookResult.approve()
 
 
 @register_hook("integration_gate", "Edit|Write|Task", priority=35)
@@ -1218,6 +1231,7 @@ def check_integration_gate(data: dict, state: SessionState) -> HookResult:
     should_block, message = check_integration_blindness(state, tool_name, tool_input)
     if should_block:
         return HookResult.deny(message)
+    return HookResult.approve()
 
 
 @register_hook("error_suppression_gate", "Edit|Write|MultiEdit|Task", priority=40)
@@ -1328,6 +1342,7 @@ def check_content_gate(data: dict, state: SessionState) -> HookResult:
                     return HookResult.deny(
                         f"**CONTENT BLOCKED**: {message}\nSay SUDO to bypass."
                     )
+    return HookResult.approve()
 
 
 # =============================================================================
@@ -1422,6 +1437,7 @@ def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
 
     except Exception:
         pass
+    return HookResult.approve()
 
 
 @register_hook("gap_detector", "Edit|Write", priority=50)
@@ -1559,6 +1575,7 @@ def check_deferral_gate(data: dict, state: SessionState) -> HookResult:
                 f"Detected: {name}\n"
                 f"Either do it NOW or delete the thought. Add 'SUDO DEFER' to bypass."
             )
+    return HookResult.approve()
 
 
 @register_hook("doc_theater_gate", "Write", priority=65)
@@ -1651,6 +1668,7 @@ def check_root_pollution_gate(data: dict, state: SessionState) -> HookResult:
             f"**HOME CLEANLINESS**: '{first}' would clutter home.\n"
             f"Use ~/projects/<name>/, ~/ai/<name>/, or ~/.claude/tmp/"
         )
+    return HookResult.approve()
 
 
 @register_hook("recommendation_gate", "Write", priority=75)
@@ -1739,6 +1757,7 @@ def check_security_claim_gate(data: dict, state: SessionState) -> HookResult:
             return HookResult.approve(
                 f"⚠️ SECURITY-SENSITIVE: Consider `audit {Path(file_path).name}` before editing."
             )
+    return HookResult.approve()
 
 
 @register_hook("epistemic_boundary", "Edit|Write", priority=85)
@@ -1780,6 +1799,7 @@ def check_epistemic_boundary(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve(
             f"🔬 EPISTEMIC: Using {', '.join(unverified[:3])} - source files not read this session."
         )
+    return HookResult.approve()
 
 
 @register_hook("research_gate", "Edit|Write", priority=88)
@@ -1829,6 +1849,7 @@ def check_research_gate(data: dict, state: SessionState) -> HookResult:
             f"Unverified: {', '.join(unresearched[:3])}\n"
             f'Run `research "{unresearched[0]} API"` or say VERIFIED.'
         )
+    return HookResult.approve()
 
 
 @register_hook("import_gate", "Write", priority=92)
@@ -1849,6 +1870,7 @@ def check_import_gate(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve(
             f"📦 Third-party imports: {', '.join(sorted(third_party)[:5])} - ensure installed."
         )
+    return HookResult.approve()
 
 
 @register_hook("modularization_nudge", "Edit|Write", priority=95)

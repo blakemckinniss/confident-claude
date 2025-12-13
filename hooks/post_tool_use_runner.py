@@ -162,6 +162,11 @@ class HookResult:
         return HookResult()
 
     @staticmethod
+    def allow(context: str = "") -> "HookResult":
+        """Allow with optional context (alias for consistency with other runners)."""
+        return HookResult(context=context)
+
+    @staticmethod
     def with_context(context: str) -> "HookResult":
         return HookResult(context=context)
 
