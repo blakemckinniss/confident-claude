@@ -35,6 +35,11 @@ from confidence import (
     GoalDriftReducer,
     BackupFileReducer,
     VersionFileReducer,
+    UserCorrectionReducer,
+    ContradictionReducer,
+    DeferralReducer,
+    ApologeticReducer,
+    SycophancyReducer,
     # Increaser classes
     PassedTestsIncreaser,
     BuildSuccessIncreaser,
@@ -569,6 +574,244 @@ class TestGoalDriftReducer:
 
         # Act
         should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestUserCorrectionReducer:
+    """Tests for UserCorrectionReducer - user corrects Claude."""
+
+    def test_triggers_on_thats_wrong(self):
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        context = {"prompt": "That's wrong, the file is in src/"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_fix_that(self):
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        context = {"prompt": "fix that please"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_normal_prompt(self):
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        context = {"prompt": "Can you help me with this feature?"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        state.turn_count = 5
+        context = {"prompt": "That's wrong"}
+
+        # Act - last triggered 2 turns ago (cooldown is 3)
+        should_trigger = reducer.should_trigger(context, state, 3)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestContradictionReducer:
+    """Tests for ContradictionReducer - contradictory claims."""
+
+    def test_triggers_on_contradiction_flag(self):
+        # Arrange
+        reducer = ContradictionReducer()
+        state = MockSessionState()
+        context = {"contradiction_detected": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_user_reported_contradiction(self):
+        # Arrange
+        reducer = ContradictionReducer()
+        state = MockSessionState()
+        context = {"prompt": "You said X earlier but now you're saying Y"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_contradiction(self):
+        # Arrange
+        reducer = ContradictionReducer()
+        state = MockSessionState()
+        context = {"prompt": "Continue with the implementation"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestDeferralReducer:
+    """Tests for DeferralReducer - 'skip for now', 'come back later'."""
+
+    def test_triggers_on_skip_for_now(self):
+        # Arrange
+        reducer = DeferralReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Let's skip this for now and move on."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_come_back_later(self):
+        # Arrange
+        reducer = DeferralReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "We can come back to this later."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_normal_output(self):
+        # Arrange
+        reducer = DeferralReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "I've completed the implementation."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_output(self):
+        # Arrange
+        reducer = DeferralReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestApologeticReducer:
+    """Tests for ApologeticReducer - 'sorry', 'my mistake'."""
+
+    def test_triggers_on_sorry(self):
+        # Arrange
+        reducer = ApologeticReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "I'm sorry, that was incorrect."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_my_mistake(self):
+        # Arrange
+        reducer = ApologeticReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "My mistake, let me fix that."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_normal_output(self):
+        # Arrange
+        reducer = ApologeticReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Here's the fixed implementation."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestSycophancyReducer:
+    """Tests for SycophancyReducer - 'you're absolutely right'."""
+
+    def test_triggers_on_youre_absolutely_right(self):
+        # Arrange
+        reducer = SycophancyReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "You're absolutely right, I should do that."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_great_point(self):
+        # Arrange
+        reducer = SycophancyReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Great point! Let me adjust."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_normal_acknowledgment(self):
+        # Arrange
+        reducer = SycophancyReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Understood. Making that change now."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        reducer = SycophancyReducer()
+        state = MockSessionState()
+        state.turn_count = 3
+        context = {"assistant_output": "You're absolutely right!"}
+
+        # Act - last triggered 1 turn ago (cooldown is 2)
+        should_trigger = reducer.should_trigger(context, state, 2)
 
         # Assert
         assert should_trigger is False
