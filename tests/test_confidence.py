@@ -29,7 +29,10 @@ from confidence import (
     is_rock_bottom,
     # Reducer classes
     ToolFailureReducer,
+    CascadeBlockReducer,
+    SunkCostReducer,
     EditOscillationReducer,
+    GoalDriftReducer,
     BackupFileReducer,
     VersionFileReducer,
     # Increaser classes
@@ -57,6 +60,7 @@ class MockSessionState:
         self.edit_history = {}
         self.original_goal = ""
         self.goal_keywords = set()
+        self.goal_set_turn = 0
 
     def get(self, key, default=None):
         return getattr(self, key, default)
@@ -416,6 +420,149 @@ class TestVersionFileReducer:
         state = MockSessionState()
         state.turn_count = 10
         context = {"file_path": "utils.py"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestCascadeBlockReducer:
+    """Tests for CascadeBlockReducer - same hook blocking 3+ times."""
+
+    def test_triggers_when_hook_blocks_3_times(self):
+        # Arrange
+        reducer = CascadeBlockReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.consecutive_blocks = {"some_gate": {"count": 3}}
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_when_blocks_below_threshold(self):
+        # Arrange
+        reducer = CascadeBlockReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.consecutive_blocks = {"some_gate": {"count": 2}}
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_with_no_blocks(self):
+        # Arrange
+        reducer = CascadeBlockReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.consecutive_blocks = {}
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestSunkCostReducer:
+    """Tests for SunkCostReducer - 3+ consecutive failures."""
+
+    def test_triggers_when_3_consecutive_failures(self):
+        # Arrange
+        reducer = SunkCostReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.consecutive_failures = 3
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_when_failures_below_threshold(self):
+        # Arrange
+        reducer = SunkCostReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.consecutive_failures = 2
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_with_zero_failures(self):
+        # Arrange
+        reducer = SunkCostReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.consecutive_failures = 0
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestGoalDriftReducer:
+    """Tests for GoalDriftReducer - activity diverging from goal."""
+
+    def test_does_not_trigger_without_original_goal(self):
+        # Arrange
+        reducer = GoalDriftReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.original_goal = ""
+        state.goal_keywords = set()
+        context = {"current_activity": "working on auth"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_when_goal_recently_set(self):
+        # Arrange
+        reducer = GoalDriftReducer()
+        state = MockSessionState()
+        state.turn_count = 5
+        state.goal_set_turn = 2  # Only 3 turns ago
+        state.original_goal = "implement auth"
+        state.goal_keywords = {"auth", "login", "user"}
+        context = {"current_activity": "working on database"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_current_activity(self):
+        # Arrange
+        reducer = GoalDriftReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        state.goal_set_turn = 0
+        state.original_goal = "implement auth"
+        state.goal_keywords = {"auth", "login"}
+        context = {}
 
         # Act
         should_trigger = reducer.should_trigger(context, state, 0)
