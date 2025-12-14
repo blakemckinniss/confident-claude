@@ -14,7 +14,6 @@ Hooks that inject contextual information:
 import re
 from pathlib import Path
 from typing import Optional
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 from _prompt_registry import register_hook
 from _hook_result import HookResult
@@ -42,7 +41,12 @@ except ImportError:
 
 # Try to import caching utilities
 try:
-    from _cache import cached_file_read, cached_json_read, cached_git_branch, cached_git_status
+    from _cache import (
+        cached_file_read,
+        cached_json_read,
+        cached_git_branch,
+        cached_git_status,
+    )
 except ImportError:
     # Fallback implementations
     def cached_file_read(path: str) -> str:
@@ -53,6 +57,7 @@ except ImportError:
 
     def cached_json_read(path: str) -> dict | None:
         import json
+
         try:
             return json.loads(Path(path).read_text())
         except Exception:
@@ -60,20 +65,26 @@ except ImportError:
 
     def cached_git_branch() -> str:
         import subprocess
+
         try:
             return subprocess.run(
                 ["git", "branch", "--show-current"],
-                capture_output=True, text=True, timeout=2
+                capture_output=True,
+                text=True,
+                timeout=2,
             ).stdout.strip()
         except Exception:
             return ""
 
     def cached_git_status() -> str:
         import subprocess
+
         try:
             return subprocess.run(
                 ["git", "status", "--porcelain"],
-                capture_output=True, text=True, timeout=2
+                capture_output=True,
+                text=True,
+                timeout=2,
             ).stdout
         except Exception:
             return ""
@@ -86,7 +97,9 @@ except ImportError:
 _FILE_PATTERNS = [
     re.compile(r'[`"\']([^`"\']+\.[a-zA-Z]{1,6})[`"\']'),
     re.compile(r"(?:^|\s)([~./][\w./\\-]+\.\w{1,6})(?:\s|$|[,;:])"),
-    re.compile(r"(?:file|path|in|at|from|edit|read|open)\s+[`\"']?([^`\"'\s]+\.\w{1,6})"),
+    re.compile(
+        r"(?:file|path|in|at|from|edit|read|open)\s+[`\"']?([^`\"'\s]+\.\w{1,6})"
+    ),
 ]
 
 _SEARCH_PATTERNS = [
@@ -199,51 +212,131 @@ def check_prompt_disclaimer(data: dict, state: SessionState) -> HookResult:
 # Format: (compiled_pattern, release_date, risk_level, version_info)
 _TECH_RISK_DATABASE = [
     # Frontend frameworks - HIGH risk
-    (re.compile(r"\btailwind(?:css)?\b", re.IGNORECASE), "2024-10", "HIGH",
-     "v4.0 - major breaking changes from v3 config/utilities"),
-    (re.compile(r"\breact\b", re.IGNORECASE), "2024-12", "HIGH",
-     "v19 - new compiler, hooks changes, deprecations"),
-    (re.compile(r"\bnext\.?js\b", re.IGNORECASE), "2024-10", "HIGH",
-     "v15 - app router changes, turbopack default"),
-    (re.compile(r"\bsvelte\b", re.IGNORECASE), "2024-12", "HIGH",
-     "v5 - runes, breaking changes from v4"),
-    (re.compile(r"\bvue\b", re.IGNORECASE), "2024-11", "MEDIUM",
-     "v3.5+ - Vapor mode, new features"),
-    (re.compile(r"\bastro\b", re.IGNORECASE), "2024-12", "MEDIUM",
-     "v5.0 - content layer changes"),
-    (re.compile(r"\bvite\b", re.IGNORECASE), "2024-11", "MEDIUM",
-     "v6.0 - config changes, new defaults"),
+    (
+        re.compile(r"\btailwind(?:css)?\b", re.IGNORECASE),
+        "2024-10",
+        "HIGH",
+        "v4.0 - major breaking changes from v3 config/utilities",
+    ),
+    (
+        re.compile(r"\breact\b", re.IGNORECASE),
+        "2024-12",
+        "HIGH",
+        "v19 - new compiler, hooks changes, deprecations",
+    ),
+    (
+        re.compile(r"\bnext\.?js\b", re.IGNORECASE),
+        "2024-10",
+        "HIGH",
+        "v15 - app router changes, turbopack default",
+    ),
+    (
+        re.compile(r"\bsvelte\b", re.IGNORECASE),
+        "2024-12",
+        "HIGH",
+        "v5 - runes, breaking changes from v4",
+    ),
+    (
+        re.compile(r"\bvue\b", re.IGNORECASE),
+        "2024-11",
+        "MEDIUM",
+        "v3.5+ - Vapor mode, new features",
+    ),
+    (
+        re.compile(r"\bastro\b", re.IGNORECASE),
+        "2024-12",
+        "MEDIUM",
+        "v5.0 - content layer changes",
+    ),
+    (
+        re.compile(r"\bvite\b", re.IGNORECASE),
+        "2024-11",
+        "MEDIUM",
+        "v6.0 - config changes, new defaults",
+    ),
     # Build tools / runtimes
-    (re.compile(r"\bbun\b", re.IGNORECASE), "2024-09", "HIGH",
-     "v1.x - rapidly evolving, API changes"),
-    (re.compile(r"\bdeno\b", re.IGNORECASE), "2024-10", "HIGH",
-     "v2.0 - major changes from v1"),
-    (re.compile(r"\bnode\.?js\b", re.IGNORECASE), "2024-10", "MEDIUM",
-     "v22 LTS - new features"),
+    (
+        re.compile(r"\bbun\b", re.IGNORECASE),
+        "2024-09",
+        "HIGH",
+        "v1.x - rapidly evolving, API changes",
+    ),
+    (
+        re.compile(r"\bdeno\b", re.IGNORECASE),
+        "2024-10",
+        "HIGH",
+        "v2.0 - major changes from v1",
+    ),
+    (
+        re.compile(r"\bnode\.?js\b", re.IGNORECASE),
+        "2024-10",
+        "MEDIUM",
+        "v22 LTS - new features",
+    ),
     # Backend / API
-    (re.compile(r"\bfastapi\b", re.IGNORECASE), "2024-09", "MEDIUM",
-     "v0.115+ - new features, deprecations"),
-    (re.compile(r"\bpydantic\b", re.IGNORECASE), "2024-06", "HIGH",
-     "v2.x - complete rewrite from v1"),
-    (re.compile(r"\blangchain\b", re.IGNORECASE), "2024-11", "HIGH",
-     "v0.3 - major restructuring, new patterns"),
-    (re.compile(r"\bopenai\b.*\b(?:api|sdk|client)\b", re.IGNORECASE), "2024-10", "HIGH",
-     "v1.x SDK - structured outputs, new models"),
-    (re.compile(r"\banthropic\b.*\b(?:api|sdk|client)\b", re.IGNORECASE), "2024-11", "HIGH",
-     "new features, prompt caching, batches"),
+    (
+        re.compile(r"\bfastapi\b", re.IGNORECASE),
+        "2024-09",
+        "MEDIUM",
+        "v0.115+ - new features, deprecations",
+    ),
+    (
+        re.compile(r"\bpydantic\b", re.IGNORECASE),
+        "2024-06",
+        "HIGH",
+        "v2.x - complete rewrite from v1",
+    ),
+    (
+        re.compile(r"\blangchain\b", re.IGNORECASE),
+        "2024-11",
+        "HIGH",
+        "v0.3 - major restructuring, new patterns",
+    ),
+    (
+        re.compile(r"\bopenai\b.*\b(?:api|sdk|client)\b", re.IGNORECASE),
+        "2024-10",
+        "HIGH",
+        "v1.x SDK - structured outputs, new models",
+    ),
+    (
+        re.compile(r"\banthropic\b.*\b(?:api|sdk|client)\b", re.IGNORECASE),
+        "2024-11",
+        "HIGH",
+        "new features, prompt caching, batches",
+    ),
     # Databases / ORMs
-    (re.compile(r"\bprisma\b", re.IGNORECASE), "2024-10", "MEDIUM",
-     "v5.x - new features, some breaking"),
-    (re.compile(r"\bdrizzle\b", re.IGNORECASE), "2024-11", "MEDIUM",
-     "rapidly evolving ORM"),
+    (
+        re.compile(r"\bprisma\b", re.IGNORECASE),
+        "2024-10",
+        "MEDIUM",
+        "v5.x - new features, some breaking",
+    ),
+    (
+        re.compile(r"\bdrizzle\b", re.IGNORECASE),
+        "2024-11",
+        "MEDIUM",
+        "rapidly evolving ORM",
+    ),
     # Testing
-    (re.compile(r"\bplaywright\b", re.IGNORECASE), "2024-10", "MEDIUM",
-     "v1.48+ - new APIs, locators"),
-    (re.compile(r"\bvitest\b", re.IGNORECASE), "2024-10", "MEDIUM",
-     "v2.x - new features"),
+    (
+        re.compile(r"\bplaywright\b", re.IGNORECASE),
+        "2024-10",
+        "MEDIUM",
+        "v1.48+ - new APIs, locators",
+    ),
+    (
+        re.compile(r"\bvitest\b", re.IGNORECASE),
+        "2024-10",
+        "MEDIUM",
+        "v2.x - new features",
+    ),
     # CSS / UI
-    (re.compile(r"\bshadcn\b", re.IGNORECASE), "2024-11", "MEDIUM",
-     "new components, CLI changes"),
+    (
+        re.compile(r"\bshadcn\b", re.IGNORECASE),
+        "2024-11",
+        "MEDIUM",
+        "new components, CLI changes",
+    ),
     # Package managers
     (re.compile(r"\bpnpm\b", re.IGNORECASE), "2024-09", "LOW", "v9.x - minor changes"),
 ]
@@ -260,8 +353,12 @@ def _build_tech_warnings(prompt_lower: str, max_warnings: int = 2) -> list[str]:
     for pattern, release_date, risk_level, version_info in _TECH_RISK_DATABASE:
         match = pattern.search(prompt_lower)
         if match and VERSION_SENSITIVE_KEYWORDS.search(prompt_lower):
-            emoji = "🚨" if risk_level == "HIGH" else "⚠️" if risk_level == "MEDIUM" else "ℹ️"
-            warnings.append(f"{emoji} **{match.group(0).upper()}** ({risk_level}): {version_info} (~{release_date})")
+            emoji = (
+                "🚨" if risk_level == "HIGH" else "⚠️" if risk_level == "MEDIUM" else "ℹ️"
+            )
+            warnings.append(
+                f"{emoji} **{match.group(0).upper()}** ({risk_level}): {version_info} (~{release_date})"
+            )
             if len(warnings) >= max_warnings:
                 break
     return warnings
@@ -270,7 +367,11 @@ def _build_tech_warnings(prompt_lower: str, max_warnings: int = 2) -> list[str]:
 def _check_version_mismatch(prompt_lower: str, deps: dict) -> str:
     """Check for version mismatch between package.json and prompt mentions."""
     checks = [
-        ("tailwind", "tailwindcss", [("4", "v3|version\\s*3"), ("3", "v4|version\\s*4")]),
+        (
+            "tailwind",
+            "tailwindcss",
+            [("4", "v3|version\\s*3"), ("3", "v4|version\\s*4")],
+        ),
         ("react", "react", [("19", "v18|version\\s*18")]),
     ]
     for keyword, pkg_name, version_checks in checks:
@@ -301,7 +402,10 @@ def check_tech_version_risk(data: dict, state: SessionState) -> HookResult:
     version_mismatch = ""
     pkg_data = cached_json_read(str(Path.cwd() / "package.json"))
     if pkg_data:
-        deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+        deps = {
+            **pkg_data.get("dependencies", {}),
+            **pkg_data.get("devDependencies", {}),
+        }
         version_mismatch = _check_version_mismatch(prompt_lower, deps)
 
     return HookResult.allow(
@@ -430,17 +534,23 @@ def get_active_scope() -> Optional[dict]:
         return None
 
 
+# Trivial prompts that don't need memory injection
+_TRIVIAL_PROMPT_PATTERN = re.compile(
+    r"^(yes|no|ok|hi|hello|thanks|y|n|status|commit|push|/\w+|SUDO)\b", re.IGNORECASE
+)
+
+
 def _get_spark_associations(prompt: str) -> list[str]:
     """Get spark associations with timeout protection."""
+    # Skip trivial prompts (saves 100ms+)
+    if len(prompt) < 15 or _TRIVIAL_PROMPT_PATTERN.match(prompt):
+        return []
+
     try:
         from synapse_core import run_spark, MAX_ASSOCIATIONS, MAX_MEMORIES
 
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(run_spark, prompt)
-            try:
-                result = future.result(timeout=2.0)
-            except FuturesTimeoutError:
-                return []
+        # run_spark has its own cache - call directly with shorter timeout
+        result = run_spark(prompt, timeout=0.5)
         if not result:
             return []
         assocs = result.get("associations", []) + result.get("memories", [])
@@ -449,7 +559,9 @@ def _get_spark_associations(prompt: str) -> list[str]:
         return []
 
 
-def _build_memory_parts(spark_assocs: list, lessons: list, scope: dict | None) -> list[str]:
+def _build_memory_parts(
+    spark_assocs: list, lessons: list, scope: dict | None
+) -> list[str]:
     """Build memory injection output parts."""
     parts = []
     if spark_assocs:
@@ -485,6 +597,7 @@ def check_memory_injector(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 # CONTEXT INJECTOR (priority 45)
 # =============================================================================
+
 
 @register_hook("context_injector", priority=45)
 def check_context_injector(data: dict, state: SessionState) -> HookResult:
@@ -529,6 +642,7 @@ def check_context_injector(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 # REMINDER INJECTOR (priority 50)
 # =============================================================================
+
 
 def _find_frontmatter_end(lines: list[str]) -> int:
     """Find the closing --- index for YAML frontmatter."""

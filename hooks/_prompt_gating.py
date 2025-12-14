@@ -45,6 +45,7 @@ from confidence import (
 # Fuzzy matching for build-vs-buy detection
 try:
     from rapidfuzz import fuzz, process as rf_process
+
     RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     RAPIDFUZZ_AVAILABLE = False
@@ -77,7 +78,10 @@ NEGATIVE_SENTIMENT = [
 
 # Scope expansion patterns
 _SCOPE_EXPANSION_PATTERNS = [
-    (r"\b(also|additionally|and\s+also|while\s+you'?re?\s+at\s+it)\b", "scope addition"),
+    (
+        r"\b(also|additionally|and\s+also|while\s+you'?re?\s+at\s+it)\b",
+        "scope addition",
+    ),
     (r"\b(another|different|new)\s+(feature|task|thing|project)\b", "new feature"),
     (r"\b(switch|pivot|change)\s+to\b", "direction change"),
     (r"\b(actually|instead|forget\s+that)\b", "goal replacement"),
@@ -93,7 +97,10 @@ _COMPLEX_SIGNALS = [
     re.compile(r"\b(database|auth|security|permission)\b", re.IGNORECASE),
     re.compile(r"\b(how|why|should|could|best|optimal)\b", re.IGNORECASE),
     re.compile(r"\b(investigate|debug|diagnose|figure out)\b", re.IGNORECASE),
-    re.compile(r"\b(feature|implement|build|create|add)\b.*\b(new|from scratch)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(feature|implement|build|create|add)\b.*\b(new|from scratch)\b",
+        re.IGNORECASE,
+    ),
 ]
 
 _TRIVIAL_SIGNALS = [
@@ -107,10 +114,19 @@ _TRIVIAL_SIGNALS = [
 
 # Build-vs-Buy patterns
 _BUILD_FROM_SCRATCH_PATTERNS = [
-    re.compile(r"\b(build|create|implement|make|write)\s+(a|an|my|the)\s+\w+\s*(app|application|tool|system|service|cli|bot|script)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(build|create|implement|make|write)\s+(a|an|my|the)\s+\w+\s*(app|application|tool|system|service|cli|bot|script)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\bfrom\s+scratch\b", re.IGNORECASE),
-    re.compile(r"\b(todo|task|note|bookmark|password|budget|expense|habit|timer|pomodoro|reminder|calendar|journal|diary|inventory|kanban|crm)\s*(app|manager|tracker|tool|system)?\b", re.IGNORECASE),
-    re.compile(r"\b(implement|build|create)\s+(my\s+own|a\s+custom|a\s+simple)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(todo|task|note|bookmark|password|budget|expense|habit|timer|pomodoro|reminder|calendar|journal|diary|inventory|kanban|crm)\s*(app|manager|tracker|tool|system)?\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(implement|build|create)\s+(my\s+own|a\s+custom|a\s+simple)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\b(don't|do not)\s+want\s+to\s+use\s+(any|existing)\b", re.IGNORECASE),
 ]
 
@@ -161,6 +177,7 @@ _VERIFIED_INCREASERS = ("test_pass", "build_success")
 # HELPER FUNCTIONS
 # =============================================================================
 
+
 def detect_scope_expansion(state: SessionState, prompt: str) -> tuple[bool, str]:
     """Detect scope expansion in prompt."""
     if not state.original_goal:
@@ -168,7 +185,10 @@ def detect_scope_expansion(state: SessionState, prompt: str) -> tuple[bool, str]
     prompt_lower = prompt.lower()
     for pattern, reason in _SCOPE_EXPANSION_PATTERNS:
         if re.search(pattern, prompt_lower, re.IGNORECASE):
-            return True, f"Detected {reason}: prompt suggests expanding beyond original goal"
+            return (
+                True,
+                f"Detected {reason}: prompt suggests expanding beyond original goal",
+            )
     return False, ""
 
 
@@ -189,13 +209,30 @@ def _init_goal(state: SessionState, prompt: str, project_id: str) -> None:
     state.goal_project_id = project_id
 
 
+# Cache for project ID (avoids 27ms lookup per call)
+_PROJECT_ID_CACHE: dict = {"value": None, "time": 0.0}
+_PROJECT_ID_TTL = 10.0  # seconds
+
+
 def _get_current_project_id() -> str:
-    """Get current project ID or empty string."""
+    """Get current project ID or empty string (cached)."""
+    import time
+
+    now = time.time()
+    if (
+        _PROJECT_ID_CACHE["value"] is not None
+        and now - _PROJECT_ID_CACHE["time"] < _PROJECT_ID_TTL
+    ):
+        return _PROJECT_ID_CACHE["value"]
     try:
         from project_detector import get_current_project
-        return get_current_project().project_id
+
+        result = get_current_project().project_id
     except Exception:
-        return ""
+        result = ""
+    _PROJECT_ID_CACHE["value"] = result
+    _PROJECT_ID_CACHE["time"] = now
+    return result
 
 
 def _handle_scope_expansion(state: SessionState, prompt: str) -> HookResult | None:
@@ -213,7 +250,7 @@ def _handle_scope_expansion(state: SessionState, prompt: str) -> HookResult | No
             f"🚫 **SCOPE BLOCKED**: {reason}\nGoal: {state.original_goal[:60]}... | SUDO SCOPE to override"
         )
     return HookResult.allow(
-        f"⚠️ **SCOPE EXPANSION DETECTED**\n🎯 Current goal: \"{state.original_goal[:60]}...\"\n"
+        f'⚠️ **SCOPE EXPANSION DETECTED**\n🎯 Current goal: "{state.original_goal[:60]}..."\n'
         f"🔀 {reason}\n\nFinish current feature before switching. (Will block after {2 - times_warned} more attempts)"
     )
 
@@ -225,7 +262,9 @@ def _handle_confidence_floor(state: SessionState) -> None:
     elif state.confidence < _CONFIDENCE_FLOOR:
         old_debt = getattr(state, "reputation_debt", 0)
         state.reputation_debt = old_debt + 1
-        set_confidence(state, _CONFIDENCE_FLOOR, f"floor reset (debt now {state.reputation_debt})")
+        set_confidence(
+            state, _CONFIDENCE_FLOOR, f"floor reset (debt now {state.reputation_debt})"
+        )
 
 
 def _apply_user_correction(state: SessionState, prompt: str, parts: list) -> int:
@@ -239,7 +278,9 @@ def _apply_user_correction(state: SessionState, prompt: str, parts: list) -> int
         if key not in state.nudge_history:
             state.nudge_history[key] = {}
         state.nudge_history[key]["last_turn"] = state.turn_count
-        parts.append(format_confidence_change(old_conf, state.confidence, f"({reducer.name})"))
+        parts.append(
+            format_confidence_change(old_conf, state.confidence, f"({reducer.name})")
+        )
     return state.confidence
 
 
@@ -258,13 +299,19 @@ def _apply_confidence_cap(state: SessionState, parts: list) -> None:
     if state.confidence <= _PROMPT_CONFIDENCE_CAP:
         return
     if _has_recent_verified_boost(state):
-        parts.append(f"✅ Confidence at {state.confidence}% (verified success protected)")
+        parts.append(
+            f"✅ Confidence at {state.confidence}% (verified success protected)"
+        )
     else:
         set_confidence(state, _PROMPT_CONFIDENCE_CAP, "prompt cap (no verified boost)")
-        parts.append(f"⚖️ Confidence capped at {_PROMPT_CONFIDENCE_CAP}% (earn higher via verified success)")
+        parts.append(
+            f"⚖️ Confidence capped at {_PROMPT_CONFIDENCE_CAP}% (earn higher via verified success)"
+        )
 
 
-def _fuzzy_match_reinvention(prompt: str, threshold: int = 75) -> tuple[str | None, list[str]]:
+def _fuzzy_match_reinvention(
+    prompt: str, threshold: int = 75
+) -> tuple[str | None, list[str]]:
     """Check if prompt mentions a common wheel-reinvention app using fuzzy matching."""
     if not RAPIDFUZZ_AVAILABLE:
         return None, []
@@ -281,7 +328,9 @@ def _fuzzy_match_reinvention(prompt: str, threshold: int = 75) -> tuple[str | No
     best_match = None
     best_score = 0
     for candidate in candidates:
-        result = rf_process.extractOne(candidate, _REINVENTION_NAMES, scorer=fuzz.token_sort_ratio)
+        result = rf_process.extractOne(
+            candidate, _REINVENTION_NAMES, scorer=fuzz.token_sort_ratio
+        )
         if result and result[1] > best_score and result[1] >= threshold:
             best_match = result[0]
             best_score = result[1]
@@ -293,6 +342,7 @@ def _fuzzy_match_reinvention(prompt: str, threshold: int = 75) -> tuple[str | No
 # =============================================================================
 # GATING HOOKS (priority 0-10)
 # =============================================================================
+
 
 @register_hook("confidence_override", priority=0)
 def check_confidence_override(data: dict, state: SessionState) -> HookResult:
@@ -342,8 +392,12 @@ def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
         if show:
             record_nudge(state, "goal_drift", drift_msg)
             if severity == "escalate":
-                ignored = state.nudge_history.get("goal_drift", {}).get("times_ignored", 0)
-                drift_msg = f"🚨 **REPEATED DRIFT WARNING** (ignored {ignored}x)\n{drift_msg}"
+                ignored = state.nudge_history.get("goal_drift", {}).get(
+                    "times_ignored", 0
+                )
+                drift_msg = (
+                    f"🚨 **REPEATED DRIFT WARNING** (ignored {ignored}x)\n{drift_msg}"
+                )
             return HookResult.allow(f"\n{drift_msg}\n")
     return HookResult.allow()
 
@@ -360,14 +414,18 @@ def check_user_sentiment(data: dict, state: SessionState) -> HookResult:
             old_conf = state.confidence
             update_confidence(state, 3, "positive_sentiment")
             if state.confidence != old_conf:
-                return HookResult.allow(f"😊 Positive sentiment: {old_conf}% → {state.confidence}% (+3)")
+                return HookResult.allow(
+                    f"😊 Positive sentiment: {old_conf}% → {state.confidence}% (+3)"
+                )
             return HookResult.allow()
     for pattern in NEGATIVE_SENTIMENT:
         if re.search(pattern, prompt_lower, re.IGNORECASE):
             old_conf = state.confidence
             update_confidence(state, -3, "negative_sentiment")
             if state.confidence != old_conf:
-                return HookResult.allow(f"😟 Negative sentiment detected: {old_conf}% → {state.confidence}% (-3)")
+                return HookResult.allow(
+                    f"😟 Negative sentiment detected: {old_conf}% → {state.confidence}% (-3)"
+                )
             return HookResult.allow()
     return HookResult.allow()
 
@@ -398,7 +456,9 @@ def check_rock_bottom(data: dict, state: SessionState) -> HookResult:
             f"Ready to proceed with renewed focus."
         )
     questions = get_realignment_questions()
-    questions_text = "\n".join([f"**{q['header']}**: {q['question']}" for q in questions])
+    questions_text = "\n".join(
+        [f"**{q['header']}**: {q['question']}" for q in questions]
+    )
     return HookResult.allow(
         f"🚨 **ROCK BOTTOM REACHED** (Confidence: {state.confidence}%)\n\n"
         f"I need to realign with you before continuing. Please answer briefly:\n\n"
@@ -421,10 +481,14 @@ def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
     if delta != 0:
         update_confidence(state, delta, ", ".join(reasons))
     old_conf = _apply_user_correction(state, prompt, parts)
-    for name, inc_delta, desc, requires_approval in apply_increasers(state, {"prompt": prompt}):
+    for name, inc_delta, desc, requires_approval in apply_increasers(
+        state, {"prompt": prompt}
+    ):
         if not requires_approval:
             update_confidence(state, inc_delta, name)
-            parts.append(format_confidence_change(old_conf, state.confidence, f"({name})"))
+            parts.append(
+                format_confidence_change(old_conf, state.confidence, f"({name})")
+            )
             old_conf = state.confidence
     _apply_confidence_cap(state, parts)
     mandatory, mandatory_msg = should_mandate_external(state.confidence)
@@ -490,7 +554,10 @@ def check_build_vs_buy(data: dict, state: SessionState) -> HookResult:
     prompt = data.get("prompt", "")
     if not prompt or len(prompt) < 20:
         return HookResult.allow()
-    learning_patterns = re.compile(r"\b(learn|practice|exercise|tutorial|study|understand|educational)\b", re.IGNORECASE)
+    learning_patterns = re.compile(
+        r"\b(learn|practice|exercise|tutorial|study|understand|educational)\b",
+        re.IGNORECASE,
+    )
     if learning_patterns.search(prompt):
         return HookResult.allow()
     fuzzy_match, alternatives = _fuzzy_match_reinvention(prompt)
@@ -533,7 +600,9 @@ def check_confidence_approval_gate(data: dict, state: SessionState) -> HookResul
             state.nudge_history["confidence_boost_pending"] = {"requested": False}
             return HookResult.allow(
                 "✅ **Confidence Restored**\n\n"
-                + format_confidence_change(old_confidence, state.confidence, "(trust_regained)")
+                + format_confidence_change(
+                    old_confidence, state.confidence, "(trust_regained)"
+                )
             )
         return HookResult.allow()
     trust_patterns = [
@@ -544,7 +613,9 @@ def check_confidence_approval_gate(data: dict, state: SessionState) -> HookResul
     for pattern in trust_patterns:
         if re.search(pattern, prompt, re.IGNORECASE):
             approval_msg = generate_approval_prompt(
-                state.confidence, requested_delta=15, reasons=["User requested trust restoration"]
+                state.confidence,
+                requested_delta=15,
+                reasons=["User requested trust restoration"],
             )
             if "confidence_boost_pending" not in state.nudge_history:
                 state.nudge_history["confidence_boost_pending"] = {}
@@ -583,7 +654,9 @@ def check_confidence_dispute(data: dict, state: SessionState) -> HookResult:
     restore_amount, message = dispute_reducer(state, reducer_name, reason)
     if restore_amount > 0:
         update_confidence(state, restore_amount, f"FP:{reducer_name}")
-        change_msg = format_confidence_change(old_confidence, state.confidence, f"(FP: {reducer_name})")
+        change_msg = format_confidence_change(
+            old_confidence, state.confidence, f"(FP: {reducer_name})"
+        )
         return HookResult.allow(f"{message}\n{change_msg}")
     return HookResult.allow(message)
 
@@ -592,6 +665,7 @@ def check_confidence_dispute(data: dict, state: SessionState) -> HookResult:
 def check_verified_library(data: dict, state: SessionState) -> HookResult:
     """Unlock research_gate when user says VERIFIED."""
     from session_state import track_library_researched
+
     prompt = data.get("prompt", "").strip()
     if not prompt:
         return HookResult.allow()
