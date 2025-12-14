@@ -1103,6 +1103,31 @@ _SEARCH_PATTERNS = [
 ]
 
 
+def _extract_files_from_prompt(prompt: str) -> list[str]:
+    """Extract file paths from prompt text."""
+    files = []
+    for pattern in _FILE_PATTERNS:
+        for match in pattern.findall(prompt):
+            m = match[0] if isinstance(match, tuple) else match
+            if m and not m.startswith("http") and ("/" in m or "." in m):
+                clean = m.strip("`\"'")
+                if 3 < len(clean) < 200:
+                    files.append(clean)
+    return list(set(files))
+
+
+def _extract_searches_from_prompt(prompt: str) -> list[str]:
+    """Extract search terms from prompt text."""
+    searches = []
+    for pattern in _SEARCH_PATTERNS:
+        for match in pattern.findall(prompt):
+            m = match[0] if isinstance(match, tuple) else match
+            clean = m.strip()
+            if 2 < len(clean) < 100:
+                searches.append(clean)
+    return list(set(searches))
+
+
 @register_hook("intention_tracker", priority=15)
 def check_intention_tracker(data: dict, state: SessionState) -> HookResult:
     """Extract mentioned files/searches and track as pending."""
@@ -1110,48 +1135,22 @@ def check_intention_tracker(data: dict, state: SessionState) -> HookResult:
     if not prompt:
         return HookResult.allow()
 
-    # Extract files
-    files = []
-    for pattern in _FILE_PATTERNS:
-        for match in pattern.findall(prompt):
-            if isinstance(match, tuple):
-                match = match[0]
-            if (
-                match
-                and not match.startswith("http")
-                and ("/" in match or "." in match)
-            ):
-                clean = match.strip("`\"'")
-                if 3 < len(clean) < 200:
-                    files.append(clean)
-    files = list(set(files))
-
-    # Extract searches
-    searches = []
-    for pattern in _SEARCH_PATTERNS:
-        for match in pattern.findall(prompt):
-            if isinstance(match, tuple):
-                match = match[0]
-            clean = match.strip()
-            if 2 < len(clean) < 100:
-                searches.append(clean)
-    searches = list(set(searches))
+    files = _extract_files_from_prompt(prompt)
+    searches = _extract_searches_from_prompt(prompt)
 
     if not files and not searches:
         return HookResult.allow()
 
-    # Track in state
     for f in files:
         add_pending_file(state, f)
     for s in searches:
         add_pending_search(state, s)
 
-    # If multiple items, remind about batching
     total = len(files) + len(searches)
     if total >= 2:
-        items_preview = (files + searches)[:4]
+        preview = (files + searches)[:4]
         return HookResult.allow(
-            f"⚡ DETECTED {total} ITEMS: {items_preview}\n"
+            f"⚡ DETECTED {total} ITEMS: {preview}\n"
             f"RULE: Batch ALL Read/Grep calls in ONE message. Do NOT read sequentially."
         )
 
@@ -1510,6 +1509,42 @@ def get_active_scope() -> Optional[dict]:
         return None
 
 
+def _get_spark_associations(prompt: str) -> list[str]:
+    """Get spark associations with timeout protection."""
+    try:
+        from synapse_core import run_spark, MAX_ASSOCIATIONS, MAX_MEMORIES
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_spark, prompt)
+            try:
+                result = future.result(timeout=2.0)
+            except FuturesTimeoutError:
+                return []
+        if not result:
+            return []
+        assocs = result.get("associations", []) + result.get("memories", [])
+        return assocs[: MAX_ASSOCIATIONS + MAX_MEMORIES]
+    except Exception:
+        return []
+
+
+def _build_memory_parts(spark_assocs: list, lessons: list, scope: dict | None) -> list[str]:
+    """Build memory injection output parts."""
+    parts = []
+    if spark_assocs:
+        lines = "\n".join(f"   * {a[:100]}" for a in spark_assocs[:3])
+        parts.append(f"SUBCONSCIOUS RECALL:\n{lines}")
+    if lessons:
+        lines = "\n".join(f"   * {lesson}" for lesson in lessons)
+        parts.append(f"RELEVANT LESSONS:\n{lines}")
+    if scope:
+        line = f"ACTIVE TASK: {scope['task']} [{scope['progress']}]"
+        if scope.get("next"):
+            line += f"\n   Next: {scope['next']}"
+        parts.append(line)
+    return parts
+
+
 @register_hook("memory_injector", priority=40)
 def check_memory_injector(data: dict, state: SessionState) -> HookResult:
     """Auto-surface relevant memories."""
@@ -1517,49 +1552,13 @@ def check_memory_injector(data: dict, state: SessionState) -> HookResult:
     if not prompt or len(prompt) < 10:
         return HookResult.allow()
 
+    spark_assocs = _get_spark_associations(prompt)
     keywords = extract_keywords(prompt)
-
-    # Get spark associations (with 2s timeout to prevent hook slowdown)
-    spark_associations = []
-    try:
-        from synapse_core import run_spark, MAX_ASSOCIATIONS, MAX_MEMORIES
-
-        # Timeout wrapper - synapse can be slow if DB is large or network issues
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(run_spark, prompt)
-            try:
-                spark_result = future.result(timeout=2.0)
-            except FuturesTimeoutError:
-                spark_result = None  # Skip on timeout, don't block hook
-        if spark_result:
-            for assoc in spark_result.get("associations", []):
-                spark_associations.append(assoc)
-            for memory in spark_result.get("memories", []):
-                spark_associations.append(memory)
-            spark_associations = spark_associations[: MAX_ASSOCIATIONS + MAX_MEMORIES]
-    except Exception:
-        pass
-
     lessons = find_relevant_lessons(keywords) if keywords else []
     scope = get_active_scope()
 
-    if not lessons and not scope and not spark_associations:
-        return HookResult.allow()
-
-    parts = []
-    if spark_associations:
-        assoc_lines = "\n".join(f"   * {a[:100]}" for a in spark_associations[:3])
-        parts.append(f"SUBCONSCIOUS RECALL:\n{assoc_lines}")
-    if lessons:
-        lesson_lines = "\n".join(f"   * {lesson}" for lesson in lessons)
-        parts.append(f"RELEVANT LESSONS:\n{lesson_lines}")
-    if scope:
-        scope_line = f"ACTIVE TASK: {scope['task']} [{scope['progress']}]"
-        if scope["next"]:
-            scope_line += f"\n   Next: {scope['next']}"
-        parts.append(scope_line)
-
-    return HookResult.allow("\n\n".join(parts))
+    parts = _build_memory_parts(spark_assocs, lessons, scope)
+    return HookResult.allow("\n\n".join(parts)) if parts else HookResult.allow()
 
 
 @register_hook("context_injector", priority=45)
