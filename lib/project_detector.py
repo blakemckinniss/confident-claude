@@ -320,6 +320,96 @@ def generate_project_id(name: str, remote: str = "", root: str = "") -> str:
 # MAIN DETECTION
 # =============================================================================
 
+# Code file extensions for detection
+_CODE_EXTENSIONS = ("py", "js", "ts", "rs", "go", "java")
+
+
+def _detect_from_git(git_root: str, git_remote: str) -> ProjectContext:
+    """Detect project from git repository."""
+    detection_method = "git_remote" if git_remote else "git_root"
+    name = extract_repo_name(git_remote) if git_remote else ""
+
+    # Fallback to project file
+    if not name:
+        project_file = find_project_file(git_root)
+        if project_file:
+            _, data = project_file
+            name = data.get("name", "")
+            detection_method = f"git+{project_file[0]}"
+
+    # Fallback to directory name
+    if not name:
+        name = Path(git_root).name
+        detection_method = "git_dirname"
+
+    return ProjectContext(
+        project_id=generate_project_id(name, git_remote, git_root),
+        project_name=name,
+        project_type="project",
+        root_path=git_root,
+        detection_method=detection_method,
+        git_remote=git_remote,
+        language=detect_language(git_root),
+        framework=detect_framework(git_root, detect_language(git_root)),
+    )
+
+
+def _detect_from_project_file(cwd: str) -> Optional[ProjectContext]:
+    """Detect project from project file (package.json, pyproject.toml, etc.)."""
+    project_file = find_project_file(cwd)
+    if not project_file:
+        return None
+
+    file_type, data = project_file
+    name = data.get("name", Path(cwd).name)
+    language = detect_language(cwd)
+
+    return ProjectContext(
+        project_id=generate_project_id(name, "", cwd),
+        project_name=name,
+        project_type="project",
+        root_path=cwd,
+        detection_method=file_type,
+        language=language,
+        framework=detect_framework(cwd, language),
+    )
+
+
+def _detect_from_code_files(cwd: str) -> Optional[ProjectContext]:
+    """Detect project from presence of code files."""
+    has_code = any(Path(cwd).glob(f"*.{ext}") for ext in _CODE_EXTENSIONS)
+    if not has_code:
+        return None
+
+    dir_name = Path(cwd).name
+    return ProjectContext(
+        project_id=generate_project_id(dir_name, "", cwd),
+        project_name=dir_name,
+        project_type="project",
+        root_path=cwd,
+        detection_method="code_files",
+        language=detect_language(cwd),
+    )
+
+
+def _make_ephemeral_context(cwd: str) -> ProjectContext:
+    """Create ephemeral context for non-project directories."""
+    return ProjectContext(
+        project_id="ephemeral",
+        project_name="ephemeral",
+        project_type="ephemeral",
+        root_path=cwd,
+        detection_method="none",
+    )
+
+
+def _cache_and_return(result: ProjectContext, cwd: str) -> ProjectContext:
+    """Cache result and return it."""
+    global _PROJECT_CACHE, _PROJECT_CACHE_CWD
+    _PROJECT_CACHE = result
+    _PROJECT_CACHE_CWD = cwd
+    return result
+
 
 def detect_project() -> ProjectContext:
     """Detect current project context.
@@ -327,8 +417,6 @@ def detect_project() -> ProjectContext:
     Returns ProjectContext with detected information.
     Detection takes <10ms in typical cases (cached after first call).
     """
-    global _PROJECT_CACHE, _PROJECT_CACHE_CWD
-
     cwd = os.getcwd()
 
     # Return cached result if cwd hasn't changed
@@ -337,104 +425,22 @@ def detect_project() -> ProjectContext:
 
     # Try git detection first (most reliable)
     git_root = get_git_root()
-    git_remote = get_git_remote() if git_root else ""
-
     if git_root:
-        # We have a git repo
-        root = git_root
-        detection_method = "git_remote" if git_remote else "git_root"
+        git_remote = get_git_remote() or ""
+        return _cache_and_return(_detect_from_git(git_root, git_remote), cwd)
 
-        # Try to get name from remote
-        name = extract_repo_name(git_remote) if git_remote else ""
+    # Try project file detection
+    result = _detect_from_project_file(cwd)
+    if result:
+        return _cache_and_return(result, cwd)
 
-        # Fallback to project file
-        if not name:
-            project_file = find_project_file(root)
-            if project_file:
-                _, data = project_file
-                name = data.get("name", "")
-                detection_method = f"git+{project_file[0]}"
+    # Try code file detection
+    result = _detect_from_code_files(cwd)
+    if result:
+        return _cache_and_return(result, cwd)
 
-        # Fallback to directory name
-        if not name:
-            name = Path(root).name
-            detection_method = "git_dirname"
-
-        project_id = generate_project_id(name, git_remote, root)
-        language = detect_language(root)
-        framework = detect_framework(root, language)
-
-        result = ProjectContext(
-            project_id=project_id,
-            project_name=name,
-            project_type="project",
-            root_path=root,
-            detection_method=detection_method,
-            git_remote=git_remote,
-            language=language,
-            framework=framework,
-        )
-        _PROJECT_CACHE = result
-        _PROJECT_CACHE_CWD = cwd
-        return result
-
-    # No git - check for project files
-    project_file = find_project_file(cwd)
-    if project_file:
-        file_type, data = project_file
-        name = data.get("name", Path(cwd).name)
-        project_id = generate_project_id(name, "", cwd)
-        language = detect_language(cwd)
-        framework = detect_framework(cwd, language)
-
-        result = ProjectContext(
-            project_id=project_id,
-            project_name=name,
-            project_type="project",
-            root_path=cwd,
-            detection_method=file_type,
-            language=language,
-            framework=framework,
-        )
-        _PROJECT_CACHE = result
-        _PROJECT_CACHE_CWD = cwd
-        return result
-
-    # No project markers - ephemeral context
-    # Use a stable ID for the working directory
-    dir_name = Path(cwd).name
-
-    # Check if this looks like a code directory at all
-    has_code = any(
-        Path(cwd).glob(f"*.{ext}") for ext in ["py", "js", "ts", "rs", "go", "java"]
-    )
-
-    if has_code:
-        # Looks like code but no project structure
-        project_id = generate_project_id(dir_name, "", cwd)
-        result = ProjectContext(
-            project_id=project_id,
-            project_name=dir_name,
-            project_type="project",
-            root_path=cwd,
-            detection_method="code_files",
-            language=detect_language(cwd),
-        )
-        _PROJECT_CACHE = result
-        _PROJECT_CACHE_CWD = cwd
-        return result
-
-    # Truly ephemeral - no project context
-    result = ProjectContext(
-        project_id="ephemeral",
-        project_name="ephemeral",
-        project_type="ephemeral",
-        root_path=cwd,
-        detection_method="none",
-    )
-    _PROJECT_CACHE = result
-    _PROJECT_CACHE_CWD = cwd
-    return result
+    # Fallback to ephemeral
+    return _cache_and_return(_make_ephemeral_context(cwd), cwd)
 
 
 def get_project_memory_dir(project_id: str) -> Path:
