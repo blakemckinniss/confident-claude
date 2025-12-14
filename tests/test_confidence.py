@@ -66,6 +66,19 @@ from confidence import (
     AskUserIncreaser,
     BeadCreateIncreaser,
     RulesUpdateIncreaser,
+    UserOkIncreaser,
+    TrustRegainedIncreaser,
+    ResearchIncreaser,
+    CustomScriptIncreaser,
+    SearchToolIncreaser,
+    SmallDiffIncreaser,
+    GitCommitIncreaser,
+    ParallelToolsIncreaser,
+    EfficientSearchIncreaser,
+    BatchFixIncreaser,
+    DirectActionIncreaser,
+    ChainedCommandsIncreaser,
+    PremiseChallengeIncreaser,
 )
 
 
@@ -1839,6 +1852,553 @@ class TestRulesUpdateIncreaser:
         context = {"rules_updated": True}
 
         # Act - cooldown is 2, last triggered 1 turn ago
+        should_trigger = increaser.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestUserOkIncreaser:
+    """Tests for UserOkIncreaser - positive user feedback on short prompts."""
+
+    def test_triggers_on_ok_response(self):
+        # Arrange
+        increaser = UserOkIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "ok"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_thanks(self):
+        # Arrange
+        increaser = UserOkIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "thanks!"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_looks_good(self):
+        # Arrange
+        increaser = UserOkIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "looks good"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_long_prompt(self):
+        # Arrange
+        increaser = UserOkIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Long prompt > 100 chars containing "ok"
+        context = {"prompt": "ok " + "x" * 100}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_pattern(self):
+        # Arrange
+        increaser = UserOkIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "do something"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = UserOkIncreaser()
+        state = MockSessionState()
+        state.turn_count = 3
+        context = {"prompt": "ok"}
+
+        # Act - cooldown is 2, last triggered 1 turn ago
+        should_trigger = increaser.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestTrustRegainedIncreaser:
+    """Tests for TrustRegainedIncreaser - explicit trust restoration."""
+
+    def test_triggers_on_confidence_boost_approved(self):
+        # Arrange
+        increaser = TrustRegainedIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "CONFIDENCE_BOOST_APPROVED"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_trust_regained(self):
+        # Arrange
+        increaser = TrustRegainedIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "trust regained, you can proceed"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_confidence_restored(self):
+        # Arrange
+        increaser = TrustRegainedIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "confidence restored"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_pattern(self):
+        # Arrange
+        increaser = TrustRegainedIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "ok go ahead"}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = TrustRegainedIncreaser()
+        state = MockSessionState()
+        state.turn_count = 6
+        context = {"prompt": "CONFIDENCE_BOOST_APPROVED"}
+
+        # Act - cooldown is 5, last triggered 3 turns ago
+        should_trigger = increaser.should_trigger(context, state, 3)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestResearchIncreaser:
+    """Tests for ResearchIncreaser - web research performed."""
+
+    def test_triggers_when_research_performed_flag_set(self):
+        # Arrange
+        increaser = ResearchIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"research_performed": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = ResearchIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = ResearchIncreaser()
+        state = MockSessionState()
+        state.turn_count = 2
+        context = {"research_performed": True}
+
+        # Act - cooldown is 1, last triggered 0 turns ago
+        should_trigger = increaser.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestCustomScriptIncreaser:
+    """Tests for CustomScriptIncreaser - running ops scripts."""
+
+    def test_triggers_when_custom_script_ran_flag_set(self):
+        # Arrange
+        increaser = CustomScriptIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"custom_script_ran": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = CustomScriptIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestSearchToolIncreaser:
+    """Tests for SearchToolIncreaser - Grep/Glob/Task usage."""
+
+    def test_triggers_when_search_performed_flag_set(self):
+        # Arrange
+        increaser = SearchToolIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"search_performed": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = SearchToolIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = SearchToolIncreaser()
+        state = MockSessionState()
+        state.turn_count = 2
+        context = {"search_performed": True}
+
+        # Act - cooldown is 1, last triggered 1 turn ago
+        should_trigger = increaser.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestSmallDiffIncreaser:
+    """Tests for SmallDiffIncreaser - focused changes under 400 LOC."""
+
+    def test_triggers_when_small_diff_flag_set(self):
+        # Arrange
+        increaser = SmallDiffIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"small_diff": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = SmallDiffIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestGitCommitIncreaser:
+    """Tests for GitCommitIncreaser - committing work."""
+
+    def test_triggers_when_git_committed_flag_set(self):
+        # Arrange
+        increaser = GitCommitIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"git_committed": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = GitCommitIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestParallelToolsIncreaser:
+    """Tests for ParallelToolsIncreaser - efficient parallel tool usage."""
+
+    def test_triggers_when_parallel_tools_flag_set(self):
+        # Arrange
+        increaser = ParallelToolsIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"parallel_tools": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = ParallelToolsIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestEfficientSearchIncreaser:
+    """Tests for EfficientSearchIncreaser - first-try search success."""
+
+    def test_triggers_when_efficient_search_flag_set(self):
+        # Arrange
+        increaser = EfficientSearchIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"efficient_search": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = EfficientSearchIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = EfficientSearchIncreaser()
+        state = MockSessionState()
+        state.turn_count = 3
+        context = {"efficient_search": True}
+
+        # Act - cooldown is 2, last triggered 1 turn ago
+        should_trigger = increaser.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestBatchFixIncreaser:
+    """Tests for BatchFixIncreaser - fixing multiple issues in one edit."""
+
+    def test_triggers_when_batch_fix_flag_set(self):
+        # Arrange
+        increaser = BatchFixIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"batch_fix": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = BatchFixIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestDirectActionIncreaser:
+    """Tests for DirectActionIncreaser - action without preamble."""
+
+    def test_triggers_when_direct_action_flag_set(self):
+        # Arrange
+        increaser = DirectActionIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"direct_action": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = DirectActionIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = DirectActionIncreaser()
+        state = MockSessionState()
+        state.turn_count = 3
+        context = {"direct_action": True}
+
+        # Act - cooldown is 2, last triggered 1 turn ago
+        should_trigger = increaser.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestChainedCommandsIncreaser:
+    """Tests for ChainedCommandsIncreaser - efficient command chaining."""
+
+    def test_triggers_when_chained_commands_flag_set(self):
+        # Arrange
+        increaser = ChainedCommandsIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"chained_commands": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = ChainedCommandsIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestPremiseChallengeIncreaser:
+    """Tests for PremiseChallengeIncreaser - suggesting alternatives to building."""
+
+    def test_triggers_when_premise_challenge_flag_set(self):
+        # Arrange
+        increaser = PremiseChallengeIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"premise_challenge": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = PremiseChallengeIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = PremiseChallengeIncreaser()
+        state = MockSessionState()
+        state.turn_count = 4
+        context = {"premise_challenge": True}
+
+        # Act - cooldown is 3, last triggered 2 turns ago
         should_trigger = increaser.should_trigger(context, state, 2)
 
         # Assert
