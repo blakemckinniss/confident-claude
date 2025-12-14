@@ -917,13 +917,17 @@ _DECOMPOSITION_TRIGGERS = [
 ]
 
 _DECOMPOSITION_MESSAGE = """🔀 **RECURSIVE DECOMPOSITION**: Complex multi-angle question detected.
-Spawn parallel Task agents for each angle, then synthesize:
+Option A - Use dedicated agent:
+```
+Task(subagent_type="deep-research", prompt="[full question]")
+```
+Option B - Manual decomposition:
 ```
 Task(subagent_type="Explore", prompt="Angle 1: [specific sub-question]")
 Task(subagent_type="Explore", prompt="Angle 2: [specific sub-question]")  # Same message = parallel
 Task(subagent_type="Explore", prompt="Angle 3: [specific sub-question]")
 ```
-Each agent explores independently → combine insights into unified answer."""
+Each agent explores independently → synthesize into unified answer."""
 
 
 @register_hook("work_patterns", priority=91)
