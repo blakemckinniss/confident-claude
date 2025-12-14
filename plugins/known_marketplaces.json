@@ -5,7 +5,7 @@
       "repo": "thedotmack/claude-mem"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/thedotmack",
-    "lastUpdated": "2025-12-14T21:36:36.271Z"
+    "lastUpdated": "2025-12-14T21:56:43.901Z"
   },
   "claude-code-plugins": {
     "source": {
@@ -21,7 +21,7 @@
       "url": "https://github.com/wshobson/agents.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-workflows",
-    "lastUpdated": "2025-12-14T21:36:49.159Z"
+    "lastUpdated": "2025-12-14T21:56:16.369Z"
   },
   "repomix": {
     "source": {
@@ -29,7 +29,7 @@
       "url": "https://github.com/yamadashy/repomix.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/repomix",
-    "lastUpdated": "2025-12-14T21:47:12.022Z"
+    "lastUpdated": "2025-12-14T21:59:11.162Z"
   },
   "claude-code-templates": {
     "source": {
@@ -37,7 +37,7 @@
       "url": "https://github.com/davila7/claude-code-templates.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-templates",
-    "lastUpdated": "2025-12-14T21:33:08.342Z"
+    "lastUpdated": "2025-12-14T21:58:40.826Z"
   },
   "dev-browser-marketplace": {
     "source": {
@@ -45,6 +45,6 @@
       "repo": "sawyerhood/dev-browser"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/dev-browser-marketplace",
-    "lastUpdated": "2025-12-14T21:47:25.073Z"
+    "lastUpdated": "2025-12-14T21:59:14.660Z"
   }
 }

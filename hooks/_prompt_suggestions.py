@@ -35,6 +35,7 @@ MEMORY_DIR = CLAUDE_DIR / "memory"
 # Try to import intent classifier
 try:
     from _intent_classifier import classify_intent
+
     INTENT_CLASSIFIER_AVAILABLE = True
 except ImportError:
     INTENT_CLASSIFIER_AVAILABLE = False
@@ -43,6 +44,7 @@ except ImportError:
 # Try to import PAL mandates
 try:
     from _pal_mandates import get_mandate, check_keyword_mandate
+
     PAL_MANDATES_AVAILABLE = True
 except ImportError:
     PAL_MANDATES_AVAILABLE = False
@@ -53,8 +55,10 @@ except ImportError:
 try:
     from _ops_stats import get_unused_ops_tools, get_ops_tool_stats
 except ImportError:
+
     def get_unused_ops_tools(days_threshold: int = 7) -> list[str]:
         return []
+
     def get_ops_tool_stats() -> dict:
         return {}
 
@@ -116,6 +120,7 @@ def check_beads_periodic_sync(data: dict, state: SessionState) -> HookResult:
 # SELF-HEAL DIAGNOSTIC (priority 72)
 # =============================================================================
 
+
 @register_hook("self_heal_diagnostic", priority=72)
 def check_self_heal_diagnostic(data: dict, state: SessionState) -> HookResult:
     """Inject diagnostic guidance when self-heal mode is active."""
@@ -172,6 +177,7 @@ def check_self_heal_diagnostic(data: dict, state: SessionState) -> HookResult:
 # PROACTIVE NUDGE (priority 75)
 # =============================================================================
 
+
 def _collect_proactive_suggestions(state: SessionState) -> list[str]:
     """Collect all proactive suggestions from state."""
     suggestions = []
@@ -187,7 +193,9 @@ def _collect_proactive_suggestions(state: SessionState) -> list[str]:
         suggestions.append("🧪 Multiple edits without test run")
 
     if state.consecutive_failures >= 2:
-        suggestions.append(f"⚠️ {state.consecutive_failures} failures - consider different approach")
+        suggestions.append(
+            f"⚠️ {state.consecutive_failures} failures - consider different approach"
+        )
 
     if state.pending_integration_greps:
         funcs = [p["function"] for p in state.pending_integration_greps[:2]]
@@ -198,7 +206,9 @@ def _collect_proactive_suggestions(state: SessionState) -> list[str]:
         recent = [t for t in bg_tasks if state.turn_count - t.get("turn", 0) <= 10]
         if recent:
             types = [t.get("type", "agent")[:15] for t in recent[:2]]
-            suggestions.append(f"⏳ Background agents running: {types} - check with `TaskOutput`")
+            suggestions.append(
+                f"⏳ Background agents running: {types} - check with `TaskOutput`"
+            )
 
     return suggestions
 
@@ -227,7 +237,10 @@ def check_proactive_nudge(data: dict, state: SessionState) -> HookResult:
 _TOOL_TRIGGERS = {
     "research": {
         "patterns": [
-            re.compile(r"(latest|current|new)\s+(docs?|documentation|api|version)", re.IGNORECASE),
+            re.compile(
+                r"(latest|current|new)\s+(docs?|documentation|api|version)",
+                re.IGNORECASE,
+            ),
             re.compile(r"how\s+does\s+.+\s+work", re.IGNORECASE),
         ],
         "command": 'python3 .claude/ops/research.py "<query>"',
@@ -236,14 +249,18 @@ _TOOL_TRIGGERS = {
     "probe": {
         "patterns": [
             re.compile(r"what\s+(methods?|attributes?)", re.IGNORECASE),
-            re.compile(r"(inspect|introspect)\s+(the\s+)?(api|object|class)", re.IGNORECASE),
+            re.compile(
+                r"(inspect|introspect)\s+(the\s+)?(api|object|class)", re.IGNORECASE
+            ),
         ],
         "command": 'python3 .claude/ops/probe.py "<object_path>"',
         "reason": "Runtime introspection - see actual API before coding",
     },
     "xray": {
         "patterns": [
-            re.compile(r"(find|list|show)\s+(all\s+)?(class|function)s?\s+in", re.IGNORECASE),
+            re.compile(
+                r"(find|list|show)\s+(all\s+)?(class|function)s?\s+in", re.IGNORECASE
+            ),
             re.compile(r"ast\s+(analysis|search)", re.IGNORECASE),
         ],
         "command": "python3 .claude/ops/xray.py --type <class|function> --name <Name>",
@@ -284,7 +301,9 @@ _TOOL_TRIGGERS = {
     },
     "orchestrate": {
         "patterns": [
-            re.compile(r"(process|analyze|scan)\s+(all|many|multiple)\s+files?", re.IGNORECASE),
+            re.compile(
+                r"(process|analyze|scan)\s+(all|many|multiple)\s+files?", re.IGNORECASE
+            ),
             re.compile(r"(batch|bulk|aggregate)\s+(process|operation)", re.IGNORECASE),
         ],
         "command": 'python3 .claude/ops/orchestrate.py "<task description>"',
@@ -294,8 +313,12 @@ _TOOL_TRIGGERS = {
     "pal_thinkdeep": {
         "patterns": [
             re.compile(r"(uncertain|not\s+sure)\s+(how|what|why)", re.IGNORECASE),
-            re.compile(r"need\s+(to\s+)?(investigate|analyze|understand)", re.IGNORECASE),
-            re.compile(r"(complex|difficult)\s+(issue|problem|architecture)", re.IGNORECASE),
+            re.compile(
+                r"need\s+(to\s+)?(investigate|analyze|understand)", re.IGNORECASE
+            ),
+            re.compile(
+                r"(complex|difficult)\s+(issue|problem|architecture)", re.IGNORECASE
+            ),
             re.compile(r"what\s+can\s+we", re.IGNORECASE),
             re.compile(r"find\s+out\s+(why|how|what)", re.IGNORECASE),
         ],
@@ -304,7 +327,9 @@ _TOOL_TRIGGERS = {
     },
     "pal_debug": {
         "patterns": [
-            re.compile(r"(mysterious|strange|weird)\s+(bug|error|behavior)", re.IGNORECASE),
+            re.compile(
+                r"(mysterious|strange|weird)\s+(bug|error|behavior)", re.IGNORECASE
+            ),
             re.compile(r"(root\s+cause|why\s+is\s+this\s+happening)", re.IGNORECASE),
             re.compile(r"(debugging|troubleshoot)\s+(help|assistance)", re.IGNORECASE),
         ],
@@ -313,7 +338,10 @@ _TOOL_TRIGGERS = {
     },
     "pal_consensus": {
         "patterns": [
-            re.compile(r"(multiple|different)\s+(perspectives?|opinions?|views?)", re.IGNORECASE),
+            re.compile(
+                r"(multiple|different)\s+(perspectives?|opinions?|views?)",
+                re.IGNORECASE,
+            ),
             re.compile(r"(second\s+opinion|another\s+view)", re.IGNORECASE),
             re.compile(r"(consensus|agreement)\s+on", re.IGNORECASE),
             re.compile(r"what\s+is\s+the\s+best", re.IGNORECASE),
@@ -324,7 +352,10 @@ _TOOL_TRIGGERS = {
     "pal_challenge": {
         "patterns": [
             re.compile(r"(am\s+i|are\s+we)\s+(right|wrong|correct)", re.IGNORECASE),
-            re.compile(r"(challenge|question)\s+(this|my)\s+(assumption|approach)", re.IGNORECASE),
+            re.compile(
+                r"(challenge|question)\s+(this|my)\s+(assumption|approach)",
+                re.IGNORECASE,
+            ),
             re.compile(r"(sanity\s+check|reality\s+check)", re.IGNORECASE),
             re.compile(r"(can|should)\s+we\b", re.IGNORECASE),
         ],
@@ -345,7 +376,9 @@ _TOOL_TRIGGERS = {
             re.compile(r"(latest|current|updated)\s+(api|sdk|docs?)", re.IGNORECASE),
             re.compile(r"(breaking\s+changes?|deprecat)", re.IGNORECASE),
             re.compile(r"(migration\s+guide|upgrade)", re.IGNORECASE),
-            re.compile(r"\bresearch\b.*\b(api|library|framework|docs?)\b", re.IGNORECASE),
+            re.compile(
+                r"\bresearch\b.*\b(api|library|framework|docs?)\b", re.IGNORECASE
+            ),
             re.compile(r"get\s+the\s+latest", re.IGNORECASE),
         ],
         "command": "mcp__pal__apilookup",
@@ -363,18 +396,32 @@ _TOOL_TRIGGERS = {
     # Crawl4AI MCP
     "crawl4ai": {
         "patterns": [
-            re.compile(r"(scrape|crawl|fetch|extract)\s+.*(web|page|site|url)", re.IGNORECASE),
-            re.compile(r"(get|read|pull)\s+.*(from\s+)?(url|website|page|article)", re.IGNORECASE),
-            re.compile(r"(content|data|text)\s+(from|of)\s+.*(url|site|page)", re.IGNORECASE),
+            re.compile(
+                r"(scrape|crawl|fetch|extract)\s+.*(web|page|site|url)", re.IGNORECASE
+            ),
+            re.compile(
+                r"(get|read|pull)\s+.*(from\s+)?(url|website|page|article)",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"(content|data|text)\s+(from|of)\s+.*(url|site|page)", re.IGNORECASE
+            ),
             re.compile(r"https?://", re.IGNORECASE),
             re.compile(r"\burl\b.*\b(content|fetch|get|read)\b", re.IGNORECASE),
-            re.compile(r"(read|fetch|get)\s+.*(docs?|documentation|readme)", re.IGNORECASE),
+            re.compile(
+                r"(read|fetch|get)\s+.*(docs?|documentation|readme)", re.IGNORECASE
+            ),
             re.compile(r"(article|blog|post)\s+(content|text)", re.IGNORECASE),
-            re.compile(r"(bypass|avoid|get\s+around)\s+.*(guard|block|protection|captcha)", re.IGNORECASE),
+            re.compile(
+                r"(bypass|avoid|get\s+around)\s+.*(guard|block|protection|captcha)",
+                re.IGNORECASE,
+            ),
             re.compile(r"(cloudflare|bot\s+detect|anti-bot)", re.IGNORECASE),
             re.compile(r"(web|online)\s+(data|content|info)", re.IGNORECASE),
             re.compile(r"(download|retrieve)\s+.*(page|content)", re.IGNORECASE),
-            re.compile(r"(check|look\s+at|see)\s+(what|how)\s+.*(site|page|url)", re.IGNORECASE),
+            re.compile(
+                r"(check|look\s+at|see)\s+(what|how)\s+.*(site|page|url)", re.IGNORECASE
+            ),
         ],
         "command": "mcp__crawl4ai__crawl (single URL) or mcp__crawl4ai__search (discover URLs)",
         "reason": "🌟 Crawl4AI: JS rendering + bot bypass - BEST tool for web content retrieval",
@@ -418,15 +465,27 @@ def check_ops_nudge(data: dict, state: SessionState) -> HookResult:
 
 _OPS_SCRIPTS = {
     "research": (
-        [re.compile(r"look up", re.I), re.compile(r"find docs", re.I), re.compile(r"documentation", re.I)],
+        [
+            re.compile(r"look up", re.I),
+            re.compile(r"find docs", re.I),
+            re.compile(r"documentation", re.I),
+        ],
         "Web search via Tavily API",
     ),
     "probe": (
-        [re.compile(r"inspect.*object", re.I), re.compile(r"what methods", re.I), re.compile(r"api.*signature", re.I)],
+        [
+            re.compile(r"inspect.*object", re.I),
+            re.compile(r"what methods", re.I),
+            re.compile(r"api.*signature", re.I),
+        ],
         "Runtime introspection",
     ),
     "xray": (
-        [re.compile(r"find.*class", re.I), re.compile(r"find.*function", re.I), re.compile(r"code structure", re.I)],
+        [
+            re.compile(r"find.*class", re.I),
+            re.compile(r"find.*function", re.I),
+            re.compile(r"code structure", re.I),
+        ],
         "AST-based code search",
     ),
     "audit": (
@@ -434,15 +493,27 @@ _OPS_SCRIPTS = {
         "Security audit",
     ),
     "void": (
-        [re.compile(r"find.*stubs", re.I), re.compile(r"todo.*code", re.I), re.compile(r"incomplete", re.I)],
+        [
+            re.compile(r"find.*stubs", re.I),
+            re.compile(r"todo.*code", re.I),
+            re.compile(r"incomplete", re.I),
+        ],
         "Find stubs and TODOs",
     ),
     "think": (
-        [re.compile(r"break.*down", re.I), re.compile(r"decompose", re.I), re.compile(r"complex.*problem", re.I)],
+        [
+            re.compile(r"break.*down", re.I),
+            re.compile(r"decompose", re.I),
+            re.compile(r"complex.*problem", re.I),
+        ],
         "Problem decomposition",
     ),
     "verify": (
-        [re.compile(r"check.*exists", re.I), re.compile(r"verify.*file", re.I), re.compile(r"confirm.*works", re.I)],
+        [
+            re.compile(r"check.*exists", re.I),
+            re.compile(r"verify.*file", re.I),
+            re.compile(r"confirm.*works", re.I),
+        ],
         "Reality checks",
     ),
     "remember": (
@@ -483,6 +554,7 @@ def check_ops_awareness(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 # OPS AUDIT REMINDER (priority 86)
 # =============================================================================
+
 
 @register_hook("ops_audit_reminder", priority=86)
 def check_ops_audit_reminder(data: dict, state: SessionState) -> HookResult:
@@ -535,6 +607,7 @@ def check_ops_audit_reminder(data: dict, state: SessionState) -> HookResult:
 # INTENT CLASSIFIER (priority 88)
 # =============================================================================
 
+
 @register_hook("intent_classifier", priority=88)
 def check_intent_classifier(data: dict, state: SessionState) -> HookResult:
     """Classify user intent via HuggingFace model and inject mode-specific context."""
@@ -546,7 +619,9 @@ def check_intent_classifier(data: dict, state: SessionState) -> HookResult:
         return HookResult.allow()
 
     # Skip slash commands and trivial prompts
-    if prompt.startswith("/") or re.match(r"^(yes|no|ok|hi|hello|thanks)\b", prompt.lower()):
+    if prompt.startswith("/") or re.match(
+        r"^(yes|no|ok|hi|hello|thanks)\b", prompt.lower()
+    ):
         return HookResult.allow()
 
     # Cooldown: only classify every 3rd prompt
@@ -610,9 +685,13 @@ def _collect_expert_probes(prompt_lower: str, turn_count: int) -> list[str]:
         if trigger.search(prompt_lower) and not exclude.search(prompt_lower):
             probes.append(message)
     if _RE_NEW_FEATURE.search(prompt_lower) and turn_count <= 3:
-        probes.append("🚧 **CONSTRAINTS**: Ask about edge cases, error handling, existing patterns")
+        probes.append(
+            "🚧 **CONSTRAINTS**: Ask about edge cases, error handling, existing patterns"
+        )
     if _RE_UNCERTAIN.search(prompt_lower):
-        probes.append("🎓 **EXPERT MODE**: User uncertain - investigate first, don't assume they're right")
+        probes.append(
+            "🎓 **EXPERT MODE**: User uncertain - investigate first, don't assume they're right"
+        )
     return probes
 
 
@@ -631,12 +710,15 @@ def check_expert_probe(data: dict, state: SessionState) -> HookResult:
     if not probes:
         return HookResult.allow()
 
-    return HookResult.allow("🧠 **PROBE BEFORE ACTING** (assume user needs guidance):\n" + "\n".join(probes))
+    return HookResult.allow(
+        "🧠 **PROBE BEFORE ACTING** (assume user needs guidance):\n" + "\n".join(probes)
+    )
 
 
 # =============================================================================
 # PAL MANDATE (priority 89)
 # =============================================================================
+
 
 @register_hook("pal_mandate", priority=89)
 def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
@@ -686,14 +768,46 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 TOOL_INDEX = {
-    "probe": (["api", "signature", "method", "inspect", "class"], "runtime API inspection", "/probe httpx.Client"),
-    "research": (["docs", "documentation", "library", "how", "api"], "web search for docs", "/research 'fastapi 2024'"),
-    "xray": (["find", "class", "function", "structure", "ast"], "AST search", "/xray --type function --name handle_"),
-    "audit": (["security", "vulnerability", "injection", "secrets"], "security audit", "/audit src/auth.py"),
-    "void": (["stub", "todo", "incomplete", "missing"], "find incomplete code", "/void src/handlers/"),
-    "think": (["complex", "decompose", "stuck", "approach"], "problem decomposition", "/think 'concurrent writes'"),
-    "council": (["decision", "tradeoff", "choice", "should"], "multi-perspective analysis", "/council 'REST vs GraphQL'"),
-    "orchestrate": (["batch", "aggregate", "many", "multiple", "scan"], "batch tasks", "/orchestrate 'scan all py'"),
+    "probe": (
+        ["api", "signature", "method", "inspect", "class"],
+        "runtime API inspection",
+        "/probe httpx.Client",
+    ),
+    "research": (
+        ["docs", "documentation", "library", "how", "api"],
+        "web search for docs",
+        "/research 'fastapi 2024'",
+    ),
+    "xray": (
+        ["find", "class", "function", "structure", "ast"],
+        "AST search",
+        "/xray --type function --name handle_",
+    ),
+    "audit": (
+        ["security", "vulnerability", "injection", "secrets"],
+        "security audit",
+        "/audit src/auth.py",
+    ),
+    "void": (
+        ["stub", "todo", "incomplete", "missing"],
+        "find incomplete code",
+        "/void src/handlers/",
+    ),
+    "think": (
+        ["complex", "decompose", "stuck", "approach"],
+        "problem decomposition",
+        "/think 'concurrent writes'",
+    ),
+    "council": (
+        ["decision", "tradeoff", "choice", "should"],
+        "multi-perspective analysis",
+        "/council 'REST vs GraphQL'",
+    ),
+    "orchestrate": (
+        ["batch", "aggregate", "many", "multiple", "scan"],
+        "batch tasks",
+        "/orchestrate 'scan all py'",
+    ),
 }
 
 FOLDER_HINTS = {
@@ -733,7 +847,9 @@ def _match_tools(kw_set: set[str]) -> list[str]:
     return parts
 
 
-_RE_TRIVIAL_RESOURCE = re.compile(r"^(commit|push|status|help|yes|no|ok|thanks)\b", re.I)
+_RE_TRIVIAL_RESOURCE = re.compile(
+    r"^(commit|push|status|help|yes|no|ok|thanks)\b", re.I
+)
 
 
 @register_hook("resource_pointer", priority=90)
@@ -761,23 +877,53 @@ def check_resource_pointer(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 _WORK_PATTERNS = [
-    (r"\b(edit|change|update|modify|fix|add|create|implement|refactor)\b",
-     "🎯 **ASSUMPTIONS**: Before acting, state key assumptions (paths, APIs, behavior)"),
-    (r"\b(delete|remove|drop|reset|overwrite|replace|migrate)\b",
-     "↩️ **ROLLBACK**: Note undo path before destructive ops"),
-    (r"\b(should|best|optimal|recommend|which|how to|complex|tricky)\b",
-     "📊 **CONFIDENCE**: State confidence % and reasoning for recommendations"),
-    (r"\b(function|method|api|endpoint|signature|interface|class)\b",
-     "🔗 **INTEGRATION**: After edits, grep callers and note impact"),
-    (r"\b(can you|is it possible|can't|cannot|impossible|no way to|not able)\b",
-     "🚫 **IMPOSSIBILITY CHECK**: Before claiming 'can't', verify: MCP tools, Task agents, WebSearch, /inventory. Try first."),
+    (
+        r"\b(edit|change|update|modify|fix|add|create|implement|refactor)\b",
+        "🎯 **ASSUMPTIONS**: Before acting, state key assumptions (paths, APIs, behavior)",
+    ),
+    (
+        r"\b(delete|remove|drop|reset|overwrite|replace|migrate)\b",
+        "↩️ **ROLLBACK**: Note undo path before destructive ops",
+    ),
+    (
+        r"\b(should|best|optimal|recommend|which|how to|complex|tricky)\b",
+        "📊 **CONFIDENCE**: State confidence % and reasoning for recommendations",
+    ),
+    (
+        r"\b(function|method|api|endpoint|signature|interface|class)\b",
+        "🔗 **INTEGRATION**: After edits, grep callers and note impact",
+    ),
+    (
+        r"\b(can you|is it possible|can't|cannot|impossible|no way to|not able)\b",
+        "🚫 **IMPOSSIBILITY CHECK**: Before claiming 'can't', verify: MCP tools, Task agents, WebSearch, /inventory. Try first.",
+    ),
 ]
 
 _PARALLEL_SIGNALS = [
-    r"\b(1\.|2\.|3\.)", r"\b(first|second|third|then|next|after that)\b",
+    r"\b(1\.|2\.|3\.)",
+    r"\b(first|second|third|then|next|after that)\b",
     r"\b(all|each|every|multiple|several|many)\s+(file|component|test|module)",
-    r"\band\b.*\band\b", r"[,;]\s*\w+[,;]\s*\w+",
+    r"\band\b.*\band\b",
+    r"[,;]\s*\w+[,;]\s*\w+",
 ]
+
+# Recursive decomposition signals - complex multi-angle questions
+_DECOMPOSITION_TRIGGERS = [
+    r"\b(why|how|what\s+makes|what\s+causes)\s+.{15,}\?",  # Complex why/how questions
+    r"\b(research|explore|investigate|deep\s+dive|analyze)\s+.{10,}",  # Research intent
+    r"\b(comprehensive|thorough|in-depth|complete)\s+(analysis|review|investigation)",  # Depth signals
+    r"\b(all|every|various|different|multiple)\s+(aspects?|angles?|perspectives?|factors?)",  # Multi-angle
+    r"\b(compare|contrast|evaluate)\s+.{5,}\s+(vs|versus|and|or)\s+",  # Comparison questions
+]
+
+_DECOMPOSITION_MESSAGE = """🔀 **RECURSIVE DECOMPOSITION**: Complex multi-angle question detected.
+Spawn parallel Task agents for each angle, then synthesize:
+```
+Task(subagent_type="Explore", prompt="Angle 1: [specific sub-question]")
+Task(subagent_type="Explore", prompt="Angle 2: [specific sub-question]")  # Same message = parallel
+Task(subagent_type="Explore", prompt="Angle 3: [specific sub-question]")
+```
+Each agent explores independently → combine insights into unified answer."""
 
 
 @register_hook("work_patterns", priority=91)
@@ -796,8 +942,17 @@ def check_work_patterns(data: dict, state: SessionState) -> HookResult:
     # Parallel opportunity
     if any(re.search(p, prompt_lower) for p in _PARALLEL_SIGNALS):
         if state.consecutive_single_tasks >= 1 or state.parallel_nudge_count >= 1:
-            parts.append("⚡ **PARALLEL AGENTS**: Multiple items detected. "
-                "Spawn independent Task agents in ONE message, not sequentially.")
+            parts.append(
+                "⚡ **PARALLEL AGENTS**: Multiple items detected. "
+                "Spawn independent Task agents in ONE message, not sequentially."
+            )
+
+    # Recursive decomposition for complex research questions
+    decomp_matches = sum(
+        1 for p in _DECOMPOSITION_TRIGGERS if re.search(p, prompt_lower)
+    )
+    if decomp_matches >= 2 and len(prompt) >= 50:
+        parts.append(_DECOMPOSITION_MESSAGE)
 
     return HookResult.allow("\n".join(parts)) if parts else HookResult.allow()
 
@@ -805,6 +960,7 @@ def check_work_patterns(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 # QUALITY SIGNALS (priority 93)
 # =============================================================================
+
 
 @register_hook("quality_signals", priority=93)
 def check_quality_signals(data: dict, state: SessionState) -> HookResult:
@@ -838,6 +994,7 @@ def check_quality_signals(data: dict, state: SessionState) -> HookResult:
 # RESPONSE FORMAT (priority 95)
 # =============================================================================
 
+
 @register_hook("response_format", priority=95)
 def check_response_format(data: dict, state: SessionState) -> HookResult:
     """Inject structured response format requirements."""
@@ -845,7 +1002,9 @@ def check_response_format(data: dict, state: SessionState) -> HookResult:
     if not prompt or len(prompt) < 30:
         return HookResult.allow()
 
-    if re.match(r"^(yes|no|ok|hi|hello|thanks|commit|push|status|/\w+)\b", prompt.lower()):
+    if re.match(
+        r"^(yes|no|ok|hi|hello|thanks|commit|push|status|/\w+)\b", prompt.lower()
+    ):
         return HookResult.allow()
 
     format_req = """📋 **RESPONSE FORMAT** - End substantive responses with applicable sections (skip empty):

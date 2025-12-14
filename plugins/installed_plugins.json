@@ -4,10 +4,10 @@
     "claude-mem@thedotmack": [
       {
         "scope": "user",
-        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.1.6",
-        "version": "7.1.6",
+        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.2.1",
+        "version": "7.2.1",
         "installedAt": "2025-12-13T04:27:54.342Z",
-        "lastUpdated": "2025-12-14T00:39:22.271Z",
+        "lastUpdated": "2025-12-14T21:58:31.376Z",
         "gitCommitSha": "6815cc55b8eafcb0020d6f7e718a82f2ea47f19e",
         "isLocal": true
       }
