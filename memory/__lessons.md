@@ -283,3 +283,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-14 16:36
 - [abandoned_stubs] ⚠️ ABANDONED WORK: extract_session_modules.py contain stubs/TODOs
+
+### 2025-12-14 16:47
+- [abandoned_stubs] ⚠️ ABANDONED WORK: extract_session_modules.py, _session_goals.py, _session_workflow.py contain stubs/TODOs
