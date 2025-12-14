@@ -224,6 +224,10 @@ _RE_PYTEST_FAIL = re.compile(r"FAILED\s+([\w./]+)::(\w+)")
 _RE_JEST_FAIL = re.compile(r"FAIL\s+([\w./]+)\s*\n.*?✕\s+(.+?)(?:\n|$)", re.MULTILINE)
 _RE_GENERIC_FAIL = re.compile(r"(?:Error|FAIL|FAILED):\s*(.+?)(?:\n|$)")
 
+# Time saver signal patterns
+_RE_CHAIN_SEMICOLON = re.compile(r";\s*\w+")
+_RE_CHAIN_SPLIT = re.compile(r"\s*&&\s*|\s*;\s*")
+
 _TODO_PATTERNS = [
     (re.compile(r"#\s*TODO[:\s]+(.+?)(?:\n|$)", re.IGNORECASE), "TODO"),
     (re.compile(r"//\s*TODO[:\s]+(.+?)(?:\n|$)", re.IGNORECASE), "TODO"),
@@ -651,53 +655,48 @@ def _track_bash_git_commit(command: str, output: str, state: SessionState) -> No
         complete_feature(state, status="completed")
 
 
+_ERROR_PATTERNS = [
+    (re.compile(r"(\d{3})\s*(Unauthorized|Forbidden|Not Found)", re.I), "HTTP error"),
+    (re.compile(r"(ModuleNotFoundError|ImportError)", re.I), "Import error"),
+    (re.compile(r"(SyntaxError|TypeError|ValueError)", re.I), "Python error"),
+    (re.compile(r"(ENOENT|EACCES|EPERM)", re.I), "Filesystem error"),
+    (re.compile(r"(connection refused|timeout)", re.I), "Network error"),
+]
+
+
+def _classify_error(output: str) -> str:
+    """Classify error type from command output."""
+    for pattern, error_type in _ERROR_PATTERNS:
+        if pattern.search(output):
+            return error_type
+    return "Command error"
+
+
+def _is_framework_command(command: str) -> bool:
+    """Check if command operates on .claude/ framework files."""
+    return ".claude/" in command or ".claude\\" in command
+
+
 def _track_bash_failures(
     command: str, output: str, success: bool, state: SessionState
 ) -> None:
     """Track failures, errors, and self-heal triggers."""
-    approach_sig = (
-        f"Bash:{command.split()[0][:20]}" if command.split() else "Bash:unknown"
-    )
+    approach_sig = f"Bash:{command.split()[0][:20]}" if command.split() else "Bash:unknown"
 
-    # Detect and classify errors
-    if not success or "error" in output.lower() or "failed" in output.lower():
-        error_patterns = [
-            (r"(\d{3})\s*(Unauthorized|Forbidden|Not Found)", "HTTP error"),
-            (r"(ModuleNotFoundError|ImportError)", "Import error"),
-            (r"(SyntaxError|TypeError|ValueError)", "Python error"),
-            (r"(ENOENT|EACCES|EPERM)", "Filesystem error"),
-            (r"(connection refused|timeout)", "Network error"),
-        ]
-        error_type = "Command error"
-        for pattern, etype in error_patterns:
-            if re.search(pattern, output, re.IGNORECASE):
-                error_type = etype
-                break
-        if not success:
-            track_error(state, error_type, output[:500])
-            track_failure(state, approach_sig)
+    if not success:
+        error_type = _classify_error(output)
+        track_error(state, error_type, output[:500])
+        track_failure(state, approach_sig)
+        if _is_framework_command(command):
+            _trigger_self_heal(state, target=command.split()[0] if command.split() else "bash", error=output[:200])
 
-            # SELF-HEAL: Detect framework errors
-            if ".claude/" in command or ".claude\\" in command:
-                _trigger_self_heal(
-                    state,
-                    target=command.split()[0] if command.split() else "bash",
-                    error=output[:200],
-                )
+    if success and getattr(state, "self_heal_required", False) and _is_framework_command(command):
+        _clear_self_heal(state)
 
-    # SELF-HEAL: Clear if successful operation on framework files
-    if success and getattr(state, "self_heal_required", False):
-        if ".claude/" in command or ".claude\\" in command:
-            _clear_self_heal(state)
-
-    # Resolve errors on success
     if success and state.errors_unresolved:
         reset_failures(state)
         for error in state.errors_unresolved[:]:
-            if any(
-                word in command.lower()
-                for word in error.get("type", "").lower().split()
-            ):
+            if any(word in command.lower() for word in error.get("type", "").lower().split()):
                 resolve_error(state, error.get("type", ""))
 
 
@@ -1550,6 +1549,32 @@ def _build_objective_signals(
                 context["lint_passed"] = True
 
 
+def _check_chained_commands(command: str) -> bool:
+    """Check if command chains multiple meaningful operations."""
+    if " && " not in command and not _RE_CHAIN_SEMICOLON.search(command):
+        return False
+    parts = _RE_CHAIN_SPLIT.split(command)
+    meaningful = [p for p in parts if len(p.strip()) > 5]
+    return len(meaningful) >= 2
+
+
+def _check_efficient_search(
+    pattern: str, tool_result: dict, state: SessionState
+) -> bool:
+    """Check if search was efficient (new pattern with results)."""
+    if not pattern:
+        return False
+    recent = getattr(state, "recent_searches", [])
+    if pattern in recent:
+        return False
+    if not hasattr(state, "recent_searches"):
+        state.recent_searches = []
+    state.recent_searches.append(pattern)
+    state.recent_searches = state.recent_searches[-20:]
+    result_str = str(tool_result)[:500].lower()
+    return "no matches" not in result_str and "0 results" not in result_str
+
+
 def _build_time_saver_signals(
     tool_name: str,
     tool_input: dict,
@@ -1559,84 +1584,61 @@ def _build_time_saver_signals(
     context: dict,
 ) -> None:
     """Build context for time saver signals (v4.2)."""
-    # Chained commands (+1)
-    if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        if " && " in command or re.search(r";\s*\w+", command):
-            parts = re.split(r"\s*&&\s*|\s*;\s*", command)
-            meaningful = [p for p in parts if len(p.strip()) > 5]
-            if len(meaningful) >= 2:
-                context["chained_commands"] = True
+    if tool_name == "Bash" and _check_chained_commands(tool_input.get("command", "")):
+        context["chained_commands"] = True
 
-    # Batch fix (+3)
     if tool_name == "Edit":
-        old_string = tool_input.get("old_string", "")
-        new_string = tool_input.get("new_string", "")
-        if old_string and new_string:
-            if old_string.count("\n") >= 3 or new_string.count("\n") >= 3:
-                context["batch_fix"] = True
+        old_s, new_s = tool_input.get("old_string", ""), tool_input.get("new_string", "")
+        if old_s and new_s and (old_s.count("\n") >= 3 or new_s.count("\n") >= 3):
+            context["batch_fix"] = True
 
-    # Parallel tools (+3)
     if runner_state.get("tools_this_turn", 1) >= 2:
         context["parallel_tools"] = True
 
-    # Efficient search (+2)
     if tool_name in {"Grep", "Glob"}:
-        pattern = tool_input.get("pattern", "")
-        recent_searches = getattr(state, "recent_searches", [])
-        if pattern and pattern not in recent_searches:
-            if not hasattr(state, "recent_searches"):
-                state.recent_searches = []
-            state.recent_searches.append(pattern)
-            state.recent_searches = state.recent_searches[-20:]
-            result_str = str(tool_result)[:500].lower()
-            if "no matches" not in result_str and "0 results" not in result_str:
-                context["efficient_search"] = True
+        if _check_efficient_search(tool_input.get("pattern", ""), tool_result, state):
+            context["efficient_search"] = True
+
+
+_TEST_FILE_PATTERNS = ("test_", "_test.", ".test.", "/tests/", "spec.")
+_TEST_COMMANDS = ("pytest", "jest", "npm test", "cargo test", "go test")
+
+
+def _is_test_file(file_path: str) -> bool:
+    """Check if file path indicates a test file."""
+    lower = file_path.lower()
+    return any(p in lower for p in _TEST_FILE_PATTERNS)
+
+
+def _track_test_coverage(file_path: str, state: SessionState, context: dict) -> None:
+    """Track test file edits and detect test_ignored condition."""
+    if _is_test_file(file_path):
+        state._test_file_edited_turn = state.turn_count
+    else:
+        last_edit = getattr(state, "_test_file_edited_turn", 0)
+        last_run = getattr(state, "_tests_run_turn", 0)
+        if last_edit > last_run and (state.turn_count - last_edit) <= 5:
+            context["test_ignored"] = True
 
 
 def _build_completion_signals(
     tool_name: str, tool_input: dict, state: SessionState, context: dict
 ) -> None:
     """Build context for completion quality signals (v4.4/v4.5)."""
-    # First attempt success (+3)
     if tool_name == "Bash":
         command = tool_input.get("command", "").lower()
-        if "bd close" in command:
-            if getattr(state, "consecutive_failures", 0) == 0:
-                context["first_attempt_success"] = True
+        if "bd close" in command and getattr(state, "consecutive_failures", 0) == 0:
+            context["first_attempt_success"] = True
+        if any(t in command for t in _TEST_COMMANDS):
+            state._tests_run_turn = state.turn_count
 
-    # Scoped change (+2)
-    if tool_name in {"Edit", "Write"}:
-        file_path = tool_input.get("file_path", "")
-        goal_keywords = getattr(state, "goal_keywords", [])
-        if file_path and goal_keywords:
-            file_lower = file_path.lower()
-            if any(kw.lower() in file_lower for kw in goal_keywords):
-                context["scoped_change"] = True
-
-    # Test coverage tracking (v4.5)
     if tool_name in {"Edit", "Write"}:
         file_path = tool_input.get("file_path", "")
         if file_path:
-            is_test_file = any(
-                p in file_path.lower()
-                for p in ["test_", "_test.", ".test.", "/tests/", "spec."]
-            )
-            if is_test_file:
-                state._test_file_edited_turn = state.turn_count
-            else:
-                last_test_edit = getattr(state, "_test_file_edited_turn", 0)
-                last_test_run = getattr(state, "_tests_run_turn", 0)
-                turns_since = state.turn_count - last_test_edit
-                if last_test_edit > last_test_run and turns_since <= 5:
-                    context["test_ignored"] = True
-
-    # Track when tests are run
-    if tool_name == "Bash":
-        command = tool_input.get("command", "").lower()
-        test_cmds = ["pytest", "jest", "npm test", "cargo test", "go test"]
-        if any(t in command for t in test_cmds):
-            state._tests_run_turn = state.turn_count
+            goal_kw = getattr(state, "goal_keywords", [])
+            if goal_kw and any(kw.lower() in file_path.lower() for kw in goal_kw):
+                context["scoped_change"] = True
+            _track_test_coverage(file_path, state, context)
 
 
 @register_hook("confidence_increaser", None, priority=14)

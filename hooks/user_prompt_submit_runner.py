@@ -453,6 +453,52 @@ def check_user_sentiment(data: dict, state: SessionState) -> HookResult:
     return HookResult.allow()
 
 
+def _reset_goal_state(state: SessionState) -> None:
+    """Clear all goal-related state."""
+    state.original_goal = ""
+    state.goal_keywords = []
+    state.goal_set_turn = 0
+    state.goal_project_id = ""
+    state.nudge_history.pop("scope_expansion", None)
+    state.nudge_history.pop("goal_drift", None)
+
+
+def _init_goal(state: SessionState, prompt: str, project_id: str) -> None:
+    """Initialize goal from prompt."""
+    set_goal(state, prompt)
+    start_feature(state, prompt[:100])
+    state.goal_project_id = project_id
+
+
+def _get_current_project_id() -> str:
+    """Get current project ID or empty string."""
+    try:
+        from project_detector import get_current_project
+        return get_current_project().project_id
+    except Exception:
+        return ""
+
+
+def _handle_scope_expansion(state: SessionState, prompt: str) -> HookResult | None:
+    """Handle scope expansion detection. Returns HookResult if action needed."""
+    is_expanding, reason = detect_scope_expansion(state, prompt)
+    if not is_expanding:
+        return None
+    show, severity = should_nudge(state, "scope_expansion", reason)
+    if not show:
+        return None
+    record_nudge(state, "scope_expansion", reason)
+    times_warned = state.nudge_history.get("scope_expansion", {}).get("times_shown", 0)
+    if times_warned >= 2 or severity == "escalate":
+        return HookResult.deny(
+            f"🚫 **SCOPE BLOCKED**: {reason}\nGoal: {state.original_goal[:60]}... | SUDO SCOPE to override"
+        )
+    return HookResult.allow(
+        f"⚠️ **SCOPE EXPANSION DETECTED**\n🎯 Current goal: \"{state.original_goal[:60]}...\"\n"
+        f"🔀 {reason}\n\nFinish current feature before switching. (Will block after {2 - times_warned} more attempts)"
+    )
+
+
 @register_hook("goal_anchor", priority=1)
 def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
     """Prevent scope drift and block scope expansion."""
@@ -460,82 +506,39 @@ def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
     if not prompt:
         return HookResult.allow()
 
-    # Project-aware goal isolation
-    current_project_id = ""
-    try:
-        from project_detector import get_current_project
+    project_id = _get_current_project_id()
 
-        context = get_current_project()
-        current_project_id = context.project_id
-    except Exception:
-        pass
-
-    if state.original_goal and state.goal_project_id and current_project_id:
-        if current_project_id != state.goal_project_id:
-            # Project changed - reset goal state
-            state.original_goal = ""
-            state.goal_keywords = []
-            state.goal_set_turn = 0
-            state.goal_project_id = ""
-            if "scope_expansion" in state.nudge_history:
-                del state.nudge_history["scope_expansion"]
-            if "goal_drift" in state.nudge_history:
-                del state.nudge_history["goal_drift"]
+    # Reset if project changed
+    if state.original_goal and state.goal_project_id and project_id:
+        if project_id != state.goal_project_id:
+            _reset_goal_state(state)
 
     # Set goal if not already set
     if not state.original_goal:
-        set_goal(state, prompt)
-        start_feature(state, prompt[:100])
-        state.goal_project_id = current_project_id
+        _init_goal(state, prompt, project_id)
         return HookResult.allow()
 
     # SUDO SCOPE bypass
     if "SUDO SCOPE" in prompt.upper():
-        state.original_goal = ""
-        state.goal_keywords = []
-        state.goal_set_turn = 0
-        state.goal_project_id = ""
-        if "scope_expansion" in state.nudge_history:
-            del state.nudge_history["scope_expansion"]
-        clean_prompt = re.sub(
-            r"\bSUDO\s+SCOPE\b", "", prompt, flags=re.IGNORECASE
-        ).strip()
-        set_goal(state, clean_prompt)
-        start_feature(state, clean_prompt[:100])
-        state.goal_project_id = current_project_id
+        _reset_goal_state(state)
+        clean = re.sub(r"\bSUDO\s+SCOPE\b", "", prompt, flags=re.IGNORECASE).strip()
+        _init_goal(state, clean, project_id)
         return HookResult.allow()
 
     # Check scope expansion
-    is_expanding, expansion_reason = detect_scope_expansion(state, prompt)
-    if is_expanding:
-        show, severity = should_nudge(state, "scope_expansion", expansion_reason)
-        if show:
-            record_nudge(state, "scope_expansion", expansion_reason)
-            times_warned = state.nudge_history.get("scope_expansion", {}).get(
-                "times_shown", 0
-            )
-            if times_warned >= 2 or severity == "escalate":
-                return HookResult.deny(
-                    f"🚫 **SCOPE BLOCKED**: {expansion_reason}\n"
-                    f"Goal: {state.original_goal[:60]}... | SUDO SCOPE to override"
-                )
-            else:
-                return HookResult.allow(
-                    f"⚠️ **SCOPE EXPANSION DETECTED**\n"
-                    f'🎯 Current goal: "{state.original_goal[:60]}..."\n'
-                    f"🔀 {expansion_reason}\n\n"
-                    f"Finish current feature before switching. (Will block after {2 - times_warned} more attempts)"
-                )
+    if result := _handle_scope_expansion(state, prompt):
+        return result
 
     # Check drift
-    is_drifting, drift_message = check_goal_drift(state, prompt)
+    is_drifting, drift_msg = check_goal_drift(state, prompt)
     if is_drifting:
-        show, severity = should_nudge(state, "goal_drift", drift_message)
+        show, severity = should_nudge(state, "goal_drift", drift_msg)
         if show:
-            record_nudge(state, "goal_drift", drift_message)
+            record_nudge(state, "goal_drift", drift_msg)
             if severity == "escalate":
-                drift_message = f"🚨 **REPEATED DRIFT WARNING** (ignored {state.nudge_history.get('goal_drift', {}).get('times_ignored', 0)}x)\n{drift_message}"
-            return HookResult.allow(f"\n{drift_message}\n")
+                ignored = state.nudge_history.get("goal_drift", {}).get("times_ignored", 0)
+                drift_msg = f"🚨 **REPEATED DRIFT WARNING** (ignored {ignored}x)\n{drift_msg}"
+            return HookResult.allow(f"\n{drift_msg}\n")
 
     return HookResult.allow()
 
@@ -602,117 +605,101 @@ def check_rock_bottom(data: dict, state: SessionState) -> HookResult:
 
 # =============================================================================
 
+_CONFIDENCE_FLOOR = 70
+_PROMPT_CONFIDENCE_CAP = 85
+_VERIFIED_INCREASERS = ("test_pass", "build_success")
 
-@register_hook("confidence_initializer", priority=3)
-def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
-    """Initialize and assess confidence on every prompt.
 
-    Trust Debt System: Hitting the floor has consequences.
-    - Each floor hit increments reputation_debt
-    - While debt > 0: max tier capped at CERTAINTY (can't reach TRUSTED/EXPERT)
-    - Debt decays via test_pass/build_success (+1 debt cleared per success)
-    """
-    prompt = data.get("prompt", "")
-
-    # Floor with Trust Debt - hitting floor has consequences
-    CONFIDENCE_FLOOR = 70
+def _handle_confidence_floor(state: SessionState) -> None:
+    """Handle floor reset with trust debt accumulation."""
     if state.confidence == 0:
         set_confidence(state, DEFAULT_CONFIDENCE, "session initialization")
-    elif state.confidence < CONFIDENCE_FLOOR:
-        # Increment trust debt before resetting - repeated floor hits accumulate
+    elif state.confidence < _CONFIDENCE_FLOOR:
         old_debt = getattr(state, "reputation_debt", 0)
         state.reputation_debt = old_debt + 1
         set_confidence(
-            state, CONFIDENCE_FLOOR, f"floor reset (debt now {state.reputation_debt})"
+            state, _CONFIDENCE_FLOOR, f"floor reset (debt now {state.reputation_debt})"
         )
 
-    # Skip further analysis for trivial prompts
+
+def _apply_user_correction(
+    state: SessionState, prompt: str, parts: list
+) -> int:
+    """Apply user correction reducer if triggered. Returns updated confidence."""
+    old_conf = state.confidence
+    reducer = UserCorrectionReducer()
+    key = "confidence_reducer_user_correction"
+    last_trigger = state.nudge_history.get(key, {}).get("last_turn", -999)
+    if reducer.should_trigger({"prompt": prompt}, state, last_trigger):
+        update_confidence(state, reducer.delta, reducer.name)
+        if key not in state.nudge_history:
+            state.nudge_history[key] = {}
+        state.nudge_history[key]["last_turn"] = state.turn_count
+        parts.append(format_confidence_change(old_conf, state.confidence, f"({reducer.name})"))
+    return state.confidence
+
+
+def _has_recent_verified_boost(state: SessionState) -> bool:
+    """Check if there's a recent verified boost (test_pass/build_success)."""
+    for inc_name in _VERIFIED_INCREASERS:
+        key = f"confidence_increaser_{inc_name}"
+        last_turn = state.nudge_history.get(key, {}).get("last_turn", -999)
+        if state.turn_count - last_turn <= 3:
+            return True
+    return False
+
+
+def _apply_confidence_cap(state: SessionState, parts: list) -> None:
+    """Apply confidence cap unless protected by verified boost."""
+    if state.confidence <= _PROMPT_CONFIDENCE_CAP:
+        return
+    if _has_recent_verified_boost(state):
+        parts.append(f"✅ Confidence at {state.confidence}% (verified success protected)")
+    else:
+        set_confidence(state, _PROMPT_CONFIDENCE_CAP, "prompt cap (no verified boost)")
+        parts.append(f"⚖️ Confidence capped at {_PROMPT_CONFIDENCE_CAP}% (earn higher via verified success)")
+
+
+@register_hook("confidence_initializer", priority=3)
+def check_confidence_initializer(data: dict, state: SessionState) -> HookResult:
+    """Initialize and assess confidence on every prompt."""
+    prompt = data.get("prompt", "")
+    _handle_confidence_floor(state)
+
     if not prompt or len(prompt) < 20:
         return HookResult.allow()
 
-    # Save prompt for contradiction detection in post_tool_use
     state.last_user_prompt = prompt
-
     parts = []
 
-    # Assess prompt complexity and adjust
+    # Assess complexity and apply correction reducer
     delta, reasons = assess_prompt_complexity(prompt)
-    old_confidence = state.confidence
+    old_conf = state.confidence
     if delta != 0:
         update_confidence(state, delta, ", ".join(reasons))
 
-    # Check for user correction patterns (reducer)
-    correction_reducer = UserCorrectionReducer()
-    last_trigger = state.nudge_history.get(
-        "confidence_reducer_user_correction", {}
-    ).get("last_turn", -999)
-    if correction_reducer.should_trigger({"prompt": prompt}, state, last_trigger):
-        update_confidence(state, correction_reducer.delta, correction_reducer.name)
-        if "confidence_reducer_user_correction" not in state.nudge_history:
-            state.nudge_history["confidence_reducer_user_correction"] = {}
-        state.nudge_history["confidence_reducer_user_correction"]["last_turn"] = (
-            state.turn_count
-        )
-        parts.append(
-            format_confidence_change(
-                old_confidence, state.confidence, f"({correction_reducer.name})"
-            )
-        )
-        old_confidence = state.confidence
+    old_conf = _apply_user_correction(state, prompt, parts)
 
-    # Check for positive feedback (increasers)
-    triggered_increasers = apply_increasers(state, {"prompt": prompt})
-    for name, inc_delta, desc, requires_approval in triggered_increasers:
+    # Apply increasers
+    for name, inc_delta, desc, requires_approval in apply_increasers(state, {"prompt": prompt}):
         if not requires_approval:
             update_confidence(state, inc_delta, name)
-            parts.append(
-                format_confidence_change(old_confidence, state.confidence, f"({name})")
-            )
-            old_confidence = state.confidence
+            parts.append(format_confidence_change(old_conf, state.confidence, f"({name})"))
+            old_conf = state.confidence
 
-    # Cap confidence at 85% after user prompt (harsh - must earn trust)
-    # BUT: Don't cap if recent verified boost (test_pass, build_success)
-    PROMPT_CONFIDENCE_CAP = 85
-    if state.confidence > PROMPT_CONFIDENCE_CAP:
-        # Check for recent verified boosts (within last 3 turns)
-        verified_increasers = ["test_pass", "build_success"]
-        has_recent_verified = False
-        for inc_name in verified_increasers:
-            key = f"confidence_increaser_{inc_name}"
-            last_turn = state.nudge_history.get(key, {}).get("last_turn", -999)
-            if state.turn_count - last_turn <= 3:
-                has_recent_verified = True
-                break
+    _apply_confidence_cap(state, parts)
 
-        if has_recent_verified:
-            # Don't cap - verified success earned this confidence
-            parts.append(
-                f"✅ Confidence at {state.confidence}% (verified success protected)"
-            )
-        else:
-            # Cap it - no recent verified boost
-            set_confidence(
-                state, PROMPT_CONFIDENCE_CAP, "prompt cap (no verified boost)"
-            )
-            parts.append(
-                f"⚖️ Confidence capped at {PROMPT_CONFIDENCE_CAP}% "
-                "(earn higher via verified success)"
-            )
-
-    # Check if external consultation is mandatory
+    # External consultation / research requirements
     mandatory, mandatory_msg = should_mandate_external(state.confidence)
     if mandatory:
         parts.append(mandatory_msg)
-
-    # Check if research is required
     elif state.confidence < 50:
         require_research, research_msg = should_require_research(state.confidence, {})
         if require_research:
             parts.append(research_msg)
 
-    # Always show current confidence status at start of complex prompts
     if len(prompt) > 100:
-        tier_name, emoji, desc = get_tier_info(state.confidence)
+        tier_name, emoji, _ = get_tier_info(state.confidence)
         parts.insert(0, f"{emoji} **Confidence: {state.confidence}% ({tier_name})**")
 
     return HookResult.allow("\n\n".join(parts)) if parts else HookResult.allow()
@@ -1769,58 +1756,45 @@ def check_self_heal_diagnostic(data: dict, state: SessionState) -> HookResult:
     return HookResult.allow("\n".join(lines))
 
 
-@register_hook("proactive_nudge", priority=75)
-def check_proactive_nudge(data: dict, state: SessionState) -> HookResult:
-    """Surface actionable suggestions based on state."""
-    prompt = data.get("prompt", "")
-    if not prompt or len(prompt) < 10 or prompt.startswith("/"):
-        return HookResult.allow()
-    if state.turn_count < 5:
-        return HookResult.allow()
-
+def _collect_proactive_suggestions(state: SessionState) -> list[str]:
+    """Collect all proactive suggestions from state."""
     suggestions = []
 
-    # Pending files
     if state.pending_files:
         names = [Path(f).name for f in state.pending_files[:3]]
         suggestions.append(f"📂 Mentioned but unread: {names}")
 
-    # Edits without verification
-    if state.files_edited and not state.last_verify:
-        if len(state.files_edited) >= 2:
-            suggestions.append(
-                f"✅ {len(state.files_edited)} files edited, no /verify run"
-            )
+    if state.files_edited and not state.last_verify and len(state.files_edited) >= 2:
+        suggestions.append(f"✅ {len(state.files_edited)} files edited, no /verify run")
 
-    # Multiple edits without tests
     if any(c >= 3 for c in state.edit_counts.values()) and not state.tests_run:
         suggestions.append("🧪 Multiple edits without test run")
 
-    # Consecutive failures
     if state.consecutive_failures >= 2:
-        suggestions.append(
-            f"⚠️ {state.consecutive_failures} failures - consider different approach"
-        )
+        suggestions.append(f"⚠️ {state.consecutive_failures} failures - consider different approach")
 
-    # Integration greps pending
     if state.pending_integration_greps:
         funcs = [p["function"] for p in state.pending_integration_greps[:2]]
         suggestions.append(f"🔗 Grep callers for: {funcs}")
 
-    # Background tasks pending
-    if hasattr(state, "background_tasks") and state.background_tasks:
-        # Filter to tasks from last 10 turns
-        recent_bg = [
-            t
-            for t in state.background_tasks
-            if state.turn_count - t.get("turn", 0) <= 10
-        ]
-        if recent_bg:
-            types = [t.get("type", "agent")[:15] for t in recent_bg[:2]]
-            suggestions.append(
-                f"⏳ Background agents running: {types} - check with `TaskOutput`"
-            )
+    bg_tasks = getattr(state, "background_tasks", [])
+    if bg_tasks:
+        recent = [t for t in bg_tasks if state.turn_count - t.get("turn", 0) <= 10]
+        if recent:
+            types = [t.get("type", "agent")[:15] for t in recent[:2]]
+            suggestions.append(f"⏳ Background agents running: {types} - check with `TaskOutput`")
 
+    return suggestions
+
+
+@register_hook("proactive_nudge", priority=75)
+def check_proactive_nudge(data: dict, state: SessionState) -> HookResult:
+    """Surface actionable suggestions based on state."""
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 10 or prompt.startswith("/") or state.turn_count < 5:
+        return HookResult.allow()
+
+    suggestions = _collect_proactive_suggestions(state)
     if not suggestions:
         return HookResult.allow()
 
