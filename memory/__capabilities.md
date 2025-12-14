@@ -1,6 +1,6 @@
 # Capabilities Index
 
-**Generated:** 2025-12-13 09:43
+**Generated:** 2025-12-14 (complexity refactoring documented)
 
 **PURPOSE:** Before proposing new functionality, check if it exists here.
 
@@ -30,6 +30,29 @@
 - Documentation fetching from protected sites
 - Scraping dynamic/JS-heavy pages
 - Research requiring multiple page fetches
+
+---
+
+## 🏗️ Architecture Notes
+
+### Hook Runner Complexity (Dec 2025)
+
+All 4 hook runners refactored for maintainability:
+
+| Runner | Functions | Avg Complexity | Status |
+|--------|-----------|----------------|--------|
+| `post_tool_use_runner.py` | 78 | B (8.0) | ✅ All C901 resolved |
+| `user_prompt_submit_runner.py` | ~60 | B (7.5) | ✅ All C901 resolved |
+| `pre_tool_use_runner.py` | ~40 | B (7.0) | ✅ All C901 resolved |
+| `stop_runner.py` | ~25 | B (6.5) | ✅ All C901 resolved |
+
+**Patterns applied:**
+- Pre-compiled regex at module level (e.g., `_RE_PATTERN = re.compile(...)`)
+- Data-driven lookup tables (e.g., `_TOOL_BOOST_MAP = {...}`)
+- Helper extraction for nested logic (e.g., `_check_js_mutations()`)
+- Frozensets for O(1) membership tests (e.g., `_RESEARCH_TOOLS = frozenset(...)`)
+
+**Result:** 21 → 0 C901 violations, avg complexity B (7.25)
 
 ---
 
