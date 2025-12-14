@@ -36,10 +36,13 @@ from confidence import (
     BackupFileReducer,
     VersionFileReducer,
     # Increaser classes
-    TestPassIncreaser,
+    PassedTestsIncreaser,
     BuildSuccessIncreaser,
     LintPassIncreaser,
     ProductiveBashIncreaser,
+    MemoryConsultIncreaser,
+    FileReadIncreaser,
+    GitExploreIncreaser,
 )
 
 
@@ -576,12 +579,12 @@ class TestGoalDriftReducer:
 # =============================================================================
 
 
-class TestTestPassIncreaser:
-    """Tests for TestPassIncreaser."""
+class TestPassedTestsIncreaser:
+    """Tests for PassedTestsIncreaser."""
 
     def test_triggers_on_pytest_success(self):
         # Arrange
-        increaser = TestPassIncreaser()
+        increaser = PassedTestsIncreaser()
         state = MockSessionState()
         state.turn_count = 10
         state.commands_succeeded = [
@@ -597,7 +600,7 @@ class TestTestPassIncreaser:
 
     def test_triggers_via_context_flag(self):
         # Arrange
-        increaser = TestPassIncreaser()
+        increaser = PassedTestsIncreaser()
         state = MockSessionState()
         state.turn_count = 10
         context = {"tests_passed": True}
@@ -610,7 +613,7 @@ class TestTestPassIncreaser:
 
     def test_does_not_trigger_without_test_commands(self):
         # Arrange
-        increaser = TestPassIncreaser()
+        increaser = PassedTestsIncreaser()
         state = MockSessionState()
         state.turn_count = 10
         state.commands_succeeded = [
@@ -729,6 +732,135 @@ class TestProductiveBashIncreaser:
 
         # Act
         should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestMemoryConsultIncreaser:
+    """Tests for MemoryConsultIncreaser - consulting persistent memory."""
+
+    def test_triggers_when_memory_consulted_flag_set(self):
+        # Arrange
+        increaser = MemoryConsultIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"memory_consulted": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = MemoryConsultIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = MemoryConsultIncreaser()
+        state = MockSessionState()
+        state.turn_count = 3
+        context = {"memory_consulted": True}
+
+        # Act - last trigger was turn 2, cooldown is 2 turns
+        should_trigger = increaser.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestFileReadIncreaser:
+    """Tests for FileReadIncreaser - reading files for evidence."""
+
+    def test_triggers_when_files_read(self):
+        # Arrange
+        increaser = FileReadIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"files_read_count": 3}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_when_no_files_read(self):
+        # Arrange
+        increaser = FileReadIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"files_read_count": 0}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_count(self):
+        # Arrange
+        increaser = FileReadIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestGitExploreIncreaser:
+    """Tests for GitExploreIncreaser - exploring git history."""
+
+    def test_triggers_when_git_explored_flag_set(self):
+        # Arrange
+        increaser = GitExploreIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"git_explored": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = GitExploreIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = GitExploreIncreaser()
+        state = MockSessionState()
+        state.turn_count = 5
+        context = {"git_explored": True}
+
+        # Act - last trigger was recent
+        should_trigger = increaser.should_trigger(context, state, 4)
 
         # Assert
         assert should_trigger is False

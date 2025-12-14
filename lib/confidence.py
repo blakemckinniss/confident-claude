@@ -1206,7 +1206,7 @@ class ConfidenceIncreaser:
 
 
 @dataclass
-class TestPassIncreaser(ConfidenceIncreaser):
+class PassedTestsIncreaser(ConfidenceIncreaser):
     """Triggers when tests pass."""
 
     name: str = "test_pass"
@@ -1775,7 +1775,7 @@ INCREASERS: list[ConfidenceIncreaser] = [
     GitExploreIncreaser(),
     GitCommitIncreaser(),  # Saving work (+3)
     # Objective signals (high value)
-    TestPassIncreaser(),
+    PassedTestsIncreaser(),
     BuildSuccessIncreaser(),
     LintPassIncreaser(),
     CustomScriptIncreaser(),
