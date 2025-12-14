@@ -1035,15 +1035,20 @@ def check_confidence_decay(
     # Grep/Glob/EnterPlanMode - no boost (searching/planning ≠ understanding)
 
     # Penalties for risky actions (in addition to decay)
+    # Cooldowns prevent constant drain during active work
     penalty = 0
     penalty_reason = ""
 
     if tool_name in ("Edit", "Write"):
         file_path = tool_input.get("file_path", "")
 
-        # Base edit penalty: every edit is a risk (could introduce bugs)
-        penalty = 1
-        penalty_reason = "edit-risk"
+        # Base edit penalty with cooldown (max 1 per 3 turns)
+        edit_risk_key = "_edit_risk_last_turn"
+        last_edit_risk = getattr(state, edit_risk_key, 0)
+        if state.turn_count - last_edit_risk >= 3:
+            penalty = 1
+            penalty_reason = "edit-risk"
+            setattr(state, edit_risk_key, state.turn_count)
 
         # Edit without reading first = extra penalty for skipping context
         if file_path and file_path not in state.files_read:
@@ -1064,9 +1069,14 @@ def check_confidence_decay(
                 penalty_reason += "+stub"
 
     # Bash commands are risky - state changes, potential failures
+    # Cooldown prevents constant drain during active work (max 1 per 3 turns)
     elif tool_name == "Bash":
-        penalty = 1
-        penalty_reason = "bash-risk"
+        bash_risk_key = "_bash_risk_last_turn"
+        last_bash_risk = getattr(state, bash_risk_key, 0)
+        if state.turn_count - last_bash_risk >= 3:
+            penalty = 1
+            penalty_reason = "bash-risk"
+            setattr(state, bash_risk_key, state.turn_count)
 
     # Calculate net adjustment (decay + penalty - boosts)
     # Only apply when accumulator reaches whole number
@@ -1628,6 +1638,35 @@ def check_confidence_increaser(
             matches = sum(1 for kw in goal_keywords if kw.lower() in file_lower)
             if matches > 0:
                 context["scoped_change"] = True
+
+    # Test coverage tracking (v4.5)
+    # Track when test files are edited without running tests
+    if tool_name in {"Edit", "Write"}:
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            # Detect test file patterns
+            is_test_file = any(
+                p in file_path.lower()
+                for p in ["test_", "_test.", ".test.", "/tests/", "spec."]
+            )
+            if is_test_file:
+                # Mark that we edited a test file
+                state._test_file_edited_turn = state.turn_count
+            else:
+                # Production file edited - check if we have pending test edits
+                last_test_edit = getattr(state, "_test_file_edited_turn", 0)
+                last_test_run = getattr(state, "_tests_run_turn", 0)
+                turns_since_test_edit = state.turn_count - last_test_edit
+                if last_test_edit > last_test_run and turns_since_test_edit <= 5:
+                    # Edited test file without running tests before editing prod code
+                    context["test_ignored"] = True
+
+    # Track when tests are run
+    if tool_name == "Bash":
+        command = tool_input.get("command", "").lower()
+        test_cmds = ["pytest", "jest", "npm test", "cargo test", "go test"]
+        if any(t in command for t in test_cmds):
+            state._tests_run_turn = state.turn_count
 
     # Apply increasers
     triggered = apply_increasers(state, context)

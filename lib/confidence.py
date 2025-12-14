@@ -1316,6 +1316,50 @@ class ObviousNextStepsReducer(ConfidenceReducer):
         return False
 
 
+@dataclass
+class TestIgnoredReducer(ConfidenceReducer):
+    """Triggers when test files are modified but tests aren't run.
+
+    If you edit test_*.py or *.test.ts but don't run pytest/jest afterward,
+    you're probably not verifying your changes.
+    """
+
+    name: str = "test_ignored"
+    delta: int = -5
+    description: str = "Modified test files without running tests"
+    cooldown_turns: int = 5
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Context-based: hook sets this when test file edited without test run
+        return context.get("test_ignored", False)
+
+
+@dataclass
+class ChangeWithoutTestReducer(ConfidenceReducer):
+    """Triggers when production code changes without test coverage.
+
+    Editing src/*.py without corresponding test_*.py existing or tests running
+    indicates untested changes being made.
+    """
+
+    name: str = "change_without_test"
+    delta: int = -3
+    description: str = "Production code changed without test coverage"
+    cooldown_turns: int = 5
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Context-based: hook sets this when prod code edited without tests
+        return context.get("change_without_test", False)
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
@@ -1359,6 +1403,9 @@ REDUCERS: list[ConfidenceReducer] = [
     HallmarkPhraseReducer(),  # AI-speak "certainly", "I'd be happy to" (-3)
     ScopeCreepReducer(),  # "while I'm at it", "might as well" (-8)
     IncompleteRefactorReducer(),  # Partial rename/change (-10)
+    # Test coverage reducers (v4.5)
+    TestIgnoredReducer(),  # Modified tests without running them (-5)
+    ChangeWithoutTestReducer(),  # Prod code without test coverage (-3)
 ]
 
 
@@ -2098,6 +2145,35 @@ class ExternalValidationIncreaser(ConfidenceIncreaser):
         return context.get("external_validation", False)
 
 
+@dataclass
+class PRCreatedIncreaser(ConfidenceIncreaser):
+    """Triggers when a pull request is successfully created.
+
+    Creating a PR indicates work is ready for review - a completion signal.
+    """
+
+    name: str = "pr_created"
+    delta: int = 5
+    description: str = "Pull request created successfully"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Check for gh pr create success in bash output
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+        command = context.get("tool_input", {}).get("command", "")
+        output = context.get("tool_result", "")
+        if "gh pr create" in command and "github.com" in output.lower():
+            return True
+        return context.get("pr_created", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -2135,6 +2211,8 @@ INCREASERS: list[ConfidenceIncreaser] = [
     DeadCodeRemovalIncreaser(),  # Cleanup/deletion (+3)
     ScopedChangeIncreaser(),  # Stayed focused (+2)
     ExternalValidationIncreaser(),  # Used PAL/oracle (+5)
+    # Workflow signals (v4.5)
+    PRCreatedIncreaser(),  # PR created successfully (+5)
 ]
 
 

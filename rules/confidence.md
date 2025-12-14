@@ -58,8 +58,8 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `edit_oscillation` | -12 | Same file edited 3+ times in 5 turns | 5 turns |
 | `goal_drift` | -8 | < 20% keyword overlap with original goal | 8 turns |
 | `contradiction` | -10 | Contradictory claims detected | 5 turns |
-| `bash-risk` | -1 | Any bash command (state change risk) | None |
-| `edit-risk` | -1 | Any file edit | None |
+| `bash-risk` | -1 | Any bash command (state change risk) | 3 turns |
+| `edit-risk` | -1 | Any file edit | 3 turns |
 | `decay` | -1 | Natural drift toward uncertainty | None |
 
 **Bad behavior reducers (BANNED patterns):**
@@ -87,6 +87,13 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `hallmark_phrase` | -3 | AI-speak: "certainly", "I'd be happy to" | 2 turns |
 | `scope_creep` | -8 | "while I'm at it", "might as well", "let's also" | 3 turns |
 | `incomplete_refactor` | -10 | Partial renames/changes (context-based) | 3 turns |
+
+**Test coverage reducers (v4.5):**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `test_ignored` | -5 | Modified test files without running tests | 5 turns |
+| `change_without_test` | -3 | Production code changed without test coverage | 5 turns |
 
 ## Increasers (Automatic Rewards)
 
@@ -121,6 +128,12 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `dead_code_removal` | +3 | Removing unused code/imports |
 | `scoped_change` | +2 | Changes stayed within requested scope |
 | `external_validation` | +5 | Using `mcp__pal__*` tools for validation |
+
+**Workflow signals (v4.5):**
+
+| Increaser | Delta | Trigger |
+|-----------|-------|---------|
+| `pr_created` | +5 | `gh pr create` succeeds (PR ready for review) |
 
 **Per-turn cap:** Maximum ±15 total change per turn normally. **When below 80% (stasis floor), positive cap raised to +30** to enable faster legitimate recovery.
 
