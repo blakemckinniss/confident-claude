@@ -3290,13 +3290,13 @@ def log_confidence_change(
 ) -> None:
     """Log significant confidence changes to journal file.
 
-    Only logs changes >= 5 points to avoid noise.
+    Only logs changes >= 3 points to avoid noise.
     """
     from pathlib import Path
 
     delta = new_confidence - old_confidence
-    if abs(delta) < 5:
-        return  # Skip small changes
+    if abs(delta) < 3:
+        return  # Skip tiny changes
 
     if not journal_path:
         journal_path = Path.home() / ".claude" / "tmp" / "confidence_journal.log"

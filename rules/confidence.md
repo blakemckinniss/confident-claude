@@ -229,7 +229,7 @@ Example output:
 
 ## Confidence Journal (v4.6)
 
-Significant changes (≥5 points) logged to `~/.claude/tmp/confidence_journal.log`:
+Significant changes (≥3 points) logged to `~/.claude/tmp/confidence_journal.log`:
 ```
 [2025-01-15 14:32:00] 87→72 (-15): cascade_block
 [2025-01-15 14:35:00] 72→82 (+10): git_explore
