@@ -271,3 +271,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-14 09:56
 - [abandoned_stubs] ⚠️ ABANDONED WORK: actions.test.ts, effects.test.ts, cards.test.ts, turns.test.ts contain stubs/TODOs
+
+### 2025-12-14 10:36
+- [abandoned_stubs] ⚠️ ABANDONED WORK: powers.test.ts, integration.test.ts, handlers.test.ts, selection-effects.test.ts, control-effects.test.ts, power-effects.test.ts, card-effects.test.ts contain stubs/TODOs

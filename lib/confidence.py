@@ -1424,6 +1424,18 @@ STASIS_FLOOR = 80
 MEAN_REVERSION_TARGET = 70
 MEAN_REVERSION_RATE = 0.1  # Pull 10% toward target per idle period
 
+# =============================================================================
+# STREAK/MOMENTUM SYSTEM (v4.6)
+# =============================================================================
+
+# Streak multipliers for consecutive successes
+STREAK_MULTIPLIERS = {
+    2: 1.25,  # 2 consecutive → 25% bonus
+    3: 1.5,  # 3 consecutive → 50% bonus
+    5: 2.0,  # 5+ consecutive → 100% bonus (capped)
+}
+STREAK_DECAY_ON_FAILURE = 0  # Reset to 0 on any reducer firing
+
 
 # =============================================================================
 # INCREASER REGISTRY
@@ -2745,6 +2757,8 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
     """
     Apply all applicable reducers and return list of triggered ones.
 
+    Resets streak counter on any reducer firing (v4.6).
+
     Returns:
         List of (reducer_name, delta, description) tuples
     """
@@ -2762,6 +2776,9 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
                 state.nudge_history[key] = {}
             state.nudge_history[key]["last_turn"] = state.turn_count
 
+            # Reset streak on failure (v4.6)
+            update_streak(state, is_success=False)
+
     return triggered
 
 
@@ -2772,6 +2789,7 @@ def apply_increasers(
     Apply all applicable increasers and return list of triggered ones.
 
     Also handles Trust Debt decay: test_pass and build_success clear debt.
+    Applies streak multiplier for consecutive successes (v4.6).
 
     Returns:
         List of (increaser_name, delta, description, requires_approval) tuples
@@ -2783,10 +2801,15 @@ def apply_increasers(
         last_trigger = state.nudge_history.get(key, {}).get("last_turn", -999)
 
         if increaser.should_trigger(context, state, last_trigger):
+            # Apply streak multiplier (v4.6)
+            streak = get_current_streak(state)
+            multiplier = get_streak_multiplier(streak)
+            adjusted_delta = int(increaser.delta * multiplier)
+
             triggered.append(
                 (
                     increaser.name,
-                    increaser.delta,
+                    adjusted_delta,
                     increaser.description,
                     increaser.requires_approval,
                 )
@@ -2796,6 +2819,9 @@ def apply_increasers(
                 if key not in state.nudge_history:
                     state.nudge_history[key] = {}
                 state.nudge_history[key]["last_turn"] = state.turn_count
+
+                # Update streak counter (success)
+                update_streak(state, is_success=True)
 
                 # Trust Debt decay: objective signals (test/build) clear debt
                 if increaser.name in ("test_pass", "build_success"):
@@ -3120,3 +3146,176 @@ def calculate_idle_reversion(
         return new_confidence, reason
 
     return confidence, ""
+
+
+# =============================================================================
+# STREAK/MOMENTUM TRACKING (v4.6)
+# =============================================================================
+
+
+def get_streak_multiplier(streak_count: int) -> float:
+    """Get the multiplier for the current streak count.
+
+    Returns highest applicable multiplier based on streak thresholds.
+    """
+    multiplier = 1.0
+    for threshold, mult in sorted(STREAK_MULTIPLIERS.items()):
+        if streak_count >= threshold:
+            multiplier = mult
+    return multiplier
+
+
+def update_streak(state: "SessionState", is_success: bool) -> int:
+    """Update streak counter and return new streak count.
+
+    Args:
+        state: Session state to update
+        is_success: True if increaser fired, False if reducer fired
+
+    Returns:
+        New streak count
+    """
+    key = "_confidence_streak"
+    current = state.nudge_history.get(key, 0)
+
+    if is_success:
+        new_streak = current + 1
+    else:
+        new_streak = STREAK_DECAY_ON_FAILURE
+
+    state.nudge_history[key] = new_streak
+    return new_streak
+
+
+def get_current_streak(state: "SessionState") -> int:
+    """Get current streak count."""
+    return state.nudge_history.get("_confidence_streak", 0)
+
+
+# =============================================================================
+# TRAJECTORY PREDICTION (v4.6)
+# =============================================================================
+
+
+def predict_trajectory(
+    state: "SessionState",
+    planned_edits: int = 0,
+    planned_bash: int = 0,
+    turns_ahead: int = 3,
+) -> dict:
+    """Predict confidence trajectory based on planned actions.
+
+    Args:
+        state: Current session state
+        planned_edits: Number of file edits planned
+        planned_bash: Number of bash commands planned
+        turns_ahead: How many turns to project
+
+    Returns:
+        Dict with projected confidence, warnings, and recovery suggestions
+    """
+    current = state.confidence
+    projected = current
+
+    # Apply expected decay
+    projected -= turns_ahead  # -1 decay per turn
+
+    # Apply risk penalties for planned actions
+    projected -= planned_edits  # -1 per edit
+    projected -= planned_bash  # -1 per bash
+
+    # Determine if we'll hit any gates
+    warnings = []
+    if projected < STASIS_FLOOR and current >= STASIS_FLOOR:
+        warnings.append(f"Will drop below stasis floor ({STASIS_FLOOR}%)")
+    if (
+        projected < THRESHOLD_PRODUCTION_ACCESS
+        and current >= THRESHOLD_PRODUCTION_ACCESS
+    ):
+        warnings.append(
+            f"Will lose production write access ({THRESHOLD_PRODUCTION_ACCESS}%)"
+        )
+    if projected < THRESHOLD_REQUIRE_RESEARCH and current >= THRESHOLD_REQUIRE_RESEARCH:
+        warnings.append(f"Will require research ({THRESHOLD_REQUIRE_RESEARCH}%)")
+
+    # Suggest recovery actions if trajectory is concerning
+    recovery = []
+    if projected < STASIS_FLOOR:
+        deficit = STASIS_FLOOR - projected
+        recovery.append(f"Run tests (+5 each) - need ~{(deficit // 5) + 1} passes")
+        recovery.append("git status/diff (+10)")
+        recovery.append("Read relevant files (+1 each)")
+
+    return {
+        "current": current,
+        "projected": projected,
+        "turns_ahead": turns_ahead,
+        "delta": projected - current,
+        "warnings": warnings,
+        "recovery_suggestions": recovery,
+        "will_gate": projected < STASIS_FLOOR,
+    }
+
+
+def format_trajectory_warning(trajectory: dict) -> str:
+    """Format trajectory prediction as a warning string."""
+    if not trajectory["warnings"]:
+        return ""
+
+    lines = [
+        f"⚠️ Trajectory: {trajectory['current']}% → {trajectory['projected']}% "
+        f"in {trajectory['turns_ahead']} turns"
+    ]
+    for warning in trajectory["warnings"]:
+        lines.append(f"  • {warning}")
+    if trajectory["recovery_suggestions"]:
+        lines.append("  Recovery options:")
+        for suggestion in trajectory["recovery_suggestions"][:3]:
+            lines.append(f"    - {suggestion}")
+
+    return "\n".join(lines)
+
+
+# =============================================================================
+# CONFIDENCE JOURNAL (v4.6)
+# =============================================================================
+
+
+def log_confidence_change(
+    state: "SessionState",
+    old_confidence: int,
+    new_confidence: int,
+    reason: str,
+    journal_path: str = "",
+) -> None:
+    """Log significant confidence changes to journal file.
+
+    Only logs changes >= 5 points to avoid noise.
+    """
+    from pathlib import Path
+
+    delta = new_confidence - old_confidence
+    if abs(delta) < 5:
+        return  # Skip small changes
+
+    if not journal_path:
+        journal_path = Path.home() / ".claude" / "tmp" / "confidence_journal.log"
+    else:
+        journal_path = Path(journal_path)
+
+    # Ensure directory exists
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    direction = "+" if delta > 0 else ""
+    entry = f"[{timestamp}] {old_confidence}→{new_confidence} ({direction}{delta}): {reason}\n"
+
+    # Append to journal (keep last 1000 lines max)
+    try:
+        existing = []
+        if journal_path.exists():
+            existing = journal_path.read_text().splitlines()[-999:]
+        existing.append(entry.strip())
+        journal_path.write_text("\n".join(existing) + "\n")
+    except OSError:
+        return  # Journal write failed, non-critical

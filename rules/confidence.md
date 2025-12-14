@@ -198,6 +198,42 @@ Say **SUDO** to bypass confidence gates. Use sparingly - it's logged.
 | `~/.claude/hooks/user_prompt_submit_runner.py` | Dispute detection, tool gates |
 | `~/.claude/hooks/pre_tool_use_runner.py` | Tool permission checks |
 | `~/.claude/hooks/stop_runner.py` | Completion gate |
+| `~/.claude/tmp/confidence_journal.log` | Significant changes log (v4.6) |
+
+## Streak/Momentum System (v4.6)
+
+Consecutive successes earn multiplied rewards:
+
+| Streak | Multiplier |
+|--------|------------|
+| 2 consecutive | 1.25x |
+| 3 consecutive | 1.5x |
+| 5+ consecutive | 2.0x |
+
+**Resets to 0** on any reducer firing. Rewards flow states and sustained quality.
+
+## Trajectory Prediction (v4.6)
+
+Functions available to predict confidence trajectory:
+- `predict_trajectory(state, planned_edits, planned_bash, turns_ahead)` → warnings dict
+- `format_trajectory_warning(trajectory)` → formatted string
+
+Example output:
+```
+⚠️ Trajectory: 85% → 77% in 3 turns
+  • Will drop below stasis floor (80%)
+  Recovery options:
+    - Run tests (+5 each) - need ~1 passes
+    - git status/diff (+10)
+```
+
+## Confidence Journal (v4.6)
+
+Significant changes (≥5 points) logged to `~/.claude/tmp/confidence_journal.log`:
+```
+[2025-01-15 14:32:00] 87→72 (-15): cascade_block
+[2025-01-15 14:35:00] 72→82 (+10): git_explore
+```
 
 ## Philosophy
 
