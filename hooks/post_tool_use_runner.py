@@ -102,6 +102,10 @@ from confidence import (
     format_confidence_change,
     get_tier_info,
     format_dispute_instructions,
+    # v4.6: Trajectory prediction
+    predict_trajectory,
+    format_trajectory_warning,
+    get_current_streak,
 )
 
 # Quality scanner (ruff + radon)
@@ -1392,10 +1396,20 @@ def check_confidence_reducer(
     reducer_names = [name for name, _, _ in triggered]
     dispute_hint = format_dispute_instructions(reducer_names)
 
+    # v4.6: Add trajectory warning if heading toward a gate
+    trajectory = predict_trajectory(
+        state, planned_edits=1, planned_bash=1, turns_ahead=3
+    )
+    trajectory_warning = (
+        format_trajectory_warning(trajectory) if trajectory["will_gate"] else ""
+    )
+    if trajectory_warning:
+        trajectory_warning = f"\n\n{trajectory_warning}"
+
     return HookResult.with_context(
         f"📉 **Confidence Reduced**\n{change_msg}\n\n"
         f"Current: {emoji} {new_confidence}% - {desc}"
-        f"{dispute_hint}"
+        f"{dispute_hint}{trajectory_warning}"
     )
 
 
@@ -1674,9 +1688,14 @@ def check_confidence_increaser(
         )
 
         _, emoji, desc = get_tier_info(new_confidence)
+
+        # v4.6: Show streak if active
+        streak = get_current_streak(state)
+        streak_info = f" | 🔥 Streak: {streak}" if streak >= 2 else ""
+
         messages.append(
             f"📈 **Confidence Increased**\n{change_msg}\n\n"
-            f"Current: {emoji} {new_confidence}% - {desc}"
+            f"Current: {emoji} {new_confidence}% - {desc}{streak_info}"
         )
 
     # Note approval-required increases (don't apply yet)
