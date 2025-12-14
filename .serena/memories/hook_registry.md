@@ -38,6 +38,15 @@ Hooks are registered via decorator and stored in the `HOOKS` list. The runner ex
 | `_quality_scanner.py` | Code quality scanning |
 | `_cache.py` | Hook result caching |
 | `_intent_classifier.py` | Intent classification |
+| `_hooks_state.py` | Hook state management |
+| `_hooks_quality.py` | Quality check helpers |
+| `_hooks_tracking.py` | Tracking utilities |
+| `_hooks_cache.py` | Hook result caching |
+| `_hook_registry.py` | Hook discovery/registration |
+| `_prompt_registry.py` | Prompt injection registry |
+| `_prompt_suggestions.py` | Contextual suggestions |
+| `_prompt_gating.py` | Prompt-level gating |
+| `_prompt_context.py` | Context building for prompts |
 | `py` | Python wrapper script (auto-detects venv) |
 
 ## Registration Pattern
