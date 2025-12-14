@@ -2734,10 +2734,10 @@ def check_beads_periodic_sync(data: dict, state: SessionState) -> HookResult:
 def run_hooks(data: dict, state: SessionState) -> dict:
     """Run all hooks and return aggregated result."""
     # Sort by priority
-    sorted_hooks = sorted(HOOKS, key=lambda x: x[2])
+    # Hooks pre-sorted at module load
     contexts = []
 
-    for name, check_func, priority in sorted_hooks:
+    for name, check_func, priority in HOOKS:
         try:
             result = check_func(data, state)
 
@@ -2765,6 +2765,10 @@ def run_hooks(data: dict, state: SessionState) -> dict:
         output["hookSpecificOutput"]["additionalContext"] = "\n\n".join(contexts[:8])
 
     return output
+
+
+# Pre-sort hooks by priority at module load (avoid re-sorting on every call)
+HOOKS.sort(key=lambda x: x[2])
 
 
 def main():

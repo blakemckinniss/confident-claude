@@ -1886,13 +1886,12 @@ def run_hooks(data: dict, state: SessionState) -> dict:
     else:
         data["_sudo_bypass"] = False
 
-    # Sort by priority
-    sorted_hooks = sorted(HOOKS, key=lambda x: x[3])
+    # Hooks pre-sorted at module load
 
     # Collect results
     contexts = []
 
-    for name, matcher, check_func, priority in sorted_hooks:
+    for name, matcher, check_func, priority in HOOKS:
         if not matches_tool(matcher, tool_name):
             continue
 
@@ -1940,6 +1939,10 @@ def run_hooks(data: dict, state: SessionState) -> dict:
         output["hookSpecificOutput"]["additionalContext"] = "\n\n".join(contexts[:3])
 
     return output
+
+
+# Pre-sort hooks by priority at module load (avoid re-sorting on every call)
+HOOKS.sort(key=lambda x: x[3])
 
 
 def main():

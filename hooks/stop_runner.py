@@ -1237,12 +1237,12 @@ def check_session_debt(data: dict, state: SessionState) -> HookResult:
 
 def run_hooks(data: dict, state: SessionState) -> dict:
     """Run all hooks and return aggregated result."""
-    sorted_hooks = sorted(HOOKS, key=lambda x: x[2])
+    # Hooks pre-sorted at module load
 
     stop_reasons = []
     block_reason = None
 
-    for name, check_func, priority in sorted_hooks:
+    for name, check_func, priority in HOOKS:
         try:
             result = check_func(data, state)
 
@@ -1264,6 +1264,10 @@ def run_hooks(data: dict, state: SessionState) -> dict:
         return {"stopReason": "\n\n".join(stop_reasons)}
     else:
         return {"status": "pass", "message": "No cleanup issues detected"}
+
+
+# Pre-sort hooks by priority at module load (avoid re-sorting on every call)
+HOOKS.sort(key=lambda x: x[2])
 
 
 def main():
