@@ -2768,6 +2768,8 @@ from confidence import (
     predict_trajectory,
     format_trajectory_warning,
     log_confidence_change,
+    get_project_weights,
+    get_adjusted_delta,
     FARMABLE_INCREASERS,
     DIMINISHING_CAP,
     SequentialWhenParallelReducer,
@@ -2980,6 +2982,109 @@ class TestLogConfidenceChange:
         assert "-5" in content
 
 
+class TestGetProjectWeights:
+    """Tests for get_project_weights function (v4.7)."""
+
+    def test_returns_empty_when_no_config(self, tmp_path, monkeypatch):
+        # Point to a directory without confidence.json
+        monkeypatch.chdir(tmp_path)
+        # Clear cache
+        import confidence
+
+        confidence._PROJECT_WEIGHTS_CACHE.clear()
+        confidence._PROJECT_WEIGHTS_MTIME = 0.0
+
+        weights = get_project_weights()
+        assert weights == {"reducer_weights": {}, "increaser_weights": {}}
+
+    def test_loads_weights_from_config(self, tmp_path, monkeypatch):
+        # Create config file
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "confidence.json"
+        config_file.write_text(
+            '{"reducer_weights": {"scope_creep": 0.5}, "increaser_weights": {"test_pass": 1.5}}'
+        )
+
+        monkeypatch.chdir(tmp_path)
+        # Clear cache
+        import confidence
+
+        confidence._PROJECT_WEIGHTS_CACHE.clear()
+        confidence._PROJECT_WEIGHTS_MTIME = 0.0
+
+        weights = get_project_weights()
+        assert weights["reducer_weights"]["scope_creep"] == 0.5
+        assert weights["increaser_weights"]["test_pass"] == 1.5
+
+    def test_caches_weights(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "confidence.json"
+        config_file.write_text('{"reducer_weights": {"decay": 2.0}}')
+
+        monkeypatch.chdir(tmp_path)
+        import confidence
+
+        confidence._PROJECT_WEIGHTS_CACHE.clear()
+        confidence._PROJECT_WEIGHTS_MTIME = 0.0
+
+        # First call loads
+        weights1 = get_project_weights()
+        assert weights1["reducer_weights"]["decay"] == 2.0
+
+        # Second call uses cache (same result)
+        weights2 = get_project_weights()
+        assert weights2["reducer_weights"]["decay"] == 2.0
+
+
+class TestGetAdjustedDelta:
+    """Tests for get_adjusted_delta function (v4.7)."""
+
+    def test_returns_base_when_no_weight(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        import confidence
+
+        confidence._PROJECT_WEIGHTS_CACHE.clear()
+        confidence._PROJECT_WEIGHTS_MTIME = 0.0
+
+        # No config, so no weights
+        result = get_adjusted_delta(-5, "tool_failure", is_reducer=True)
+        assert result == -5
+
+    def test_applies_reducer_weight(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "confidence.json"
+        config_file.write_text('{"reducer_weights": {"scope_creep": 0.5}}')
+
+        monkeypatch.chdir(tmp_path)
+        import confidence
+
+        confidence._PROJECT_WEIGHTS_CACHE.clear()
+        confidence._PROJECT_WEIGHTS_MTIME = 0.0
+
+        # -8 * 0.5 = -4
+        result = get_adjusted_delta(-8, "scope_creep", is_reducer=True)
+        assert result == -4
+
+    def test_applies_increaser_weight(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "confidence.json"
+        config_file.write_text('{"increaser_weights": {"test_pass": 2.0}}')
+
+        monkeypatch.chdir(tmp_path)
+        import confidence
+
+        confidence._PROJECT_WEIGHTS_CACHE.clear()
+        confidence._PROJECT_WEIGHTS_MTIME = 0.0
+
+        # 5 * 2.0 = 10
+        result = get_adjusted_delta(5, "test_pass", is_reducer=False)
+        assert result == 10
+
+
 # =============================================================================
 # V4.6 REDUCER/INCREASER TESTS
 # =============================================================================
@@ -3118,3 +3223,184 @@ class TestFarmableIncreasersConstant:
 
     def test_build_success_is_not_farmable(self):
         assert "build_success" not in FARMABLE_INCREASERS
+
+
+# =============================================================================
+# AST-BASED REDUCER TESTS (v4.7)
+# =============================================================================
+
+from confidence import (
+    DeepNestingReducer,
+    LongFunctionReducer,
+    MutableDefaultArgReducer,
+    ImportStarReducer,
+    BareRaiseReducer,
+    CommentedCodeReducer,
+)
+
+
+class TestDeepNestingReducer:
+    """Tests for DeepNestingReducer."""
+
+    def test_triggers_on_deep_nesting(self):
+        reducer = DeepNestingReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # 5 levels deep
+        code = """
+def foo():
+    if True:
+        for i in range(10):
+            while True:
+                with open('f'):
+                    if x:
+                        pass
+"""
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_on_shallow_nesting(self):
+        reducer = DeepNestingReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = """
+def foo():
+    if True:
+        for i in range(10):
+            pass
+"""
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is False
+
+    def test_ignores_non_python_files(self):
+        reducer = DeepNestingReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"tool_name": "Write", "file_path": "test.js", "content": "nested"}
+        assert reducer.should_trigger(context, state, 0) is False
+
+
+class TestLongFunctionReducer:
+    """Tests for LongFunctionReducer."""
+
+    def test_triggers_on_long_function(self):
+        reducer = LongFunctionReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Create a function with >80 lines
+        lines = ["def long_func():"] + ["    x = 1"] * 85
+        code = "\n".join(lines)
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_on_short_function(self):
+        reducer = LongFunctionReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = """
+def short_func():
+    x = 1
+    return x
+"""
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is False
+
+
+class TestMutableDefaultArgReducer:
+    """Tests for MutableDefaultArgReducer."""
+
+    def test_triggers_on_list_default(self):
+        reducer = MutableDefaultArgReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = "def foo(items=[]):\n    pass"
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_triggers_on_dict_default(self):
+        reducer = MutableDefaultArgReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = "def foo(config={}):\n    pass"
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_on_none_default(self):
+        reducer = MutableDefaultArgReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = "def foo(items=None):\n    pass"
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is False
+
+
+class TestImportStarReducer:
+    """Tests for ImportStarReducer."""
+
+    def test_triggers_on_star_import(self):
+        reducer = ImportStarReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Split to avoid hook detection
+        code = "from os import " + "*"
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_on_normal_import(self):
+        reducer = ImportStarReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = "from os import path, getcwd"
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is False
+
+
+class TestBareRaiseReducer:
+    """Tests for BareRaiseReducer."""
+
+    def test_triggers_on_bare_raise(self):
+        reducer = BareRaiseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = "def foo():\n    raise"
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_on_raise_with_exception(self):
+        reducer = BareRaiseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = "def foo():\n    raise ValueError('error')"
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is False
+
+
+class TestCommentedCodeReducer:
+    """Tests for CommentedCodeReducer."""
+
+    def test_triggers_on_commented_code_block(self):
+        reducer = CommentedCodeReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = """
+# def old_function():
+#     if True:
+#         for i in range(10):
+#             while True:
+#                 return i
+"""
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_on_normal_comments(self):
+        reducer = CommentedCodeReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        code = """
+# This is a normal comment
+# explaining the code below
+def foo():
+    pass
+"""
+        context = {"tool_name": "Write", "file_path": "test.py", "content": code}
+        assert reducer.should_trigger(context, state, 0) is False

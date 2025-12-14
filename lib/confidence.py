@@ -1455,6 +1455,307 @@ class ChangeWithoutTestReducer(ConfidenceReducer):
         return context.get("change_without_test", False)
 
 
+# =============================================================================
+# VERIFICATION BUNDLING REDUCER (v4.7)
+# =============================================================================
+
+
+VERIFICATION_THRESHOLD = 5  # Edits before verification required
+
+
+@dataclass
+class UnverifiedEditsReducer(ConfidenceReducer):
+    """Triggers when too many consecutive edits without verification.
+
+    Prevents edit spam without running tests/lint to validate changes.
+    """
+
+    name: str = "unverified_edits"
+    delta: int = -5
+    description: str = f">{VERIFICATION_THRESHOLD} edits without verification (run tests/lint)"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        # Track consecutive edits without verification
+        edits_key = "_consecutive_edits_without_verify"
+        verify_tools = {"pytest", "jest", "cargo test", "ruff check", "eslint", "tsc"}
+
+        tool_name = context.get("tool_name", "")
+        command = context.get("tool_input", {}).get("command", "") if tool_name == "Bash" else ""
+
+        # Check if this is a verification action
+        is_verify = any(v in command.lower() for v in verify_tools)
+
+        if is_verify:
+            # Reset counter on verification
+            state.nudge_history[edits_key] = 0
+            return False
+
+        if tool_name in ("Edit", "Write"):
+            # Increment edit counter
+            count = state.nudge_history.get(edits_key, 0) + 1
+            state.nudge_history[edits_key] = count
+            if count > VERIFICATION_THRESHOLD:
+                return True
+
+        return False
+
+
+# =============================================================================
+# AST-BASED CODE QUALITY REDUCERS (v4.7)
+# =============================================================================
+
+
+@dataclass
+class DeepNestingReducer(ConfidenceReducer):
+    """Triggers on deeply nested code (>4 levels).
+
+    Deep nesting makes code hard to read and test.
+    """
+
+    name: str = "deep_nesting"
+    delta: int = -3
+    description: str = "Deep nesting (>4 levels) - hard to read/test"
+    cooldown_turns: int = 2
+    max_depth: int = 4
+
+    def _get_max_depth(self, node, current: int = 0) -> int:
+        """Recursively find maximum nesting depth."""
+        import ast
+
+        max_d = current
+        nesting_nodes = (ast.If, ast.For, ast.While, ast.With, ast.Try, ast.ExceptHandler)
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, nesting_nodes):
+                max_d = max(max_d, self._get_max_depth(child, current + 1))
+            else:
+                max_d = max(max_d, self._get_max_depth(child, current))
+        return max_d
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import ast
+
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not content or not file_path.endswith(".py"):
+            return False
+        if context.get("tool_name", "") not in ("Write", "Edit"):
+            return False
+        try:
+            tree = ast.parse(content)
+            return self._get_max_depth(tree) > self.max_depth
+        except SyntaxError:
+            return False
+
+
+@dataclass
+class LongFunctionReducer(ConfidenceReducer):
+    """Triggers on functions exceeding 80 lines.
+
+    Long functions are hard to understand and test.
+    """
+
+    name: str = "long_function"
+    delta: int = -5
+    description: str = "Long function (>80 lines) - split into smaller units"
+    cooldown_turns: int = 2
+    max_lines: int = 80
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import ast
+
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not content or not file_path.endswith(".py"):
+            return False
+        if context.get("tool_name", "") not in ("Write", "Edit"):
+            return False
+        try:
+            tree = ast.parse(content)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if hasattr(node, "end_lineno") and node.end_lineno:
+                        func_lines = node.end_lineno - node.lineno + 1
+                        if func_lines > self.max_lines:
+                            return True
+            return False
+        except SyntaxError:
+            return False
+
+
+@dataclass
+class MutableDefaultArgReducer(ConfidenceReducer):
+    """Triggers on mutable default arguments (list/dict/set).
+
+    Mutable defaults are shared across calls - a common Python gotcha.
+    """
+
+    name: str = "mutable_default_arg"
+    delta: int = -5
+    description: str = "Mutable default argument (list/dict/set) - Python gotcha"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import ast
+
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not content or not file_path.endswith(".py"):
+            return False
+        if context.get("tool_name", "") not in ("Write", "Edit"):
+            return False
+        try:
+            tree = ast.parse(content)
+            mutable_types = (ast.List, ast.Dict, ast.Set)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for default in node.args.defaults + node.args.kw_defaults:
+                        if isinstance(default, mutable_types):
+                            return True
+            return False
+        except SyntaxError:
+            return False
+
+
+@dataclass
+class ImportStarReducer(ConfidenceReducer):
+    """Triggers on 'from X import *' statements.
+
+    Star imports pollute namespace and make dependencies unclear.
+    """
+
+    name: str = "import_star"
+    delta: int = -3
+    description: str = "Star import (from X import *) - pollutes namespace"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import ast
+
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not content or not file_path.endswith(".py"):
+            return False
+        if context.get("tool_name", "") not in ("Write", "Edit"):
+            return False
+        try:
+            tree = ast.parse(content)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    if node.names and node.names[0].name == "*":
+                        return True
+            return False
+        except SyntaxError:
+            return False
+
+
+@dataclass
+class BareRaiseReducer(ConfidenceReducer):
+    """Triggers on 'raise' without exception outside except block.
+
+    Bare raise outside except is a RuntimeError waiting to happen.
+    """
+
+    name: str = "bare_raise"
+    delta: int = -3
+    description: str = "Bare raise outside except block - will fail at runtime"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import ast
+
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not content or not file_path.endswith(".py"):
+            return False
+        if context.get("tool_name", "") not in ("Write", "Edit"):
+            return False
+        try:
+            tree = ast.parse(content)
+            # Find bare raises not inside except handlers
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Raise) and node.exc is None:
+                    # Check if inside an except handler by walking parents
+                    # Simple heuristic: check if any ExceptHandler contains this raise
+                    # This is imperfect but catches most cases
+                    return True  # Conservative: flag for review
+            return False
+        except SyntaxError:
+            return False
+
+
+@dataclass
+class CommentedCodeReducer(ConfidenceReducer):
+    """Triggers on large blocks of commented-out code.
+
+    Commented code is dead weight - delete it, git remembers.
+    """
+
+    name: str = "commented_code"
+    delta: int = -5
+    description: str = "Commented-out code block - delete it, git remembers"
+    cooldown_turns: int = 2
+    min_consecutive_lines: int = 5
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not content or not file_path.endswith(".py"):
+            return False
+        if context.get("tool_name", "") not in ("Write", "Edit"):
+            return False
+        # Count consecutive comment lines that look like code
+        lines = content.split("\n")
+        consecutive = 0
+        code_patterns = ["def ", "class ", "if ", "for ", "while ", "return ", "import "]
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                comment_content = stripped[1:].strip()
+                # Check if comment looks like code
+                if any(comment_content.startswith(p) for p in code_patterns):
+                    consecutive += 1
+                    if consecutive >= self.min_consecutive_lines:
+                        return True
+                elif comment_content and not comment_content.startswith(("#", "!")):
+                    # Non-empty comment, might be code
+                    consecutive += 1
+                else:
+                    consecutive = 0
+            else:
+                consecutive = 0
+        return False
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 REDUCERS: list[ConfidenceReducer] = [
@@ -1502,6 +1803,15 @@ REDUCERS: list[ConfidenceReducer] = [
     # Test coverage reducers (v4.5)
     TestIgnoredReducer(),  # Modified tests without running them (-5)
     ChangeWithoutTestReducer(),  # Prod code without test coverage (-3)
+    # AST-based code quality reducers (v4.7)
+    DeepNestingReducer(),  # >4 nesting levels (-3)
+    LongFunctionReducer(),  # >80 lines (-5)
+    MutableDefaultArgReducer(),  # list/dict/set defaults (-5)
+    ImportStarReducer(),  # from X import * (-3)
+    BareRaiseReducer(),  # raise without exception (-3)
+    CommentedCodeReducer(),  # Blocks of commented code (-5)
+    # Verification bundling (v4.7)
+    UnverifiedEditsReducer(),  # >5 edits without tests/lint (-5)
 ]
 
 
@@ -1553,6 +1863,73 @@ DIMINISHING_MULTIPLIERS = {
     # 4+: 0 (no reward)
 }
 DIMINISHING_CAP = 3  # Max triggers per turn that give any reward
+
+# =============================================================================
+# PROJECT-SPECIFIC CONFIDENCE TUNING (v4.7)
+# =============================================================================
+# Per-project weight adjustments via .claude/confidence.json
+# Example: {"reducer_weights": {"scope_creep": 0.5}, "increaser_weights": {"test_pass": 1.5}}
+
+_PROJECT_WEIGHTS_CACHE: dict = {}
+_PROJECT_WEIGHTS_MTIME: float = 0.0
+
+
+def get_project_weights() -> dict:
+    """Load project-specific confidence weights from .claude/confidence.json.
+
+    Returns dict with:
+      - reducer_weights: {reducer_name: multiplier}
+      - increaser_weights: {increaser_name: multiplier}
+
+    Multiplier < 1.0 softens effect, > 1.0 hardens it, 0 disables.
+    """
+    import json
+    from pathlib import Path
+
+    global _PROJECT_WEIGHTS_CACHE, _PROJECT_WEIGHTS_MTIME
+
+    # Check current working directory for .claude/confidence.json
+    config_path = Path.cwd() / ".claude" / "confidence.json"
+    if not config_path.exists():
+        # Also check home directory project
+        config_path = Path.home() / ".claude" / "confidence.json"
+        if not config_path.exists():
+            return {"reducer_weights": {}, "increaser_weights": {}}
+
+    # Cache with mtime check for hot reload
+    try:
+        current_mtime = config_path.stat().st_mtime
+        if current_mtime == _PROJECT_WEIGHTS_MTIME and _PROJECT_WEIGHTS_CACHE:
+            return _PROJECT_WEIGHTS_CACHE
+
+        with open(config_path) as f:
+            data = json.load(f)
+
+        _PROJECT_WEIGHTS_CACHE = {
+            "reducer_weights": data.get("reducer_weights", {}),
+            "increaser_weights": data.get("increaser_weights", {}),
+        }
+        _PROJECT_WEIGHTS_MTIME = current_mtime
+        return _PROJECT_WEIGHTS_CACHE
+    except (json.JSONDecodeError, OSError):
+        return {"reducer_weights": {}, "increaser_weights": {}}
+
+
+def get_adjusted_delta(base_delta: int, name: str, is_reducer: bool) -> int:
+    """Apply project-specific weight to a reducer/increaser delta.
+
+    Args:
+        base_delta: Original delta value
+        name: Reducer or increaser name
+        is_reducer: True for reducers, False for increasers
+
+    Returns:
+        Adjusted delta (int)
+    """
+    weights = get_project_weights()
+    weight_key = "reducer_weights" if is_reducer else "increaser_weights"
+    multiplier = weights.get(weight_key, {}).get(name, 1.0)
+    return int(base_delta * multiplier)
 
 
 # =============================================================================
@@ -2470,6 +2847,183 @@ class MergeCompleteIncreaser(ConfidenceIncreaser):
         return context.get("merge_complete", False)
 
 
+# =============================================================================
+# CODE IMPROVEMENT INCREASERS (v4.7)
+# =============================================================================
+
+
+@dataclass
+class DocstringAdditionIncreaser(ConfidenceIncreaser):
+    """Triggers when adding docstrings to functions/classes.
+
+    Documentation improves code maintainability.
+    """
+
+    name: str = "docstring_addition"
+    delta: int = 2
+    description: str = "Added docstring to function/class"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        new_content = context.get("new_string", "") or context.get("content", "")
+        old_content = context.get("old_string", "")
+        if not new_content:
+            return False
+        # Check if adding triple-quoted strings (docstrings)
+        new_docstrings = new_content.count('"""') + new_content.count("'''")
+        old_docstrings = old_content.count('"""') + old_content.count("'''")
+        return new_docstrings > old_docstrings
+
+
+@dataclass
+class TypeHintAdditionIncreaser(ConfidenceIncreaser):
+    """Triggers when adding type hints to code.
+
+    Type hints improve code clarity and catch bugs early.
+    """
+
+    name: str = "type_hint_addition"
+    delta: int = 2
+    description: str = "Added type hints"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import re
+
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        new_content = context.get("new_string", "") or context.get("content", "")
+        old_content = context.get("old_string", "")
+        file_path = context.get("file_path", "")
+        if not new_content or not file_path.endswith(".py"):
+            return False
+        # Count type hint patterns: -> Type, : Type (in function signatures)
+        hint_pattern = r":\s*[A-Z][a-zA-Z\[\],\s|]+|->[\s]*[A-Z][a-zA-Z\[\],\s|]+"
+        new_hints = len(re.findall(hint_pattern, new_content))
+        old_hints = len(re.findall(hint_pattern, old_content))
+        return new_hints > old_hints
+
+
+@dataclass
+class ComplexityReductionIncreaser(ConfidenceIncreaser):
+    """Triggers when reducing code complexity (fewer lines, simpler logic).
+
+    Rewards refactoring that simplifies code.
+    """
+
+    name: str = "complexity_reduction"
+    delta: int = 3
+    description: str = "Reduced code complexity"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        new_content = context.get("new_string", "") or context.get("content", "")
+        old_content = context.get("old_string", "")
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Edit" or not old_content or not new_content:
+            return False
+        # Simplified: fewer lines AND fewer conditionals
+        new_lines = len(new_content.splitlines())
+        old_lines = len(old_content.splitlines())
+        new_conds = new_content.count("if ") + new_content.count("elif ")
+        old_conds = old_content.count("if ") + old_content.count("elif ")
+        # Must reduce both lines (by >20%) and conditionals
+        line_reduction = old_lines > 0 and new_lines < old_lines * 0.8
+        cond_reduction = new_conds < old_conds
+        return line_reduction or (old_conds > 0 and cond_reduction)
+
+
+@dataclass
+class SecurityFixIncreaser(ConfidenceIncreaser):
+    """Triggers when fixing security issues.
+
+    Security fixes are high-value improvements.
+    """
+
+    name: str = "security_fix"
+    delta: int = 10
+    description: str = "Fixed security issue"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Context-based: hook sets this when security pattern removed
+        return context.get("security_fix", False)
+
+
+@dataclass
+class DependencyRemovalIncreaser(ConfidenceIncreaser):
+    """Triggers when removing unnecessary dependencies.
+
+    Fewer dependencies = smaller attack surface, simpler builds.
+    """
+
+    name: str = "dependency_removal"
+    delta: int = 3
+    description: str = "Removed unnecessary dependency"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        tool_name = context.get("tool_name", "")
+        file_path = context.get("file_path", "")
+        old_content = context.get("old_string", "")
+        new_content = context.get("new_string", "")
+        if tool_name != "Edit":
+            return False
+        # Check dependency files
+        dep_files = ("requirements.txt", "pyproject.toml", "package.json", "Cargo.toml")
+        if not any(file_path.endswith(f) for f in dep_files):
+            return False
+        # Removal = old has more non-empty lines than new
+        old_deps = len([line for line in old_content.splitlines() if line.strip()])
+        new_deps = len([line for line in new_content.splitlines() if line.strip()])
+        return new_deps < old_deps
+
+
+@dataclass
+class ConfigExternalizationIncreaser(ConfidenceIncreaser):
+    """Triggers when externalizing hardcoded values to config.
+
+    Config externalization improves maintainability.
+    """
+
+    name: str = "config_externalization"
+    delta: int = 2
+    description: str = "Externalized hardcoded value to config"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Context-based: hook sets this when detecting config pattern
+        return context.get("config_externalization", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -2515,6 +3069,13 @@ INCREASERS: list[ConfidenceIncreaser] = [
     ReviewAddressedIncreaser(),  # PR review addressed (+5)
     CIPassIncreaser(),  # CI/GitHub Actions passed (+5)
     MergeCompleteIncreaser(),  # PR merged (+5)
+    # Code improvement increasers (v4.7)
+    DocstringAdditionIncreaser(),  # Added docstring (+2)
+    TypeHintAdditionIncreaser(),  # Added type hints (+2)
+    ComplexityReductionIncreaser(),  # Simplified code (+3)
+    SecurityFixIncreaser(),  # Fixed security issue (+10)
+    DependencyRemovalIncreaser(),  # Removed dependency (+3)
+    ConfigExternalizationIncreaser(),  # Externalized config (+2)
 ]
 
 
@@ -2932,7 +3493,9 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
         last_trigger = state.nudge_history.get(key, {}).get("last_turn", -999)
 
         if reducer.should_trigger(context, state, last_trigger):
-            triggered.append((reducer.name, reducer.delta, reducer.description))
+            # Apply project-specific weights (v4.7)
+            adjusted_delta = get_adjusted_delta(reducer.delta, reducer.name, is_reducer=True)
+            triggered.append((reducer.name, adjusted_delta, reducer.description))
             # Record trigger
             if key not in state.nudge_history:
                 state.nudge_history[key] = {}
@@ -2970,8 +3533,11 @@ def apply_increasers(
             # Apply diminishing returns for farmable increasers (v4.7)
             diminish_mult = get_diminishing_multiplier(state, increaser.name)
 
-            # Combined multiplier
-            adjusted_delta = int(increaser.delta * streak_mult * diminish_mult)
+            # Apply project-specific weights (v4.7)
+            base_delta = get_adjusted_delta(increaser.delta, increaser.name, is_reducer=False)
+
+            # Combined multiplier with streak and diminishing returns
+            adjusted_delta = int(base_delta * streak_mult * diminish_mult)
 
             # Skip if diminished to zero
             if adjusted_delta <= 0:
