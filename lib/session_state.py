@@ -221,7 +221,9 @@ class SessionState:
     ops_turns: dict = field(default_factory=dict)  # op_name -> last turn
     directives_fired: int = 0
     confidence: int = 70  # 0-100%, default to WORKING tier (floor)
-    reputation_debt: int = 0  # Trust debt: accumulates when hitting floor, constrains max tier
+    reputation_debt: int = (
+        0  # Trust debt: accumulates when hitting floor, constrains max tier
+    )
     evidence_ledger: list = field(default_factory=list)  # Evidence items
     _decay_accumulator: float = 0.0  # Fractional decay accumulator (persisted)
 
@@ -744,7 +746,9 @@ def track_command(state: SessionState, command: str, success: bool, output: str 
         "command": command[:200],
         "success": success,
         "timestamp": time.time(),
-        "output": output[:500] if output else "",  # Store output for increaser pattern matching
+        "output": output[:500]
+        if output
+        else "",  # Store output for increaser pattern matching
     }
 
     if success:
@@ -1086,6 +1090,13 @@ def set_confidence(state: SessionState, value: int, reason: str = ""):
             "confidence_set",
             f"{old} -> {state.confidence}: {reason or 'direct set'}",
         )
+        # v4.6: Log significant changes to journal (silently skip if unavailable)
+        try:
+            from confidence import log_confidence_change
+
+            log_confidence_change(state, old, state.confidence, reason or "direct set")
+        except ImportError:
+            return  # Confidence module not available, journal skipped
 
 
 # =============================================================================
