@@ -591,36 +591,42 @@ def check_self_heal_enforcer(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 
+_CACHE_BYPASS_KEYWORDS = frozenset(["force", "fresh", "re-explore", "bypass cache"])
+_GROUNDING_KEYWORDS = (
+    "tech stack", "framework", "what is this project", "project structure",
+    "dependencies", "entry point", "how is this project", "what does this project use",
+)
+
+
+def _check_grounding_cache(prompt_lower: str, project_path: str) -> str | None:
+    """Check grounding cache for common grounding queries."""
+    if not any(kw in prompt_lower for kw in _GROUNDING_KEYWORDS):
+        return None
+    try:
+        from cache.grounding_analyzer import get_or_create_grounding
+        grounding = get_or_create_grounding(Path(project_path))
+        return grounding.to_markdown() if grounding else None
+    except Exception:
+        return None
+
+
 @register_hook("exploration_cache", "Task", priority=3)
 def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
-    """
-    Return cached exploration results for Explore agents.
-
-    This delivers cache as tool output (not context injection) so Claude
-    treats it as authoritative data rather than advisory noise.
-    """
+    """Return cached exploration results for Explore agents."""
     tool_input = data.get("tool_input", {})
-    subagent_type = tool_input.get("subagent_type", "")
-
-    # Only intercept Explore agents
-    if subagent_type.lower() != "explore":
+    if tool_input.get("subagent_type", "").lower() != "explore":
         return HookResult.approve()
 
     prompt = tool_input.get("prompt", "")
     if not prompt:
         return HookResult.approve()
 
-    # Check for bypass keywords
     prompt_lower = prompt.lower()
-    if any(
-        kw in prompt_lower for kw in ["force", "fresh", "re-explore", "bypass cache"]
-    ):
+    if any(kw in prompt_lower for kw in _CACHE_BYPASS_KEYWORDS):
         return HookResult.approve()
 
-    # Detect project path
     try:
         from project_detector import detect_project
-
         project_info = detect_project()
         if not project_info or not project_info.get("path"):
             return HookResult.approve()
@@ -631,86 +637,41 @@ def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
     # Check exploration cache
     try:
         from cache.exploration_cache import check_exploration_cache as get_cached
-
-        cached_result = get_cached(project_path, prompt)
-        if cached_result:
-            # Return cached result as context - Claude sees this as authoritative
-            return HookResult.approve(cached_result)
+        if cached := get_cached(project_path, prompt):
+            return HookResult.approve(cached)
     except Exception:
         pass
 
-    # Check grounding cache for common grounding queries
-    grounding_keywords = [
-        "tech stack",
-        "framework",
-        "what is this project",
-        "project structure",
-        "dependencies",
-        "entry point",
-        "how is this project",
-        "what does this project use",
-    ]
-    if any(kw in prompt_lower for kw in grounding_keywords):
-        try:
-            from cache.grounding_analyzer import get_or_create_grounding
+    # Check grounding cache
+    if grounding := _check_grounding_cache(prompt_lower, project_path):
+        return HookResult.approve(grounding)
 
-            grounding = get_or_create_grounding(Path(project_path))
-            if grounding:
-                return HookResult.approve(grounding.to_markdown())
-        except Exception:
-            pass
     return HookResult.approve()
 
 
-@register_hook("parallel_nudge", "Task", priority=4)
-def check_parallel_nudge(data: dict, state: SessionState) -> HookResult:
-    """
-    Nudge sequential Task spawns toward parallel execution + background promotion.
+# Agent types that benefit from background execution
+_LONG_RUNNING_AGENTS = {
+    "explore": "exploring large codebases",
+    "plan": "generating detailed plans",
+    "code-reviewer": "comprehensive code review",
+    "deep-security": "security audits",
+    "scout": "codebase exploration",
+}
 
-    PATTERNS DETECTED:
-    1. Sequential single Tasks → nudge to spawn multiple in one message
-    2. Long-running agent types → suggest run_in_background=true
-    3. Track background tasks for later check-in reminders
-    """
-    tool_input = data.get("tool_input", {})
-    prompt = tool_input.get("prompt", "")
-    subagent_type = tool_input.get("subagent_type", "").lower()
 
-    # Skip resume operations (continuing existing work)
-    if tool_input.get("resume"):
-        return HookResult.approve()
+def _track_background_task(state: SessionState, subagent_type: str, prompt: str) -> None:
+    """Record background task for later check-in reminder."""
+    if not hasattr(state, "background_tasks"):
+        state.background_tasks = []
+    state.background_tasks = (
+        state.background_tasks
+        + [{"type": subagent_type, "prompt": prompt[:50], "turn": state.turn_count}]
+    )[-5:]
 
-    # Track background tasks
-    if tool_input.get("run_in_background"):
-        # Record for later check-in reminder
-        if not hasattr(state, "background_tasks"):
-            state.background_tasks = []
-        state.background_tasks = (
-            state.background_tasks
-            + [{"type": subagent_type, "prompt": prompt[:50], "turn": state.turn_count}]
-        )[-5:]
-        return HookResult.approve()
 
+def _update_task_counters(state: SessionState, prompt: str) -> None:
+    """Update sequential task detection counters."""
     current_turn = state.turn_count
-    messages = []
-
-    # === BACKGROUND PROMOTION ===
-    # Agent types that benefit from background execution
-    long_running_agents = {
-        "explore": "exploring large codebases",
-        "plan": "generating detailed plans",
-        "code-reviewer": "comprehensive code review",
-        "deep-security": "security audits",
-        "scout": "codebase exploration",
-    }
-    if subagent_type in long_running_agents:
-        messages.append(
-            f"💡 **Background opportunity**: {subagent_type} agents can run with "
-            f"`run_in_background: true` - continue working while it runs, check with TaskOutput later."
-        )
-
-    # === SEQUENTIAL TASK DETECTION ===
-    # Reset counter if new turn
     if state.last_task_turn != current_turn:
         if state.last_task_turn > 0 and state.task_spawns_this_turn == 1:
             state.consecutive_single_tasks += 1
@@ -718,36 +679,47 @@ def check_parallel_nudge(data: dict, state: SessionState) -> HookResult:
             state.consecutive_single_tasks = 0
         state.task_spawns_this_turn = 0
         state.last_task_turn = current_turn
-
     state.task_spawns_this_turn += 1
-
-    # Track recent prompts
     if prompt:
         state.task_prompts_recent = (state.task_prompts_recent + [prompt[:100]])[-5:]
+
+
+@register_hook("parallel_nudge", "Task", priority=4)
+def check_parallel_nudge(data: dict, state: SessionState) -> HookResult:
+    """Nudge sequential Task spawns toward parallel execution + background promotion."""
+    tool_input = data.get("tool_input", {})
+    prompt = tool_input.get("prompt", "")
+    subagent_type = tool_input.get("subagent_type", "").lower()
+
+    if tool_input.get("resume"):
+        return HookResult.approve()
+
+    if tool_input.get("run_in_background"):
+        _track_background_task(state, subagent_type, prompt)
+        return HookResult.approve()
+
+    messages = []
+    if subagent_type in _LONG_RUNNING_AGENTS:
+        messages.append(
+            f"💡 **Background opportunity**: {subagent_type} agents can run with "
+            f"`run_in_background: true` - continue working while it runs, check with TaskOutput later."
+        )
+
+    _update_task_counters(state, prompt)
 
     # Multiple tasks this turn = good parallel behavior
     if state.task_spawns_this_turn > 1:
         state.consecutive_single_tasks = 0
-        return (
-            HookResult.approve("\n".join(messages))
-            if messages
-            else HookResult.approve()
-        )
+        return HookResult.approve("\n".join(messages)) if messages else HookResult.approve()
 
     # Sequential single-Task pattern
-    if state.consecutive_single_tasks >= 2:
+    if state.consecutive_single_tasks >= 3:
         state.parallel_nudge_count += 1
-        if state.consecutive_single_tasks >= 3:
-            messages.insert(
-                0,
-                "⚡ **PARALLEL AGENTS**: 3+ sequential Tasks detected. "
-                "Spawn ALL independent Tasks in ONE message for concurrent execution.",
-            )
-        else:
-            messages.insert(
-                0,
-                "💡 **Parallel opportunity**: Multiple independent Tasks? Spawn them all in one message.",
-            )
+        messages.insert(0, "⚡ **PARALLEL AGENTS**: 3+ sequential Tasks detected. "
+            "Spawn ALL independent Tasks in ONE message for concurrent execution.")
+    elif state.consecutive_single_tasks >= 2:
+        state.parallel_nudge_count += 1
+        messages.insert(0, "💡 **Parallel opportunity**: Multiple independent Tasks? Spawn them all in one message.")
 
     return HookResult.approve("\n".join(messages)) if messages else HookResult.approve()
 

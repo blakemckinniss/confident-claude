@@ -958,48 +958,46 @@ def _track_researched_libraries(tool_name: str, tool_input: dict, state: Session
             track_library_researched(state, lib)
 
 
+# Decay boost lookup tables
+_PAL_HIGH_BOOST = frozenset(("thinkdeep", "debug", "codereview", "consensus", "precommit"))
+_PAL_LOW_BOOST = frozenset(("chat", "challenge", "apilookup"))
+_DECAY_BOOST_FIXED = {
+    "AskUserQuestion": (2, "user-clarification"),
+    "Task": (1.5, "agent-delegation"),
+    "WebSearch": (0.5, "web-research"),
+    "WebFetch": (0.5, "web-research"),
+}
+
+
 def _calculate_decay_boost(
     tool_name: str, tool_input: dict, state: SessionState
 ) -> tuple[float, str]:
-    """Calculate recovery action boosts for confidence decay.
-
-    Returns (boost_value, boost_reason).
-    """
-    # PAL external consultation - shows humility, seeking help
+    """Calculate recovery action boosts for confidence decay."""
+    # PAL external consultation
     if tool_name.startswith("mcp__pal__"):
         pal_tool = tool_name.replace("mcp__pal__", "")
-        if pal_tool in ("thinkdeep", "debug", "codereview", "consensus", "precommit"):
+        if pal_tool in _PAL_HIGH_BOOST:
             return 2, f"pal-{pal_tool}"
-        elif pal_tool in ("chat", "challenge", "apilookup"):
+        if pal_tool in _PAL_LOW_BOOST:
             return 1, f"pal-{pal_tool}"
+        return 0, ""
 
-    # User clarification - reaching out shows humility
-    if tool_name == "AskUserQuestion":
-        return 2, "user-clarification"
-
-    # Agent delegation - distributing work wisely
-    if tool_name == "Task":
-        return 1.5, "agent-delegation"
+    # Fixed boosts
+    if tool_name in _DECAY_BOOST_FIXED:
+        return _DECAY_BOOST_FIXED[tool_name]
 
     # Read - diminishing returns
     if tool_name == "Read":
         read_count = len([f for f in state.files_read if f])
-        if read_count <= 3:
-            return 0.5, f"file-read({read_count})"
-        elif read_count <= 6:
-            return 0.25, f"file-read({read_count})"
-        return 0.1, f"file-read({read_count})"
+        boost = 0.5 if read_count <= 3 else (0.25 if read_count <= 6 else 0.1)
+        return boost, f"file-read({read_count})"
 
-    # Memory access
-    if tool_name.startswith("mcp__") and "mem" in tool_name.lower():
-        return 0.5, "memory-access"
-
-    # Web research
-    if tool_name in ("WebSearch", "WebFetch"):
-        return 0.5, "web-research"
-
-    if tool_name.startswith("mcp__crawl4ai__"):
-        return 0.5, "web-crawl"
+    # Memory access or web crawl
+    if tool_name.startswith("mcp__"):
+        if "mem" in tool_name.lower():
+            return 0.5, "memory-access"
+        if tool_name.startswith("mcp__crawl4ai__"):
+            return 0.5, "web-crawl"
 
     return 0, ""
 
@@ -1266,6 +1264,17 @@ def _detect_repetition_patterns(
             ctx["git_spam"] = True
 
 
+def _was_file_edited_after(file_path: str, last_read_turn: int, files_edited: list) -> bool:
+    """Check if file was edited after a given turn."""
+    for entry in files_edited:
+        if isinstance(entry, dict):
+            if entry.get("path") == file_path and entry.get("turn", 0) > last_read_turn:
+                return True
+        elif isinstance(entry, str) and entry == file_path:
+            return True
+    return False
+
+
 def _detect_time_wasters(
     tool_name: str, tool_input: dict, tool_result: dict, state: SessionState, ctx: dict
 ) -> None:
@@ -1273,23 +1282,11 @@ def _detect_time_wasters(
     # Re-read unchanged file
     if tool_name == "Read":
         file_path = tool_input.get("file_path", "")
-        if file_path:
-            files_read = getattr(state, "files_read", {})
-            files_edited = getattr(state, "files_edited", [])
-            if file_path in files_read:
-                last_read_turn = files_read.get(file_path, {}).get("turn", 0)
-                edited_after = False
-                for entry in files_edited:
-                    if isinstance(entry, dict):
-                        if entry.get("path") == file_path:
-                            if entry.get("turn", 0) > last_read_turn:
-                                edited_after = True
-                                break
-                    elif isinstance(entry, str) and entry == file_path:
-                        edited_after = True
-                        break
-                if not edited_after:
-                    ctx["reread_unchanged"] = True
+        files_read = getattr(state, "files_read", {})
+        if file_path and file_path in files_read:
+            last_read_turn = files_read.get(file_path, {}).get("turn", 0)
+            if not _was_file_edited_after(file_path, last_read_turn, getattr(state, "files_edited", [])):
+                ctx["reread_unchanged"] = True
 
     # Huge output dump
     if len(str(tool_result) if tool_result else "") > 5000:
@@ -1405,92 +1402,60 @@ def check_confidence_reducer(
 # -----------------------------------------------------------------------------
 
 
+_RESEARCH_TOOLS = frozenset({"WebSearch", "WebFetch", "mcp__crawl4ai__crawl", "mcp__crawl4ai__search"})
+_SEARCH_TOOLS = frozenset({"Grep", "Glob", "Task"})
+_DELEGATION_AGENTS = frozenset({"Explore", "scout", "Plan"})
+
+
 def _build_natural_signals(
     tool_name: str, tool_input: dict, data: dict, state: SessionState, context: dict
 ) -> None:
     """Build context for natural increaser signals (file reads, research, etc.)."""
-    # File reads = gathering evidence (+1)
+    file_path = tool_input.get("file_path", "")
+
     if tool_name == "Read":
-        file_path = tool_input.get("file_path", "")
         context["files_read_count"] = 1
         if "/.claude/memory" in file_path or "/memory/" in file_path:
             context["memory_consulted"] = True
-        # v4.6: Targeted read with offset/limit saves tokens
         if tool_input.get("offset") or tool_input.get("limit"):
             context["targeted_read"] = True
-
-    # Research tools = due diligence (+2)
-    if tool_name in {
-        "WebSearch",
-        "WebFetch",
-        "mcp__crawl4ai__crawl",
-        "mcp__crawl4ai__search",
-    }:
+    elif tool_name in _RESEARCH_TOOLS:
         context["research_performed"] = True
         _track_researched_libraries(tool_name, tool_input, state)
-
-    # Search tools = gathering understanding (+2)
-    if tool_name in {"Grep", "Glob", "Task"}:
+    elif tool_name in _SEARCH_TOOLS:
         context["search_performed"] = True
-        # v4.6: Subagent delegation saves main context
-        if tool_name == "Task":
-            subagent_type = tool_input.get("subagent_type", "")
-            if subagent_type in {"Explore", "scout", "Plan"}:
-                context["subagent_delegation"] = True
-
-    # Asking user = epistemic humility (+20)
-    if tool_name == "AskUserQuestion":
+        if tool_name == "Task" and tool_input.get("subagent_type", "") in _DELEGATION_AGENTS:
+            context["subagent_delegation"] = True
+    elif tool_name == "AskUserQuestion":
         context["asked_user"] = True
+    elif tool_name in {"Edit", "Write"} and (
+        "CLAUDE.md" in file_path or "/rules/" in file_path or "/.claude/rules" in file_path
+    ):
+        context["rules_updated"] = True
 
-    # Rules/docs updates = system improvement (+3)
-    if tool_name in {"Edit", "Write"}:
-        file_path = tool_input.get("file_path", "")
-        if (
-            "CLAUDE.md" in file_path
-            or "/rules/" in file_path
-            or "/.claude/rules" in file_path
-        ):
-            context["rules_updated"] = True
+
+_GIT_EXPLORE_CMDS = ("git log", "git diff", "git status", "git show", "git blame")
+_PRODUCTIVE_BASH = tuple(re.compile(p) for p in [
+    r"^ls\b", r"^pwd$", r"^which\b", r"^type\b", r"^file\b",
+    r"^wc\b", r"^du\b", r"^df\b", r"^env\b", r"^tree\b", r"^stat\b",
+])
 
 
 def _build_bash_signals(tool_input: dict, data: dict, context: dict) -> None:
     """Build context for bash command signals."""
     command = tool_input.get("command", "")
     context["bash_command"] = command
+    cmd_stripped = command.strip()
 
-    # Custom ops scripts = using tools (+5)
     if "/.claude/ops/" in command or "/ops/" in command:
         context["custom_script_ran"] = True
-
-    # Bead creation = planning work (+10)
-    if re.match(r"^bd\s+(create|update)\b", command.strip()):
+    if re.match(r"^bd\s+(create|update)\b", cmd_stripped):
         context["bead_created"] = True
-
-    # Git exploration = understanding context (+10)
-    git_explore_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
-    if any(g in command for g in git_explore_cmds):
+    if any(g in command for g in _GIT_EXPLORE_CMDS):
         context["git_explored"] = True
-
-    # Git commit with message = saving work (+3)
-    if re.match(r"^git\s+(commit|add\s+.*&&\s*git\s+commit)", command.strip()):
-        if "-m" in command or "--message" in command:
-            context["git_committed"] = True
-
-    # Productive bash = non-risky inspection commands (+1)
-    productive_patterns = [
-        r"^ls\b",
-        r"^pwd$",
-        r"^which\b",
-        r"^type\b",
-        r"^file\b",
-        r"^wc\b",
-        r"^du\b",
-        r"^df\b",
-        r"^env\b",
-        r"^tree\b",
-        r"^stat\b",
-    ]
-    if any(re.match(p, command.strip()) for p in productive_patterns):
+    if re.match(r"^git\s+(commit|add\s+.*&&\s*git\s+commit)", cmd_stripped) and ("-m" in command or "--message" in command):
+        context["git_committed"] = True
+    if any(p.match(cmd_stripped) for p in _PRODUCTIVE_BASH):
         context["productive_bash"] = True
 
     # Diff size detection
@@ -2170,6 +2135,39 @@ def check_quality_scan(
 # -----------------------------------------------------------------------------
 
 
+def _check_js_mutations(code: str) -> list[str]:
+    """Check JS/TS code for state mutation anti-patterns."""
+    warnings = []
+    for pattern, msg in _JS_MUTATION_PATTERNS:
+        match = pattern.search(code)
+        if not match:
+            continue
+        # Skip if clearly on spread [...arr].sort()
+        if match.group(0) in (".sort()", ".reverse()"):
+            context = code[max(0, match.start() - 10) : match.start()]
+            if _SPREAD_CHECK.search(context):
+                continue
+        try:
+            warnings.append(
+                msg.format(match.group(1) if match.lastindex else match.group(0))
+            )
+        except (IndexError, AttributeError):
+            warnings.append(msg.format("method"))
+    return warnings
+
+
+def _check_py_mutations(code: str) -> list[str]:
+    """Check Python code for mutable default anti-patterns."""
+    from _ast_utils import find_mutable_defaults
+
+    warnings = []
+    for func_name, line, mtype in find_mutable_defaults(code)[:2]:
+        warnings.append(
+            f"Mutable default {mtype} in {func_name}() - use None and set in body"
+        )
+    return warnings
+
+
 @register_hook("state_mutation_guard", "Edit|Write", priority=37)
 def check_state_mutations(
     data: dict, state: SessionState, runner_state: dict
@@ -2178,48 +2176,20 @@ def check_state_mutations(
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    if is_scratch_path(file_path):
+    if is_scratch_path(file_path) or mutation_cooldown.is_active():
         return HookResult.none()
 
     code = tool_input.get("new_string", "") or tool_input.get("content", "")
     if not code or len(code) < 50:
         return HookResult.none()
 
-    # Check cooldown
-    if mutation_cooldown.is_active():
+    # Dispatch to language-specific checker
+    if file_path.endswith((".js", ".ts", ".jsx", ".tsx")):
+        warnings = _check_js_mutations(code)
+    elif file_path.endswith(".py"):
+        warnings = _check_py_mutations(code)
+    else:
         return HookResult.none()
-
-    warnings = []
-    is_js = file_path.endswith((".js", ".ts", ".jsx", ".tsx"))
-    is_py = file_path.endswith(".py")
-
-    if is_js:
-        for pattern, msg in _JS_MUTATION_PATTERNS:
-            match = pattern.search(code)
-            if match:
-                # Skip if clearly on spread [...arr].sort()
-                if match.group(0) in (".sort()", ".reverse()"):
-                    context = code[max(0, match.start() - 10) : match.start()]
-                    if _SPREAD_CHECK.search(context):
-                        continue
-                try:
-                    warnings.append(
-                        msg.format(
-                            match.group(1) if match.lastindex else match.group(0)
-                        )
-                    )
-                except (IndexError, AttributeError):
-                    warnings.append(msg.format("method"))
-
-    elif is_py:
-        # AST-based mutable default detection (more accurate than regex)
-        from _ast_utils import find_mutable_defaults
-
-        mutable_issues = find_mutable_defaults(code)
-        for func_name, line, mtype in mutable_issues[:2]:
-            warnings.append(
-                f"Mutable default {mtype} in {func_name}() - use None and set in body"
-            )
 
     if warnings:
         mutation_cooldown.reset()

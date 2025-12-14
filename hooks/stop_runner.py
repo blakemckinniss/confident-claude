@@ -708,97 +708,76 @@ BAD_LANGUAGE_PATTERNS = {
 }
 
 
+def _collect_bad_language_triggers(
+    content: str, state: SessionState
+) -> list[tuple[str, int]]:
+    """Scan content for bad language patterns, respecting cooldowns."""
+    triggered = []
+    for name, config in BAD_LANGUAGE_PATTERNS.items():
+        cooldown_key = f"bad_lang_{name}_turn"
+        if state.turn_count - state.nudge_history.get(cooldown_key, 0) < 3:
+            continue
+        for pattern in config["patterns"]:
+            if re.search(pattern, content, re.IGNORECASE):
+                triggered.append((name, config["delta"]))
+                state.nudge_history[cooldown_key] = state.turn_count
+                break
+    return triggered
+
+
+def _get_violation_multiplier(num_violations: int) -> float:
+    """Get compounding multiplier for multiple violations."""
+    if num_violations >= 4:
+        return 3.0
+    if num_violations >= 3:
+        return 2.0
+    if num_violations >= 2:
+        return 1.5
+    return 1.0
+
+
 @register_hook("bad_language_detector", priority=46)
 def check_bad_language(data: dict, state: SessionState) -> HookResult:
-    """Detect and penalize bad language patterns in assistant output.
-
-    Scans transcript for: overconfident completion claims, deferral,
-    apologetic language, and sycophancy patterns.
-    """
+    """Detect and penalize bad language patterns in assistant output."""
     from confidence import (
-        apply_rate_limit,
-        format_confidence_change,
-        format_dispute_instructions,
-        get_tier_info,
-        set_confidence,
+        apply_rate_limit, format_confidence_change,
+        format_dispute_instructions, get_tier_info, set_confidence,
     )
 
-    # Get recent transcript content
     transcript_path = data.get("transcript_path", "")
     if not transcript_path or not Path(transcript_path).exists():
         return HookResult.ok()
 
     try:
         with open(transcript_path, "rb") as f:
-            f.seek(0, 2)  # End
-            size = f.tell()
-            f.seek(max(0, size - 20000))  # Last 20KB
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 20000))
             content = f.read().decode("utf-8", errors="ignore")
     except (OSError, PermissionError):
         return HookResult.ok()
 
-    # Track which patterns triggered
-    triggered = []
-
-    for name, config in BAD_LANGUAGE_PATTERNS.items():
-        # Check cooldown
-        cooldown_key = f"bad_lang_{name}_turn"
-        last_turn = state.nudge_history.get(cooldown_key, 0)
-        if state.turn_count - last_turn < 3:  # 3 turn cooldown
-            continue
-
-        for pattern in config["patterns"]:
-            if re.search(pattern, content, re.IGNORECASE):
-                triggered.append((name, config["delta"]))
-                state.nudge_history[cooldown_key] = state.turn_count
-                break  # Only trigger once per category
-
+    triggered = _collect_bad_language_triggers(content, state)
     if not triggered:
         return HookResult.ok()
 
-    # Apply penalties with COMPOUNDING multiplier for multiple violations
-    # Single violation = base penalty
-    # Multiple violations = exponentially worse (this is CANCER behavior)
     old_confidence = state.confidence
-    total_delta = sum(delta for _, delta in triggered)
+    total_delta = int(sum(d for _, d in triggered) * _get_violation_multiplier(len(triggered)))
 
-    # Compounding multiplier: more patterns = exponentially worse
-    num_violations = len(triggered)
-    if num_violations >= 4:
-        multiplier = 3.0  # Catastrophic - 4+ patterns
-    elif num_violations >= 3:
-        multiplier = 2.0  # Severe - 3 patterns
-    elif num_violations >= 2:
-        multiplier = 1.5  # Bad - 2 patterns
-    else:
-        multiplier = 1.0  # Single violation
-
-    # Apply multiplier BEFORE rate limiting (compounding bypasses normal caps)
-    total_delta = int(total_delta * multiplier)
-
-    # Skip rate limiting for surrender_pivot - this is unforgivable
     has_surrender = any(name == "surrender_pivot" for name, _ in triggered)
     if not has_surrender:
         total_delta = apply_rate_limit(total_delta, state)
 
     new_confidence = max(0, min(100, old_confidence + total_delta))
-
     set_confidence(state, new_confidence, "bad language detected")
 
-    # Format feedback
     reasons = [f"{name}: {delta}" for name, delta in triggered]
-    change_msg = format_confidence_change(
-        old_confidence, new_confidence, ", ".join(reasons)
-    )
-
+    change_msg = format_confidence_change(old_confidence, new_confidence, ", ".join(reasons))
     _, emoji, desc = get_tier_info(new_confidence)
-    reducer_names = [name for name, _ in triggered]
-    dispute_hint = format_dispute_instructions(reducer_names)
+    dispute_hint = format_dispute_instructions([n for n, _ in triggered])
 
     return HookResult.warn(
         f"📉 **Bad Language Detected**\n{change_msg}\n\n"
-        f"Current: {emoji} {new_confidence}% - {desc}"
-        f"{dispute_hint}"
+        f"Current: {emoji} {new_confidence}% - {desc}{dispute_hint}"
     )
 
 

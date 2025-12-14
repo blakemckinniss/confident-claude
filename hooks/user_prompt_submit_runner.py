@@ -1601,24 +1601,20 @@ def check_context_injector(data: dict, state: SessionState) -> HookResult:
     return HookResult.allow("\n".join(parts)) if parts else HookResult.allow()
 
 
-def parse_reminder_frontmatter(content: str) -> tuple[dict, str]:
-    """Parse YAML frontmatter from reminder file."""
-    if not content.startswith("---"):
-        return {}, content
-    lines = content.split("\n")
-    end_idx = -1
+def _find_frontmatter_end(lines: list[str]) -> int:
+    """Find the closing --- index for YAML frontmatter."""
     for i, line in enumerate(lines[1:], 1):
         if line.strip() == "---":
-            end_idx = i
-            break
-    if end_idx == -1:
-        return {}, content
-    frontmatter_lines = lines[1:end_idx]
-    body = "\n".join(lines[end_idx + 1 :]).strip()
+            return i
+    return -1
+
+
+def _parse_frontmatter_lines(lines: list[str]) -> dict:
+    """Parse simple YAML key-value pairs from frontmatter lines."""
     meta = {}
     current_key = None
     current_list = []
-    for line in frontmatter_lines:
+    for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
@@ -1638,6 +1634,19 @@ def parse_reminder_frontmatter(content: str) -> tuple[dict, str]:
             current_list.append(stripped[1:].strip())
     if current_key and current_list:
         meta[current_key] = current_list
+    return meta
+
+
+def parse_reminder_frontmatter(content: str) -> tuple[dict, str]:
+    """Parse YAML frontmatter from reminder file."""
+    if not content.startswith("---"):
+        return {}, content
+    lines = content.split("\n")
+    end_idx = _find_frontmatter_end(lines)
+    if end_idx == -1:
+        return {}, content
+    meta = _parse_frontmatter_lines(lines[1:end_idx])
+    body = "\n".join(lines[end_idx + 1 :]).strip()
     return meta, body
 
 
@@ -2398,6 +2407,26 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     return HookResult.allow(mandate.directive)
 
 
+# Work pattern triggers: (pattern, message)
+_WORK_PATTERNS = [
+    (r"\b(edit|change|update|modify|fix|add|create|implement|refactor)\b",
+     "🎯 **ASSUMPTIONS**: Before acting, state key assumptions (paths, APIs, behavior)"),
+    (r"\b(delete|remove|drop|reset|overwrite|replace|migrate)\b",
+     "↩️ **ROLLBACK**: Note undo path before destructive ops"),
+    (r"\b(should|best|optimal|recommend|which|how to|complex|tricky)\b",
+     "📊 **CONFIDENCE**: State confidence % and reasoning for recommendations"),
+    (r"\b(function|method|api|endpoint|signature|interface|class)\b",
+     "🔗 **INTEGRATION**: After edits, grep callers and note impact"),
+    (r"\b(can you|is it possible|can't|cannot|impossible|no way to|not able)\b",
+     "🚫 **IMPOSSIBILITY CHECK**: Before claiming 'can't', verify: MCP tools, Task agents, WebSearch, /inventory. Try first."),
+]
+_PARALLEL_SIGNALS = [
+    r"\b(1\.|2\.|3\.)", r"\b(first|second|third|then|next|after that)\b",
+    r"\b(all|each|every|multiple|several|many)\s+(file|component|test|module)",
+    r"\band\b.*\band\b", r"[,;]\s*\w+[,;]\s*\w+",
+]
+
+
 @register_hook("work_patterns", priority=91)
 def check_work_patterns(data: dict, state: SessionState) -> HookResult:
     """Inject work behavior patterns - assumptions, rollback, confidence, integration."""
@@ -2406,73 +2435,18 @@ def check_work_patterns(data: dict, state: SessionState) -> HookResult:
         return HookResult.allow()
 
     prompt_lower = prompt.lower()
-
-    # Skip trivial
     if re.match(r"^(yes|no|ok|hi|hello|thanks|status|/\w+)\b", prompt_lower):
         return HookResult.allow()
 
-    parts = []
+    parts = [msg for pattern, msg in _WORK_PATTERNS if re.search(pattern, prompt_lower)]
 
-    # Assumption Declaration - for edit/create/change requests
-    if re.search(
-        r"\b(edit|change|update|modify|fix|add|create|implement|refactor)\b",
-        prompt_lower,
-    ):
-        parts.append(
-            "🎯 **ASSUMPTIONS**: Before acting, state key assumptions (paths, APIs, behavior)"
-        )
-
-    # Rollback Breadcrumb - for destructive operations
-    if re.search(
-        r"\b(delete|remove|drop|reset|overwrite|replace|migrate)\b", prompt_lower
-    ):
-        parts.append("↩️ **ROLLBACK**: Note undo path before destructive ops")
-
-    # Confidence Gate - for complex/uncertain requests
-    if re.search(
-        r"\b(should|best|optimal|recommend|which|how to|complex|tricky)\b", prompt_lower
-    ):
-        parts.append(
-            "📊 **CONFIDENCE**: State confidence % and reasoning for recommendations"
-        )
-
-    # Integration Radar - for function/API changes
-    if re.search(
-        r"\b(function|method|api|endpoint|signature|interface|class)\b", prompt_lower
-    ):
-        parts.append("🔗 **INTEGRATION**: After edits, grep callers and note impact")
-
-    # Impossibility Challenge - prevent learned helplessness
-    if re.search(
-        r"\b(can you|is it possible|can't|cannot|impossible|no way to|not able)\b",
-        prompt_lower,
-    ):
-        parts.append(
-            "🚫 **IMPOSSIBILITY CHECK**: Before claiming 'can't', verify: "
-            "MCP tools, Task agents, WebSearch, /inventory. Try first."
-        )
-
-    # Parallel Opportunity - detect multi-item/multi-file work
-    # Pattern: numbered lists, "and" chains, multiple files, bulk operations
-    parallel_signals = [
-        r"\b(1\.|2\.|3\.)",  # Numbered list
-        r"\b(first|second|third|then|next|after that)\b",  # Sequential words
-        r"\b(all|each|every|multiple|several|many)\s+(file|component|test|module)",  # Bulk
-        r"\band\b.*\band\b",  # Multiple "and" (A and B and C)
-        r"[,;]\s*\w+[,;]\s*\w+",  # Comma-separated items
-    ]
-    if any(re.search(p, prompt_lower) for p in parallel_signals):
-        # Only nudge if we've had sequential patterns before
+    # Parallel opportunity (conditional on prior patterns)
+    if any(re.search(p, prompt_lower) for p in _PARALLEL_SIGNALS):
         if state.consecutive_single_tasks >= 1 or state.parallel_nudge_count >= 1:
-            parts.append(
-                "⚡ **PARALLEL AGENTS**: Multiple items detected. "
-                "Spawn independent Task agents in ONE message, not sequentially."
-            )
+            parts.append("⚡ **PARALLEL AGENTS**: Multiple items detected. "
+                "Spawn independent Task agents in ONE message, not sequentially.")
 
-    if not parts:
-        return HookResult.allow()
-
-    return HookResult.allow("\n".join(parts))
+    return HookResult.allow("\n".join(parts)) if parts else HookResult.allow()
 
 
 @register_hook("quality_signals", priority=93)
@@ -2559,13 +2533,41 @@ Patterns: ⭐DO | 🔗Chain | 🔮Predict | 🚫Anti | 🧭Strategic | Priority:
     return HookResult.allow(format_req)
 
 
+def _match_folders(kw_set: set[str]) -> list[str]:
+    """Match keywords against folder hints."""
+    parts = []
+    cwd = Path.cwd()
+    for folder, hints in FOLDER_HINTS.items():
+        if (cwd / folder.rstrip("/")).exists() and kw_set & set(hints):
+            parts.append(f"  • {folder}")
+        if len(parts) >= 2:
+            break
+    return parts
+
+
+def _match_tools(kw_set: set[str]) -> list[str]:
+    """Match keywords against tool index."""
+    tool_parts = []
+    for tool, (tool_kws, desc, example) in TOOL_INDEX.items():
+        if score := len(kw_set & set(tool_kws)):
+            tool_parts.append((f"  • /{tool} - {desc}", f"    eg: {example}", score))
+        if len(tool_parts) >= 2:
+            break
+    tool_parts.sort(key=lambda x: -x[2])
+    parts = []
+    for t, e, _ in tool_parts[:2]:
+        parts.extend([t, e])
+    return parts
+
+
+_RE_TRIVIAL_RESOURCE = re.compile(r"^(commit|push|status|help|yes|no|ok|thanks)\b", re.I)
+
+
 @register_hook("resource_pointer", priority=90)
 def check_resource_pointer(data: dict, state: SessionState) -> HookResult:
     """Surface sparse pointers to possibly relevant resources."""
     prompt = data.get("prompt", "")
-    if not prompt or len(prompt) < 15:
-        return HookResult.allow()
-    if re.match(r"^(commit|push|status|help|yes|no|ok|thanks)\b", prompt.lower()):
+    if not prompt or len(prompt) < 15 or _RE_TRIVIAL_RESOURCE.match(prompt):
         return HookResult.allow()
 
     keywords = extract_keywords(prompt)
@@ -2573,30 +2575,7 @@ def check_resource_pointer(data: dict, state: SessionState) -> HookResult:
         return HookResult.allow()
 
     kw_set = set(keywords)
-    parts = []
-
-    # Match folders
-    cwd = Path.cwd()
-    for folder, hints in FOLDER_HINTS.items():
-        if (cwd / folder.rstrip("/")).exists():
-            score = len(kw_set & set(hints))
-            if score >= 1:
-                parts.append(f"  • {folder}")
-        if len(parts) >= 2:
-            break
-
-    # Match tools
-    tool_parts = []
-    for tool, (tool_kws, desc, example) in TOOL_INDEX.items():
-        score = len(kw_set & set(tool_kws))
-        if score >= 1:
-            tool_parts.append((f"  • /{tool} - {desc}", f"    eg: {example}", score))
-        if len(tool_parts) >= 2:
-            break
-    tool_parts.sort(key=lambda x: -x[2])
-    for t, e, _ in tool_parts[:2]:
-        parts.append(t)
-        parts.append(e)
+    parts = _match_folders(kw_set) + _match_tools(kw_set)
 
     if not parts:
         return HookResult.allow()
