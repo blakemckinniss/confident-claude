@@ -434,6 +434,19 @@ def check_tool_preference(data: dict, state: SessionState) -> HookResult:
     return HookResult.approve()
 
 
+@register_hook("hf_cli_redirect", "Bash", priority=26)
+def check_hf_cli_redirect(data: dict, state: SessionState) -> HookResult:
+    """Block deprecated huggingface-cli, redirect to hf command."""
+    command = data.get("tool_input", {}).get("command", "")
+    if "huggingface-cli" in command:
+        return HookResult.deny(
+            "**BLOCKED**: `huggingface-cli` is deprecated.\n"
+            "Use `hf` instead (e.g., `hf auth login`, `hf auth whoami`).\n"
+            "The `hf` command is installed at `~/.local/bin/hf`."
+        )
+    return HookResult.approve()
+
+
 @register_hook("sunk_cost_detector", None, priority=80)
 def check_sunk_cost(data: dict, state: SessionState) -> HookResult:
     """Detect sunk cost trap."""

@@ -19,7 +19,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import time as _time_module
 from dataclasses import dataclass
 from enum import Enum
@@ -382,6 +381,36 @@ def check_sudo_in_transcript(transcript_path: str, lookback: int = 3000) -> bool
     return False
 
 
+def _is_skip_line(line: str) -> bool:
+    """Check if line should be skipped (tool results, user messages)."""
+    if "<" in line or "tool_result" in line.lower():
+        return True
+    stripped = line.strip()
+    return stripped.startswith(("Human:", "user:"))
+
+
+def _process_transcript_lines(chunk: str) -> list[str]:
+    """Process transcript chunk into thought blocks."""
+    thoughts = []
+    current_block = []
+
+    for line in chunk.split("\n"):
+        if _is_skip_line(line):
+            if current_block:
+                thoughts.append(" ".join(current_block))
+                current_block = []
+            continue
+
+        stripped = line.strip()
+        if stripped and len(stripped) > 20:
+            current_block.append(stripped)
+
+    if current_block:
+        thoughts.append(" ".join(current_block))
+
+    return thoughts
+
+
 def extract_recent_text(transcript_path: str, max_chars: int = 8000) -> str:
     """Extract recent Claude text from transcript."""
     if not transcript_path or not validate_file_path(transcript_path):
@@ -395,29 +424,7 @@ def extract_recent_text(transcript_path: str, max_chars: int = 8000) -> str:
             f.seek(max(0, f.tell() - max_chars))
             chunk = f.read()
 
-        thoughts = []
-        current_block = []
-
-        for line in chunk.split("\n"):
-            # Skip tool results and user messages
-            if "<" in line or "tool_result" in line.lower():
-                if current_block:
-                    thoughts.append(" ".join(current_block))
-                    current_block = []
-                continue
-            if line.strip().startswith(("Human:", "user:")):
-                if current_block:
-                    thoughts.append(" ".join(current_block))
-                    current_block = []
-                continue
-
-            stripped = line.strip()
-            if stripped and len(stripped) > 20:
-                current_block.append(stripped)
-
-        if current_block:
-            thoughts.append(" ".join(current_block))
-
+        thoughts = _process_transcript_lines(chunk)
         return " ".join(thoughts[-3:])[:2000]
     except (IOError, OSError):
         return ""
@@ -464,9 +471,9 @@ def format_block_acknowledgment(hook_name: str) -> str:
     Returns text asking Claude to acknowledge if block was valid or false positive.
     """
     return (
-        f"\n\n**ACKNOWLEDGE:** Was this block valid or a false positive?\n"
-        f"- If VALID: Say 'Block valid: [lesson learned]' (clears from Stop reflection)\n"
-        f"- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"
+        "\n\n**ACKNOWLEDGE:** Was this block valid or a false positive?\n"
+        "- If VALID: Say 'Block valid: [lesson learned]' (clears from Stop reflection)\n"
+        "- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"
     )
 
 

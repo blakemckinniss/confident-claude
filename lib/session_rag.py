@@ -7,7 +7,6 @@ retrieval of past conversations. Designed for low-latency, no external deps.
 """
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -23,6 +22,32 @@ _SESSION_CACHE: dict = {}
 # Index: {keyword: [(file, excerpt, timestamp)]}
 _KEYWORD_INDEX: Optional[dict] = None
 _INDEX_MTIME: float = 0  # Track latest file mtime for cache invalidation
+
+# Stopwords for keyword filtering (O(1) lookup)
+_STOPWORDS = frozenset(
+    {
+        "this",
+        "that",
+        "with",
+        "from",
+        "have",
+        "been",
+        "will",
+        "would",
+        "could",
+        "should",
+        "their",
+        "there",
+        "they",
+        "what",
+        "when",
+        "where",
+        "which",
+        "were",
+        "your",
+        "about",
+    }
+)
 
 
 def _extract_text_from_message(msg: dict) -> Optional[str]:
@@ -98,14 +123,10 @@ def _parse_session_file(filepath: Path) -> list[dict]:
     return records
 
 
-def _build_index(max_files: int = 20) -> dict:
-    """Build keyword index from recent session files."""
-    global _KEYWORD_INDEX, _INDEX_MTIME
-
+def _get_session_files() -> list[tuple[float, Path]]:
+    """Get session files sorted by mtime descending, excluding agent files."""
     if not _PROJECTS_DIR.exists():
-        return {}
-
-    # Get session files (not agent files), sorted by mtime descending
+        return []
     session_files = []
     for f in _PROJECTS_DIR.glob("*.jsonl"):
         if f.name.startswith("agent-"):
@@ -114,9 +135,35 @@ def _build_index(max_files: int = 20) -> dict:
             session_files.append((f.stat().st_mtime, f))
         except OSError:
             continue
-
     session_files.sort(reverse=True)
-    latest_mtime = session_files[0][0] if session_files else 0
+    return session_files
+
+
+def _extract_keywords(text: str) -> list[str]:
+    """Extract keywords from text (4+ chars, no stopwords)."""
+    cleaned = re.sub(r"[^\w\s]", " ", text.lower())
+    words = set(cleaned.split())
+    return [w for w in words if len(w) >= 4 and w not in _STOPWORDS]
+
+
+def _add_to_index(index: dict, keywords: list[str], excerpt: dict):
+    """Add excerpt to index under each keyword (max 50 per keyword)."""
+    for kw in keywords:
+        if kw not in index:
+            index[kw] = []
+        if len(index[kw]) < 50:  # Limit per keyword
+            index[kw].append(excerpt)
+
+
+def _build_index(max_files: int = 20) -> dict:
+    """Build keyword index from recent session files."""
+    global _KEYWORD_INDEX, _INDEX_MTIME
+
+    session_files = _get_session_files()
+    if not session_files:
+        return {}
+
+    latest_mtime = session_files[0][0]
 
     # Check if rebuild needed
     if _KEYWORD_INDEX is not None and latest_mtime <= _INDEX_MTIME:
@@ -129,37 +176,7 @@ def _build_index(max_files: int = 20) -> dict:
         records = _parse_session_file(filepath)
 
         for rec in records:
-            # Extract keywords (simple tokenization)
-            text = rec["text"].lower()
-            # Remove common noise
-            text = re.sub(r"[^\w\s]", " ", text)
-            words = set(text.split())
-
-            # Filter: 4+ chars, not stopwords
-            stopwords = {
-                "this",
-                "that",
-                "with",
-                "from",
-                "have",
-                "been",
-                "will",
-                "would",
-                "could",
-                "should",
-                "their",
-                "there",
-                "they",
-                "what",
-                "when",
-                "where",
-                "which",
-                "were",
-                "your",
-                "about",
-            }
-            keywords = [w for w in words if len(w) >= 4 and w not in stopwords]
-
+            keywords = _extract_keywords(rec["text"])
             excerpt = {
                 "text": rec["text"][:500],
                 "role": rec["role"],
@@ -167,13 +184,7 @@ def _build_index(max_files: int = 20) -> dict:
                 "session_id": rec["session_id"],
                 "file": filepath.name,
             }
-
-            for kw in keywords:
-                if kw not in index:
-                    index[kw] = []
-                # Avoid duplicate excerpts
-                if len(index[kw]) < 50:  # Limit per keyword
-                    index[kw].append(excerpt)
+            _add_to_index(index, keywords, excerpt)
 
     _KEYWORD_INDEX = index
     _INDEX_MTIME = latest_mtime

@@ -158,6 +158,32 @@ def extract_repo_name(remote_url: str) -> str:
 # PROJECT FILE DETECTION
 # =============================================================================
 
+# Project file patterns: (filename, regex_pattern, is_json, name_transform)
+_PROJECT_FILES = (
+    ("package.json", None, True, None),
+    ("pyproject.toml", r'name\s*=\s*["\']([^"\']+)["\']', False, None),
+    ("Cargo.toml", r'name\s*=\s*["\']([^"\']+)["\']', False, None),
+    ("go.mod", r"^module\s+(\S+)", False, lambda m: m.split("/")[-1]),
+)
+
+
+def _parse_project_file(
+    path: Path, pattern: str, is_json: bool, transform
+) -> Optional[dict]:
+    """Parse a single project file and extract name."""
+    try:
+        if is_json:
+            with open(path) as f:
+                return json.load(f)
+        content = path.read_text()
+        match = re.search(pattern, content, re.MULTILINE)
+        if match:
+            name = match.group(1)
+            return {"name": transform(name) if transform else name}
+    except (json.JSONDecodeError, IOError):
+        pass
+    return None
+
 
 def find_project_file(root: str) -> Optional[tuple[str, dict]]:
     """Find and parse project configuration file.
@@ -165,53 +191,12 @@ def find_project_file(root: str) -> Optional[tuple[str, dict]]:
     Returns: (file_type, parsed_data) or None
     """
     root_path = Path(root)
-
-    # package.json (Node.js)
-    pkg_json = root_path / "package.json"
-    if pkg_json.exists():
-        try:
-            with open(pkg_json) as f:
-                data = json.load(f)
-            return ("package.json", data)
-        except (json.JSONDecodeError, IOError):
-            pass
-
-    # pyproject.toml (Python)
-    pyproject = root_path / "pyproject.toml"
-    if pyproject.exists():
-        try:
-            # Simple TOML parsing for name field
-            content = pyproject.read_text()
-            name_match = re.search(r'name\s*=\s*["\']([^"\']+)["\']', content)
-            if name_match:
-                return ("pyproject.toml", {"name": name_match.group(1)})
-        except IOError:
-            pass
-
-    # Cargo.toml (Rust)
-    cargo = root_path / "Cargo.toml"
-    if cargo.exists():
-        try:
-            content = cargo.read_text()
-            name_match = re.search(r'name\s*=\s*["\']([^"\']+)["\']', content)
-            if name_match:
-                return ("Cargo.toml", {"name": name_match.group(1)})
-        except IOError:
-            pass
-
-    # go.mod (Go)
-    gomod = root_path / "go.mod"
-    if gomod.exists():
-        try:
-            content = gomod.read_text()
-            module_match = re.search(r"^module\s+(\S+)", content, re.MULTILINE)
-            if module_match:
-                module = module_match.group(1)
-                name = module.split("/")[-1]
-                return ("go.mod", {"name": name})
-        except IOError:
-            pass
-
+    for filename, pattern, is_json, transform in _PROJECT_FILES:
+        path = root_path / filename
+        if path.exists():
+            data = _parse_project_file(path, pattern, is_json, transform)
+            if data:
+                return (filename, data)
     return None
 
 
@@ -506,7 +491,6 @@ def save_project_index(index: dict):
 
 def register_project_activity(context: ProjectContext):
     """Register activity for a project (updates last-active timestamp)."""
-    import time
 
     if context.project_type == "ephemeral":
         return
@@ -525,7 +509,6 @@ def register_project_activity(context: ProjectContext):
 
 def get_stale_projects(max_age_days: int = 7) -> list[str]:
     """Get list of project IDs that haven't been active recently."""
-    import time
 
     index = load_project_index()
     cutoff = time.time() - (max_age_days * 86400)
