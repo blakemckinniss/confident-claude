@@ -78,6 +78,16 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `unresolved_antipattern` | -10 | Mentioning issues without fixing | 3 turns |
 | `hook_block` | -5 | When hooks block actions | 1 turn |
 
+**Code quality reducers (v4.4):**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `placeholder_impl` | -8 | `pass`, `...`, NotImplementedError in new code | 1 turn |
+| `silent_failure` | -8 | `except: pass` or `except Exception: pass` | 1 turn |
+| `hallmark_phrase` | -3 | AI-speak: "certainly", "I'd be happy to" | 2 turns |
+| `scope_creep` | -8 | "while I'm at it", "might as well", "let's also" | 3 turns |
+| `incomplete_refactor` | -10 | Partial renames/changes (context-based) | 3 turns |
+
 ## Increasers (Automatic Rewards)
 
 **Due diligence rewards balance natural decay:**
@@ -101,6 +111,16 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `user_ok` | +2 | Short positive feedback ("ok", "thanks") |
 | `trust_regained` | +15 | User says "CONFIDENCE_BOOST_APPROVED" |
 | `premise_challenge` | +5 | Suggested existing solution or challenged build-vs-buy |
+
+**Completion quality increasers (v4.4):**
+
+| Increaser | Delta | Trigger |
+|-----------|-------|---------|
+| `bead_close` | +5 | `bd close` command (completing tracked work) |
+| `first_attempt_success` | +3 | Task completed without retry/correction |
+| `dead_code_removal` | +3 | Removing unused code/imports |
+| `scoped_change` | +2 | Changes stayed within requested scope |
+| `external_validation` | +5 | Using `mcp__pal__*` tools for validation |
 
 **Per-turn cap:** Maximum +15 or -15 total change per turn (prevents death spirals and gaming).
 

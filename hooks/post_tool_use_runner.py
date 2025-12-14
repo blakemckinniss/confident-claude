@@ -1191,6 +1191,16 @@ def check_confidence_reducer(
         if file_path:
             context["file_path"] = file_path
 
+    # Add content for code quality reducers (PlaceholderImpl, SilentFailure)
+    if tool_name == "Edit":
+        context["new_string"] = tool_input.get("new_string", "")
+    elif tool_name == "Write":
+        context["content"] = tool_input.get("content", "")
+
+    # Add assistant_output for behavioral reducers (HallmarkPhrase, ScopeCreep)
+    # This comes from the last assistant message in conversation
+    context["assistant_output"] = data.get("assistant_output", "")
+
     # Check for tool failure (Bash exit code != 0)
     if tool_name == "Bash":
         if isinstance(tool_result, dict):
@@ -1358,6 +1368,9 @@ def check_confidence_increaser(
     context = {
         "tool_name": tool_name,
         "tool_result": tool_result,
+        "assistant_output": data.get(
+            "assistant_output", ""
+        ),  # For DeadCodeRemovalIncreaser
     }
 
     # =========================================================================
