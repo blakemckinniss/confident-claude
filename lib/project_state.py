@@ -63,9 +63,11 @@ MAX_ACTIVE_PROJECTS = 20
 # GLOBAL MEMORY (Cross-Project Wisdom)
 # =============================================================================
 
+
 @dataclass
 class GlobalMemory:
     """Cross-project accumulated wisdom."""
+
     # Universal lessons that apply everywhere
     lessons: list = field(default_factory=list)
 
@@ -101,7 +103,7 @@ def save_global_memory(memory: GlobalMemory):
     global_dir.mkdir(parents=True, exist_ok=True)
 
     lessons_path = global_dir / "lessons.json"
-    with open(lessons_path, 'w') as f:
+    with open(lessons_path, "w") as f:
         json.dump(asdict(memory), f, indent=2, default=str)
 
 
@@ -114,6 +116,7 @@ def add_global_lesson(lesson: str, category: str = "general"):
     Also tracks frequency and auto-promotes to CLAUDE.md when threshold reached.
     """
     import hashlib
+
     memory = load_global_memory()
 
     # Check for duplicates using content hash (more robust than prefix match)
@@ -125,11 +128,13 @@ def add_global_lesson(lesson: str, category: str = "general"):
     if lesson_hash in existing_hashes:
         return
 
-    memory.lessons.append({
-        "content": lesson[:200],
-        "category": category,
-        "added_at": time.time(),
-    })
+    memory.lessons.append(
+        {
+            "content": lesson[:200],
+            "category": category,
+            "added_at": time.time(),
+        }
+    )
 
     # Keep last 100 lessons
     memory.lessons = memory.lessons[-100:]
@@ -147,10 +152,7 @@ def _check_and_promote_lesson(memory: GlobalMemory, hook_name: str, lesson: str)
     from pathlib import Path
 
     # Count occurrences of this hook in recent lessons
-    count = sum(
-        1 for entry in memory.lessons
-        if hook_name in entry.get("category", "")
-    )
+    count = sum(1 for entry in memory.lessons if hook_name in entry.get("category", ""))
 
     if count < PROMOTION_THRESHOLD:
         return
@@ -190,7 +192,13 @@ def _check_and_promote_lesson(memory: GlobalMemory, hook_name: str, lesson: str)
                 return
 
             # Append to section
-            content = parts[0] + "## 🎓 Promoted Lessons" + section_content.rstrip() + "\n" + promotion_entry
+            content = (
+                parts[0]
+                + "## 🎓 Promoted Lessons"
+                + section_content.rstrip()
+                + "\n"
+                + promotion_entry
+            )
 
         claude_md.write_text(content)
 
@@ -208,7 +216,9 @@ def get_relevant_global_lessons(keywords: list[str], limit: int = 5) -> list[dic
         category = lesson.get("category", "").lower()
 
         # Score by keyword matches
-        score = sum(1 for kw in keywords if kw.lower() in content or kw.lower() in category)
+        score = sum(
+            1 for kw in keywords if kw.lower() in content or kw.lower() in category
+        )
         if score > 0:
             scored.append((score, lesson))
 
@@ -221,9 +231,11 @@ def get_relevant_global_lessons(keywords: list[str], limit: int = 5) -> list[dic
 # PROJECT STATE
 # =============================================================================
 
+
 @dataclass
 class ProjectState:
     """Per-project session state (isolated from other projects)."""
+
     # Project identity
     project_id: str = ""
     project_name: str = ""
@@ -303,7 +315,7 @@ def save_project_state(state: ProjectState):
     state.errors_recent = state.errors_recent[-10:]
     state.local_lessons = state.local_lessons[-20:]
 
-    with open(state_path, 'w') as f:
+    with open(state_path, "w") as f:
         json.dump(asdict(state), f, indent=2, default=str)
 
 
@@ -317,6 +329,7 @@ def clear_project_state(project_id: str):
 # =============================================================================
 # EPHEMERAL STATE (Disposable)
 # =============================================================================
+
 
 def is_ephemeral_state_stale() -> bool:
     """Check if ephemeral state has expired."""
@@ -344,6 +357,7 @@ def clear_ephemeral_state():
 # =============================================================================
 # AUTO-CLEANUP
 # =============================================================================
+
 
 def cleanup_stale_projects():
     """Archive/remove stale project states.
@@ -387,10 +401,7 @@ def enforce_max_projects():
         return
 
     # Sort by last_active, archive oldest
-    sorted_projects = sorted(
-        projects.items(),
-        key=lambda x: x[1].get("last_active", 0)
-    )
+    sorted_projects = sorted(projects.items(), key=lambda x: x[1].get("last_active", 0))
 
     to_archive = len(projects) - MAX_ACTIVE_PROJECTS
     for project_id, _ in sorted_projects[:to_archive]:
@@ -488,6 +499,7 @@ def is_same_project(previous_context: Optional[ProjectContext]) -> bool:
 # =============================================================================
 # LESSON PROMOTION
 # =============================================================================
+
 
 def promote_lesson_to_global(lesson: str, category: str = "general"):
     """Promote a project-specific lesson to global memory.

@@ -11,6 +11,7 @@ Handles:
 - Multi-line sections
 - Malformed outputs (graceful degradation)
 """
+
 import re
 from typing import Dict, List, Optional
 
@@ -19,13 +20,7 @@ class PersonaOutputParser:
     """Parser for structured persona outputs"""
 
     # Valid verdicts
-    VALID_VERDICTS = {
-        "PROCEED",
-        "CONDITIONAL_GO",
-        "STOP",
-        "ABSTAIN",
-        "ESCALATE"
-    }
+    VALID_VERDICTS = {"PROCEED", "CONDITIONAL_GO", "STOP", "ABSTAIN", "ESCALATE"}
 
     def __init__(self):
         self.errors = []
@@ -69,7 +64,7 @@ class PersonaOutputParser:
             "recruits": None,
             "parse_success": False,
             "parse_errors": [],
-            "parse_warnings": []
+            "parse_warnings": [],
         }
 
         # Extract required fields
@@ -89,9 +84,9 @@ class PersonaOutputParser:
 
         # Check if parse was successful
         result["parse_success"] = (
-            result["verdict"] is not None and
-            result["reasoning"] and
-            len(self.errors) == 0
+            result["verdict"] is not None
+            and result["reasoning"]
+            and len(self.errors) == 0
         )
 
         result["parse_errors"] = self.errors
@@ -101,7 +96,7 @@ class PersonaOutputParser:
 
     def _extract_verdict(self, text: str) -> Optional[str]:
         """Extract VERDICT field"""
-        match = re.search(r'^VERDICT:\s*(\w+)', text, re.MULTILINE | re.IGNORECASE)
+        match = re.search(r"^VERDICT:\s*(\w+)", text, re.MULTILINE | re.IGNORECASE)
 
         if not match:
             self.errors.append("Missing VERDICT field")
@@ -120,7 +115,7 @@ class PersonaOutputParser:
 
     def _extract_confidence(self, text: str) -> int:
         """Extract CONFIDENCE field"""
-        match = re.search(r'^CONFIDENCE:\s*(\d+)', text, re.MULTILINE | re.IGNORECASE)
+        match = re.search(r"^CONFIDENCE:\s*(\d+)", text, re.MULTILINE | re.IGNORECASE)
 
         if not match:
             self.warnings.append("Missing CONFIDENCE field, defaulting to 0")
@@ -138,7 +133,7 @@ class PersonaOutputParser:
 
     def _extract_conviction(self, text: str) -> int:
         """Extract CONVICTION field"""
-        match = re.search(r'^CONVICTION:\s*(\d+)', text, re.MULTILINE | re.IGNORECASE)
+        match = re.search(r"^CONVICTION:\s*(\d+)", text, re.MULTILINE | re.IGNORECASE)
 
         if not match:
             self.warnings.append("Missing CONVICTION field, defaulting to 50 (neutral)")
@@ -158,9 +153,9 @@ class PersonaOutputParser:
         """Extract REASONING field (can be multi-line)"""
         # Match from REASONING: until next section header or end
         match = re.search(
-            r'^REASONING:\s*(.+?)(?=^\s*[A-Z_]+:|$)',
+            r"^REASONING:\s*(.+?)(?=^\s*[A-Z_]+:|$)",
             text,
-            re.MULTILINE | re.DOTALL | re.IGNORECASE
+            re.MULTILINE | re.DOTALL | re.IGNORECASE,
         )
 
         if not match:
@@ -178,8 +173,8 @@ class PersonaOutputParser:
         """Extract a multi-line list section (e.g., INFO_NEEDED, BLOCKERS)"""
         # Match section header followed by lines starting with - or bullet
         pattern = (
-            rf'^{section_name}:\s*\n'
-            r'((?:^\s*[-•*]\s*.+\n?)+)'
+            rf"^{section_name}:\s*\n"
+            r"((?:^\s*[-•*]\s*.+\n?)+)"
         )
 
         match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
@@ -190,7 +185,7 @@ class PersonaOutputParser:
         list_text = match.group(1)
 
         # Extract individual items
-        items = re.findall(r'^\s*[-•*]\s*(.+)', list_text, re.MULTILINE)
+        items = re.findall(r"^\s*[-•*]\s*(.+)", list_text, re.MULTILINE)
 
         # Clean up items
         items = [item.strip() for item in items if item.strip()]
@@ -200,25 +195,18 @@ class PersonaOutputParser:
     def _extract_escalate_to(self, text: str) -> Optional[Dict]:
         """Extract ESCALATE_TO field"""
         match = re.search(
-            r'^ESCALATE_TO:\s*(\w+)\s*-\s*(.+)',
-            text,
-            re.MULTILINE | re.IGNORECASE
+            r"^ESCALATE_TO:\s*(\w+)\s*-\s*(.+)", text, re.MULTILINE | re.IGNORECASE
         )
 
         if not match:
             return None
 
-        return {
-            "persona": match.group(1).strip(),
-            "reason": match.group(2).strip()
-        }
+        return {"persona": match.group(1).strip(), "reason": match.group(2).strip()}
 
     def _extract_agrees_with(self, text: str) -> List[str]:
         """Extract AGREES_WITH field"""
         match = re.search(
-            r'^AGREES_WITH:\s*(.+?)(?:\s*-|$)',
-            text,
-            re.MULTILINE | re.IGNORECASE
+            r"^AGREES_WITH:\s*(.+?)(?:\s*-|$)", text, re.MULTILINE | re.IGNORECASE
         )
 
         if not match:
@@ -226,34 +214,31 @@ class PersonaOutputParser:
 
         # Parse comma-separated list
         personas_str = match.group(1).strip()
-        personas = [p.strip() for p in personas_str.split(',')]
+        personas = [p.strip() for p in personas_str.split(",")]
 
         return [p for p in personas if p]
 
     def _extract_disagrees_with(self, text: str) -> List[Dict]:
         """Extract DISAGREES_WITH field(s)"""
         matches = re.finditer(
-            r'^DISAGREES_WITH:\s*(\w+)\s*-\s*(.+)',
-            text,
-            re.MULTILINE | re.IGNORECASE
+            r"^DISAGREES_WITH:\s*(\w+)\s*-\s*(.+)", text, re.MULTILINE | re.IGNORECASE
         )
 
         disagreements = []
 
         for match in matches:
-            disagreements.append({
-                "persona": match.group(1).strip(),
-                "reason": match.group(2).strip()
-            })
+            disagreements.append(
+                {"persona": match.group(1).strip(), "reason": match.group(2).strip()}
+            )
 
         return disagreements
 
     def _extract_changed_position(self, text: str) -> Optional[Dict]:
         """Extract CHANGED_POSITION field"""
         match = re.search(
-            r'^CHANGED_POSITION:\s*(\w+)\s*→\s*(\w+)\s*(?:\n\s*-\s*Reason:\s*(.+))?',
+            r"^CHANGED_POSITION:\s*(\w+)\s*→\s*(\w+)\s*(?:\n\s*-\s*Reason:\s*(.+))?",
             text,
-            re.MULTILINE | re.IGNORECASE
+            re.MULTILINE | re.IGNORECASE,
         )
 
         if not match:
@@ -262,24 +247,19 @@ class PersonaOutputParser:
         return {
             "from": match.group(1).strip(),
             "to": match.group(2).strip(),
-            "reason": match.group(3).strip() if match.group(3) else ""
+            "reason": match.group(3).strip() if match.group(3) else "",
         }
 
     def _extract_recruits(self, text: str) -> Optional[Dict]:
         """Extract RECRUITS field"""
         match = re.search(
-            r'^RECRUITS:\s*(\w+)\s*-\s*(.+)',
-            text,
-            re.MULTILINE | re.IGNORECASE
+            r"^RECRUITS:\s*(\w+)\s*-\s*(.+)", text, re.MULTILINE | re.IGNORECASE
         )
 
         if not match:
             return None
 
-        return {
-            "persona": match.group(1).strip(),
-            "reason": match.group(2).strip()
-        }
+        return {"persona": match.group(1).strip(), "reason": match.group(2).strip()}
 
 
 # Convenience function
@@ -287,5 +267,3 @@ def parse_persona_output(raw_output: str, persona_name: str = "unknown") -> Dict
     """Parse persona output (convenience wrapper)"""
     parser = PersonaOutputParser()
     return parser.parse(raw_output, persona_name)
-
-

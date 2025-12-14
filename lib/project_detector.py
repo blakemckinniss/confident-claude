@@ -43,26 +43,28 @@ _GIT_ROOT_CACHE_CWD: Optional[str] = None
 _GIT_REMOTE_CACHE: Optional[str] = None
 _GIT_REMOTE_CACHE_CWD: Optional[str] = None
 
-_PROJECT_CACHE: Optional['ProjectContext'] = None
+_PROJECT_CACHE: Optional["ProjectContext"] = None
 _PROJECT_CACHE_CWD: Optional[str] = None
 
 
 @dataclass
 class ProjectContext:
     """Detected project context."""
-    project_id: str           # Stable identifier (hash or name)
-    project_name: str         # Human-readable name
-    project_type: str         # "project" | "ephemeral"
-    root_path: str            # Absolute path to project root
-    detection_method: str     # How we identified this project
-    git_remote: str = ""      # Git remote URL if available
-    language: str = ""        # Primary language (python, javascript, etc.)
-    framework: str = ""       # Detected framework (react, fastapi, etc.)
+
+    project_id: str  # Stable identifier (hash or name)
+    project_name: str  # Human-readable name
+    project_type: str  # "project" | "ephemeral"
+    root_path: str  # Absolute path to project root
+    detection_method: str  # How we identified this project
+    git_remote: str = ""  # Git remote URL if available
+    language: str = ""  # Primary language (python, javascript, etc.)
+    framework: str = ""  # Detected framework (react, fastapi, etc.)
 
 
 # =============================================================================
 # GIT DETECTION
 # =============================================================================
+
 
 # SUDO SECURITY: Adding caching to existing subprocess calls - no new security surface
 def get_git_root() -> Optional[str]:
@@ -156,6 +158,7 @@ def extract_repo_name(remote_url: str) -> str:
 # PROJECT FILE DETECTION
 # =============================================================================
 
+
 def find_project_file(root: str) -> Optional[tuple[str, dict]]:
     """Find and parse project configuration file.
 
@@ -201,7 +204,7 @@ def find_project_file(root: str) -> Optional[tuple[str, dict]]:
     if gomod.exists():
         try:
             content = gomod.read_text()
-            module_match = re.search(r'^module\s+(\S+)', content, re.MULTILINE)
+            module_match = re.search(r"^module\s+(\S+)", content, re.MULTILINE)
             if module_match:
                 module = module_match.group(1)
                 name = module.split("/")[-1]
@@ -259,6 +262,17 @@ def detect_language(root: str) -> str:
     return ""
 
 
+# Framework detection order (first match wins)
+_JS_FRAMEWORKS = (
+    ("next", "nextjs"),
+    ("react", "react"),
+    ("vue", "vue"),
+    ("svelte", "svelte"),
+    ("express", "express"),
+)
+_PY_FRAMEWORKS = (("fastapi", "fastapi"), ("django", "django"), ("flask", "flask"))
+
+
 def detect_framework(root: str, language: str) -> str:
     """Detect framework from dependencies or file patterns."""
     root_path = Path(root)
@@ -267,20 +281,11 @@ def detect_framework(root: str, language: str) -> str:
     pkg_json = root_path / "package.json"
     if pkg_json.exists():
         try:
-            with open(pkg_json) as f:
-                data = json.load(f)
+            data = json.loads(pkg_json.read_text())
             deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
-
-            if "next" in deps:
-                return "nextjs"
-            if "react" in deps:
-                return "react"
-            if "vue" in deps:
-                return "vue"
-            if "svelte" in deps:
-                return "svelte"
-            if "express" in deps:
-                return "express"
+            for dep, framework in _JS_FRAMEWORKS:
+                if dep in deps:
+                    return framework
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -290,12 +295,9 @@ def detect_framework(root: str, language: str) -> str:
         if requirements.exists():
             try:
                 content = requirements.read_text().lower()
-                if "fastapi" in content:
-                    return "fastapi"
-                if "django" in content:
-                    return "django"
-                if "flask" in content:
-                    return "flask"
+                for dep, framework in _PY_FRAMEWORKS:
+                    if dep in content:
+                        return framework
             except IOError:
                 pass
 
@@ -305,6 +307,7 @@ def detect_framework(root: str, language: str) -> str:
 # =============================================================================
 # PROJECT ID GENERATION
 # =============================================================================
+
 
 def generate_project_id(name: str, remote: str = "", root: str = "") -> str:
     """Generate stable project ID.
@@ -331,6 +334,7 @@ def generate_project_id(name: str, remote: str = "", root: str = "") -> str:
 # =============================================================================
 # MAIN DETECTION
 # =============================================================================
+
 
 def detect_project() -> ProjectContext:
     """Detect current project context.
@@ -417,8 +421,7 @@ def detect_project() -> ProjectContext:
 
     # Check if this looks like a code directory at all
     has_code = any(
-        Path(cwd).glob(f"*.{ext}")
-        for ext in ["py", "js", "ts", "rs", "go", "java"]
+        Path(cwd).glob(f"*.{ext}") for ext in ["py", "js", "ts", "rs", "go", "java"]
     )
 
     if has_code:
@@ -473,6 +476,7 @@ def get_global_memory_dir() -> Path:
 # PROJECT REGISTRY
 # =============================================================================
 
+
 def get_project_index_path() -> Path:
     """Get path to project index file."""
     lib_dir = Path(__file__).resolve().parent
@@ -496,7 +500,7 @@ def save_project_index(index: dict):
     """Save project index."""
     index_path = get_project_index_path()
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(index_path, 'w') as f:
+    with open(index_path, "w") as f:
         json.dump(index, f, indent=2)
 
 
@@ -537,6 +541,7 @@ def get_stale_projects(max_age_days: int = 7) -> list[str]:
 # =============================================================================
 # CONVENIENCE
 # =============================================================================
+
 
 def get_current_project() -> ProjectContext:
     """Get current project context and register activity.

@@ -1472,7 +1472,9 @@ class UnverifiedEditsReducer(ConfidenceReducer):
 
     name: str = "unverified_edits"
     delta: int = -5
-    description: str = f">{VERIFICATION_THRESHOLD} edits without verification (run tests/lint)"
+    description: str = (
+        f">{VERIFICATION_THRESHOLD} edits without verification (run tests/lint)"
+    )
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -1486,7 +1488,11 @@ class UnverifiedEditsReducer(ConfidenceReducer):
         verify_tools = {"pytest", "jest", "cargo test", "ruff check", "eslint", "tsc"}
 
         tool_name = context.get("tool_name", "")
-        command = context.get("tool_input", {}).get("command", "") if tool_name == "Bash" else ""
+        command = (
+            context.get("tool_input", {}).get("command", "")
+            if tool_name == "Bash"
+            else ""
+        )
 
         # Check if this is a verification action
         is_verify = any(v in command.lower() for v in verify_tools)
@@ -1529,7 +1535,14 @@ class DeepNestingReducer(ConfidenceReducer):
         import ast
 
         max_d = current
-        nesting_nodes = (ast.If, ast.For, ast.While, ast.With, ast.Try, ast.ExceptHandler)
+        nesting_nodes = (
+            ast.If,
+            ast.For,
+            ast.While,
+            ast.With,
+            ast.Try,
+            ast.ExceptHandler,
+        )
         for child in ast.iter_child_nodes(node):
             if isinstance(child, nesting_nodes):
                 max_d = max(max_d, self._get_max_depth(child, current + 1))
@@ -1736,7 +1749,15 @@ class CommentedCodeReducer(ConfidenceReducer):
         # Count consecutive comment lines that look like code
         lines = content.split("\n")
         consecutive = 0
-        code_patterns = ["def ", "class ", "if ", "for ", "while ", "return ", "import "]
+        code_patterns = [
+            "def ",
+            "class ",
+            "if ",
+            "for ",
+            "while ",
+            "return ",
+            "import ",
+        ]
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("#"):
@@ -3229,6 +3250,61 @@ def should_mandate_external(confidence: int) -> tuple[bool, str]:
     )
 
 
+# Tool permission constants (module-level for O(1) lookup)
+_ALWAYS_ALLOWED_TOOLS = frozenset(
+    {
+        "Read",
+        "Grep",
+        "Glob",
+        "WebSearch",
+        "WebFetch",
+        "TodoRead",
+        "AskUserQuestion",
+    }
+)
+_WRITE_TOOLS = frozenset({"Edit", "Write", "Bash", "NotebookEdit"})
+_FILE_WRITE_TOOLS = frozenset({"Edit", "Write"})
+_READ_ONLY_AGENTS = frozenset(
+    {
+        "scout",
+        "digest",
+        "parallel",
+        "explore",
+        "chore",
+        "plan",
+        "claude-code-guide",
+    }
+)
+_RISKY_BASH_PATTERNS = ("git push", "git commit", "rm -rf", "deploy", "kubectl")
+
+
+def _is_tool_always_allowed(tool_name: str, tool_input: dict) -> bool:
+    """Check if tool is unconditionally allowed."""
+    if tool_name in _ALWAYS_ALLOWED_TOOLS:
+        return True
+    if tool_name.startswith("mcp__pal__"):
+        return True
+    if tool_name == "Task":
+        subagent = tool_input.get("subagent_type", "").lower()
+        return subagent in _READ_ONLY_AGENTS
+    return False
+
+
+def _check_hypothesis_bash(
+    command: str, confidence: int, emoji: str
+) -> tuple[bool, str]:
+    """Check bash command restrictions in HYPOTHESIS tier."""
+    cmd_lower = command.lower()
+    if any(p in cmd_lower for p in _RISKY_BASH_PATTERNS):
+        recovery = get_confidence_recovery_options(confidence, target=51)
+        return False, (
+            f"{emoji} **BLOCKED: Risky Bash command**\n"
+            f"Confidence ({confidence}% HYPOTHESIS) blocks production commands.\n\n"
+            f"{recovery}"
+        )
+    return True, ""
+
+
 def check_tool_permission(
     confidence: int, tool_name: str, tool_input: dict
 ) -> tuple[bool, str]:
@@ -3238,63 +3314,25 @@ def check_tool_permission(
     Returns:
         Tuple[bool, str]: (is_permitted, block_message)
     """
+    if _is_tool_always_allowed(tool_name, tool_input):
+        return True, ""
+
     _, emoji, _ = get_tier_info(confidence)
-
-    # Always-allowed tools (diagnostic, read-only)
-    always_allowed = {
-        "Read",
-        "Grep",
-        "Glob",
-        "WebSearch",
-        "WebFetch",
-        "TodoRead",
-        "AskUserQuestion",
-    }
-    if tool_name in always_allowed:
-        return True, ""
-
-    # External LLM tools always allowed (they're the escalation path)
-    external_llm_tools = {
-        "mcp__pal__thinkdeep",
-        "mcp__pal__debug",
-        "mcp__pal__codereview",
-    }
-    if tool_name.startswith("mcp__pal__") or tool_name in external_llm_tools:
-        return True, ""
-
-    # Task tool - allow read-only agent types
-    if tool_name == "Task":
-        read_only_agents = {
-            "scout",
-            "digest",
-            "parallel",
-            "explore",
-            "chore",
-            "plan",
-            "claude-code-guide",
-        }
-        subagent_type = tool_input.get("subagent_type", "").lower()
-        if subagent_type in read_only_agents:
-            return True, ""
-
-    # Check confidence-based restrictions
     file_path = tool_input.get("file_path", "")
     is_scratch = ".claude/tmp" in file_path or "/tmp/" in file_path
-    is_production = not is_scratch and ".claude/" not in file_path
 
-    # IGNORANCE (< 30): Only read-only tools - MUST consult external first
-    if confidence < 30:
-        if tool_name in {"Edit", "Write", "Bash", "NotebookEdit"}:
-            recovery = get_confidence_recovery_options(confidence, target=30)
-            return False, (
-                f"{emoji} **BLOCKED: {tool_name}**\n"
-                f"Confidence too low ({confidence}% IGNORANCE).\n\n"
-                f"{recovery}"
-            )
+    # IGNORANCE (< 30): Block all write tools
+    if confidence < 30 and tool_name in _WRITE_TOOLS:
+        recovery = get_confidence_recovery_options(confidence, target=30)
+        return False, (
+            f"{emoji} **BLOCKED: {tool_name}**\n"
+            f"Confidence too low ({confidence}% IGNORANCE).\n\n"
+            f"{recovery}"
+        )
 
-    # HYPOTHESIS (30-50): Scratch only - SHOULD consult external
-    elif confidence < 51:
-        if tool_name in {"Edit", "Write"} and not is_scratch:
+    # HYPOTHESIS (30-50): Scratch only for file writes, restrict risky bash
+    if 30 <= confidence < 51:
+        if tool_name in _FILE_WRITE_TOOLS and not is_scratch:
             recovery = get_confidence_recovery_options(confidence, target=51)
             return False, (
                 f"{emoji} **BLOCKED: {tool_name}** to production\n"
@@ -3303,26 +3341,11 @@ def check_tool_permission(
                 f"{recovery}"
             )
         if tool_name == "Bash":
-            command = tool_input.get("command", "").lower()
-            risky_patterns = ["git push", "git commit", "rm -rf", "deploy", "kubectl"]
-            if any(p in command for p in risky_patterns):
-                recovery = get_confidence_recovery_options(confidence, target=51)
-                return False, (
-                    f"{emoji} **BLOCKED: Risky Bash command**\n"
-                    f"Confidence ({confidence}% HYPOTHESIS) blocks production commands.\n\n"
-                    f"{recovery}"
-                )
+            return _check_hypothesis_bash(
+                tool_input.get("command", ""), confidence, emoji
+            )
 
-    # WORKING (51-70): Production with quality gates suggested
-    elif confidence < 71:
-        if tool_name in {"Edit", "Write"} and is_production:
-            # Allow but suggest gates - this is advisory not blocking
-            pass  # Enforcement via pre_tool_use advisory messages
-
-    # CERTAINTY (71-85): Production allowed, gates enforced by pre_tool_use
-    # TRUSTED (86-94): Production allowed, warnings only
-    # EXPERT (95-100): Maximum freedom
-
+    # WORKING+ tiers: Allow (gates enforced by pre_tool_use)
     return True, ""
 
 
@@ -3494,7 +3517,9 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
 
         if reducer.should_trigger(context, state, last_trigger):
             # Apply project-specific weights (v4.7)
-            adjusted_delta = get_adjusted_delta(reducer.delta, reducer.name, is_reducer=True)
+            adjusted_delta = get_adjusted_delta(
+                reducer.delta, reducer.name, is_reducer=True
+            )
             triggered.append((reducer.name, adjusted_delta, reducer.description))
             # Record trigger
             if key not in state.nudge_history:
@@ -3534,7 +3559,9 @@ def apply_increasers(
             diminish_mult = get_diminishing_multiplier(state, increaser.name)
 
             # Apply project-specific weights (v4.7)
-            base_delta = get_adjusted_delta(increaser.delta, increaser.name, is_reducer=False)
+            base_delta = get_adjusted_delta(
+                increaser.delta, increaser.name, is_reducer=False
+            )
 
             # Combined multiplier with streak and diminishing returns
             adjusted_delta = int(base_delta * streak_mult * diminish_mult)
@@ -3902,9 +3929,7 @@ def get_streak_multiplier(streak_count: int) -> float:
     return multiplier
 
 
-def get_diminishing_multiplier(
-    state: "SessionState", increaser_name: str
-) -> float:
+def get_diminishing_multiplier(state: "SessionState", increaser_name: str) -> float:
     """Get diminishing returns multiplier for farmable increasers.
 
     Tracks how many times this increaser fired this turn and returns
@@ -3927,8 +3952,7 @@ def get_diminishing_multiplier(
     stale_keys = [
         k
         for k in state.nudge_history
-        if k.startswith(f"_diminish_{increaser_name}_turn_")
-        and k != turn_key
+        if k.startswith(f"_diminish_{increaser_name}_turn_") and k != turn_key
     ]
     for k in stale_keys:
         del state.nudge_history[k]

@@ -18,6 +18,7 @@ Usage:
     else:
         print(f"Error: {result['error']}")
 """
+
 import os
 import re
 import json
@@ -33,17 +34,57 @@ logger = logging.getLogger(__name__)
 
 class ContextBuildError(Exception):
     """Raised when context building fails critically"""
+
     pass
 
 
 # Configuration (can be overridden)
 class ContextConfig:
     """Configuration for context builder"""
+
     STOP_WORDS = {
-        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "he",
-        "in", "is", "it", "its", "of", "on", "that", "the", "to", "was", "will",
-        "with", "we", "should", "can", "could", "would", "this", "what", "when",
-        "where", "who", "how", "why", "i", "you", "they", "them", "their", "our"
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "has",
+        "he",
+        "in",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "that",
+        "the",
+        "to",
+        "was",
+        "will",
+        "with",
+        "we",
+        "should",
+        "can",
+        "could",
+        "would",
+        "this",
+        "what",
+        "when",
+        "where",
+        "who",
+        "how",
+        "why",
+        "i",
+        "you",
+        "they",
+        "them",
+        "their",
+        "our",
     }
 
     # Scoring weights
@@ -96,7 +137,9 @@ def find_project_root(start_path: str = None) -> Optional[Path]:
             return current
         current = current.parent
 
-    logger.error(f"Could not find project root (looking for {ContextConfig.ROOT_MARKER})")
+    logger.error(
+        f"Could not find project root (looking for {ContextConfig.ROOT_MARKER})"
+    )
     return None
 
 
@@ -106,12 +149,11 @@ def extract_keywords(text: str, min_length: int = None) -> List[str]:
         min_length = ContextConfig.MIN_KEYWORD_LENGTH
 
     # Tokenize
-    tokens = re.findall(r'\b\w+\b', text.lower())
+    tokens = re.findall(r"\b\w+\b", text.lower())
 
     # Filter stop words and short tokens
     keywords = [
-        t for t in tokens
-        if t not in ContextConfig.STOP_WORDS and len(t) >= min_length
+        t for t in tokens if t not in ContextConfig.STOP_WORDS and len(t) >= min_length
     ]
 
     # Return unique keywords (preserve order)
@@ -125,7 +167,9 @@ def extract_keywords(text: str, min_length: int = None) -> List[str]:
     return unique
 
 
-def extract_mentioned_files(proposal: str, project_root: Path) -> List[Tuple[str, Path, int]]:
+def extract_mentioned_files(
+    proposal: str, project_root: Path
+) -> List[Tuple[str, Path, int]]:
     """
     Extract file paths mentioned in proposal.
 
@@ -135,7 +179,9 @@ def extract_mentioned_files(proposal: str, project_root: Path) -> List[Tuple[str
     found_files = []
 
     # Pattern 1: Common filename patterns (CLAUDE.md, README.md, config.json, etc.)
-    filename_pattern = r'\b([A-Z_][A-Za-z0-9_\-]*\.(md|py|json|yaml|yml|txt|sh|js|ts))\b'
+    filename_pattern = (
+        r"\b([A-Z_][A-Za-z0-9_\-]*\.(md|py|json|yaml|yml|txt|sh|js|ts))\b"
+    )
     for match in re.finditer(filename_pattern, proposal):
         filename = match.group(1)
 
@@ -151,7 +197,7 @@ def extract_mentioned_files(proposal: str, project_root: Path) -> List[Tuple[str
         for path in search_paths:
             if path.exists() and path.is_file():
                 try:
-                    line_count = len(path.read_text().split('\n'))
+                    line_count = len(path.read_text().split("\n"))
                     found_files.append((filename, path, line_count))
                     break
                 except Exception as e:
@@ -159,14 +205,14 @@ def extract_mentioned_files(proposal: str, project_root: Path) -> List[Tuple[str
 
     # Pattern 2: Explicit file paths (.claude/ops/council.py, ./src/main.py, etc.)
     # Match paths with directory separators
-    path_pattern = r'(?:\.{0,2}/)?(?:[a-zA-Z0-9_\-]+/)+[a-zA-Z0-9_\-]+\.[a-z]{2,4}'
+    path_pattern = r"(?:\.{0,2}/)?(?:[a-zA-Z0-9_\-]+/)+[a-zA-Z0-9_\-]+\.[a-z]{2,4}"
     for match in re.finditer(path_pattern, proposal):
         path_str = match.group(0)
-        path = project_root / path_str.lstrip('./')
+        path = project_root / path_str.lstrip("./")
 
         if path.exists() and path.is_file():
             try:
-                line_count = len(path.read_text().split('\n'))
+                line_count = len(path.read_text().split("\n"))
                 # Avoid duplicates
                 if not any(str(p[1]) == str(path) for p in found_files):
                     found_files.append((path_str, path, line_count))
@@ -188,27 +234,29 @@ def read_file_with_truncation(file_path: Path, max_lines: int = None) -> Dict:
 
     try:
         full_content = file_path.read_text()
-        lines = full_content.split('\n')
+        lines = full_content.split("\n")
         total_lines = len(lines)
 
         if total_lines <= max_lines:
             return {
                 "content": full_content,
                 "total_lines": total_lines,
-                "truncated": False
+                "truncated": False,
             }
 
         # Truncate: show head + tail
-        head = lines[:ContextConfig.FILE_TRUNCATE_HEAD]
-        tail = lines[-ContextConfig.FILE_TRUNCATE_TAIL:]
-        truncated_content = '\n'.join(head)
-        truncated_content += f"\n\n... [{total_lines - max_lines} lines omitted] ...\n\n"
-        truncated_content += '\n'.join(tail)
+        head = lines[: ContextConfig.FILE_TRUNCATE_HEAD]
+        tail = lines[-ContextConfig.FILE_TRUNCATE_TAIL :]
+        truncated_content = "\n".join(head)
+        truncated_content += (
+            f"\n\n... [{total_lines - max_lines} lines omitted] ...\n\n"
+        )
+        truncated_content += "\n".join(tail)
 
         return {
             "content": truncated_content,
             "total_lines": total_lines,
-            "truncated": True
+            "truncated": True,
         }
 
     except Exception as e:
@@ -216,7 +264,7 @@ def read_file_with_truncation(file_path: Path, max_lines: int = None) -> Dict:
         return {
             "content": f"ERROR: Could not read file: {e}",
             "total_lines": 0,
-            "truncated": False
+            "truncated": False,
         }
 
 
@@ -268,9 +316,10 @@ def search_memories(keywords: List[str], project_root: Path) -> Dict[str, List[s
                 continue
 
             # Parse and cache sections
-            raw_sections = re.split(r'\n\s*\n', content)
+            raw_sections = re.split(r"\n\s*\n", content)
             sections = [
-                s.strip() for s in raw_sections
+                s.strip()
+                for s in raw_sections
                 if len(s.strip()) >= ContextConfig.MIN_SECTION_LENGTH
             ]
             _MEMORY_FILE_CACHE[cache_key] = (file_mtime, sections)
@@ -285,7 +334,7 @@ def search_memories(keywords: List[str], project_root: Path) -> Dict[str, List[s
 
         # Sort by score and take top N
         scored_sections.sort(reverse=True, key=lambda x: x[0])
-        top_matches = [s[1] for s in scored_sections[:ContextConfig.TOP_MEMORIES]]
+        top_matches = [s[1] for s in scored_sections[: ContextConfig.TOP_MEMORIES]]
 
         results[memory_type] = top_matches
 
@@ -297,7 +346,60 @@ _SESSION_DIGEST_CACHE: Dict[str, tuple] = {}
 MAX_SESSION_FILES_SCAN = 50  # Limit to prevent O(n) growth
 
 
-def find_related_sessions(keywords: List[str], project_root: Path, current_session: str) -> List[Dict]:
+def _load_session_digests(digests_dir: Path) -> List[Dict]:
+    """Load and cache session digests from directory."""
+    cache_key = str(digests_dir)
+    try:
+        dir_mtime = digests_dir.stat().st_mtime
+    except OSError:
+        dir_mtime = 0
+
+    cached = _SESSION_DIGEST_CACHE.get(cache_key)
+    if cached and cached[0] == dir_mtime:
+        return cached[1]
+
+    # Rebuild cache - get most recent files only
+    digest_files = sorted(
+        digests_dir.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True
+    )[:MAX_SESSION_FILES_SCAN]
+
+    all_digests = []
+    for digest_file in digest_files:
+        if digest_file.stem.startswith("tmp."):
+            continue
+        try:
+            with open(digest_file) as f:
+                digest = json.load(f)
+                digest["_filename"] = digest_file.stem
+                all_digests.append(digest)
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"Error reading {digest_file}: {e}")
+
+    _SESSION_DIGEST_CACHE[cache_key] = (dir_mtime, all_digests)
+    return all_digests
+
+
+def _score_digest(digest: Dict, keywords: List[str]) -> int:
+    """Score a digest by keyword matches in summary, topic, and entities."""
+    score = 0
+    summary = digest.get("summary", "").lower()
+    score += sum(ContextConfig.SUMMARY_SCORE_WEIGHT for kw in keywords if kw in summary)
+
+    topic = digest.get("current_topic", "").lower()
+    score += sum(ContextConfig.TOPIC_SCORE_WEIGHT for kw in keywords if kw in topic)
+
+    entities = [e.lower() for e in digest.get("active_entities", [])]
+    score += sum(
+        ContextConfig.ENTITY_SCORE_WEIGHT
+        for kw in keywords
+        if any(kw in e for e in entities)
+    )
+    return score
+
+
+def find_related_sessions(
+    keywords: List[str], project_root: Path, current_session: str
+) -> List[Dict]:
     """
     Find session digests with similar topics.
 
@@ -313,62 +415,18 @@ def find_related_sessions(keywords: List[str], project_root: Path, current_sessi
         logger.warning(f"Session digests directory not found: {digests_dir}")
         return []
 
-    # Check cache by directory mtime
-    cache_key = str(digests_dir)
-    try:
-        dir_mtime = digests_dir.stat().st_mtime
-    except OSError:
-        dir_mtime = 0
+    all_digests = _load_session_digests(digests_dir)
 
-    cached = _SESSION_DIGEST_CACHE.get(cache_key)
-    if cached and cached[0] == dir_mtime:
-        all_digests = cached[1]
-    else:
-        # Rebuild cache - get most recent files only
-        digest_files = sorted(
-            digests_dir.glob("*.json"),
-            key=lambda f: f.stat().st_mtime,
-            reverse=True
-        )[:MAX_SESSION_FILES_SCAN]
-
-        all_digests = []
-        for digest_file in digest_files:
-            if digest_file.stem.startswith("tmp."):
-                continue
-            try:
-                with open(digest_file) as f:
-                    digest = json.load(f)
-                    digest["_filename"] = digest_file.stem
-                    all_digests.append(digest)
-            except (json.JSONDecodeError, Exception) as e:
-                logger.warning(f"Error reading {digest_file}: {e}")
-                continue
-
-        _SESSION_DIGEST_CACHE[cache_key] = (dir_mtime, all_digests)
-
-    # Score cached digests
-    scored_sessions = []
-    for digest in all_digests:
-        # Skip current session
-        if digest.get("_filename") == current_session:
-            continue
-
-        score = 0
-        summary = digest.get("summary", "").lower()
-        score += sum(ContextConfig.SUMMARY_SCORE_WEIGHT for kw in keywords if kw in summary)
-
-        topic = digest.get("current_topic", "").lower()
-        score += sum(ContextConfig.TOPIC_SCORE_WEIGHT for kw in keywords if kw in topic)
-
-        entities = [e.lower() for e in digest.get("active_entities", [])]
-        score += sum(ContextConfig.ENTITY_SCORE_WEIGHT for kw in keywords if any(kw in e for e in entities))
-
-        if score > 0:
-            scored_sessions.append((score, digest))
+    # Score and filter digests
+    scored_sessions = [
+        (_score_digest(d, keywords), d)
+        for d in all_digests
+        if d.get("_filename") != current_session and _score_digest(d, keywords) > 0
+    ]
 
     # Sort by score and return top N
     scored_sessions.sort(reverse=True, key=lambda x: x[0])
-    return [s[1] for s in scored_sessions[:ContextConfig.TOP_SESSIONS]]
+    return [s[1] for s in scored_sessions[: ContextConfig.TOP_SESSIONS]]
 
 
 def get_session_state(session_id: str, project_root: Path) -> Dict:
@@ -381,7 +439,9 @@ def get_session_state(session_id: str, project_root: Path) -> Dict:
     Raises:
         PermissionError: If state file exists but can't be read
     """
-    state_file = project_root / ContextConfig.MEMORY_DIR / f"session_{session_id}_state.json"
+    state_file = (
+        project_root / ContextConfig.MEMORY_DIR / f"session_{session_id}_state.json"
+    )
 
     default_state = {
         "confidence": 0,
@@ -389,7 +449,7 @@ def get_session_state(session_id: str, project_root: Path) -> Dict:
         "tier": "IGNORANCE",
         "evidence_count": 0,
         "files_read": [],
-        "tools_used": []
+        "tools_used": [],
     }
 
     if not state_file.exists():
@@ -415,18 +475,16 @@ def get_session_state(session_id: str, project_root: Path) -> Dict:
     evidence_count = len(evidence)
 
     # Get unique files read
-    files_read = list(set(
-        e.get("file_path", "")
-        for e in evidence
-        if e.get("tool") == "Read" and e.get("file_path")
-    ))[:ContextConfig.TOP_FILES_READ]
+    files_read = list(
+        set(
+            e.get("file_path", "")
+            for e in evidence
+            if e.get("tool") == "Read" and e.get("file_path")
+        )
+    )[: ContextConfig.TOP_FILES_READ]
 
     # Get unique tools used
-    tools_used = list(set(
-        e.get("tool", "")
-        for e in evidence
-        if e.get("tool")
-    ))
+    tools_used = list(set(e.get("tool", "") for e in evidence if e.get("tool")))
 
     return {
         "confidence": confidence,
@@ -434,7 +492,7 @@ def get_session_state(session_id: str, project_root: Path) -> Dict:
         "tier": tier,
         "evidence_count": evidence_count,
         "files_read": files_read,
-        "tools_used": tools_used
+        "tools_used": tools_used,
     }
 
 
@@ -455,7 +513,7 @@ def get_git_status(project_root: Path) -> Dict[str, str]:
             cwd=project_root,
             capture_output=True,
             text=True,
-            timeout=ContextConfig.GIT_TIMEOUT
+            timeout=ContextConfig.GIT_TIMEOUT,
         )
 
         if branch_result.returncode == 0:
@@ -472,14 +530,32 @@ def get_git_status(project_root: Path) -> Dict[str, str]:
             cwd=project_root,
             capture_output=True,
             text=True,
-            timeout=ContextConfig.GIT_TIMEOUT
+            timeout=ContextConfig.GIT_TIMEOUT,
         )
 
         if status_result.returncode == 0:
             lines = status_result.stdout.strip().split("\n")
-            modified = len([line for line in lines if line.startswith(" M") or line.startswith("M ")])
-            added = len([line for line in lines if line.startswith("A ") or line.startswith("??")])
-            deleted = len([line for line in lines if line.startswith(" D") or line.startswith("D ")])
+            modified = len(
+                [
+                    line
+                    for line in lines
+                    if line.startswith(" M") or line.startswith("M ")
+                ]
+            )
+            added = len(
+                [
+                    line
+                    for line in lines
+                    if line.startswith("A ") or line.startswith("??")
+                ]
+            )
+            deleted = len(
+                [
+                    line
+                    for line in lines
+                    if line.startswith(" D") or line.startswith("D ")
+                ]
+            )
 
             result["changes"] = f"{modified} modified, {added} added, {deleted} deleted"
         else:
@@ -502,7 +578,9 @@ def get_git_status(project_root: Path) -> Dict[str, str]:
         return result
 
 
-def save_context_audit(session_id: str, proposal: str, context_data: Dict, project_root: Path):
+def save_context_audit(
+    session_id: str, proposal: str, context_data: Dict, project_root: Path
+):
     """
     Save audit trail of enriched context.
 
@@ -518,7 +596,7 @@ def save_context_audit(session_id: str, proposal: str, context_data: Dict, proje
         "session_id": session_id,
         "timestamp": datetime.now().isoformat(),
         "proposal": proposal,
-        "context": context_data
+        "context": context_data,
     }
 
     try:
@@ -529,129 +607,145 @@ def save_context_audit(session_id: str, proposal: str, context_data: Dict, proje
         logger.error(f"Failed to save context audit: {e}")
 
 
-def format_context(proposal: str, context_data: Dict, project_root: Path) -> str:
-    """Format enriched context as string for council consumption"""
-    parts = []
-
-    # Section 1: Original Proposal
-    parts.append("PROPOSAL:")
-    parts.append(proposal)
-    parts.append("")
-
-    # Section 2: Project Context
-    parts.append("PROJECT CONTEXT:")
-    repo_name = project_root.name if project_root else "unknown"
-    parts.append(f"- Repository: {repo_name}")
-
-    git = context_data.get("git_status", {})
+def _format_git_section(git: Dict, repo_name: str) -> List[str]:
+    """Format git status section."""
+    parts = ["PROJECT CONTEXT:", f"- Repository: {repo_name}"]
     if git.get("error"):
         parts.append(f"- Git: {git['error']}")
     else:
         parts.append(f"- Current Branch: {git.get('branch', 'unknown')}")
         parts.append(f"- Working Tree: {git.get('changes', 'unknown')}")
     parts.append("")
+    return parts
 
-    # Section 3: Session State
-    session = context_data.get("session_state", {})
-    parts.append("SESSION STATE:")
-    parts.append(f"- Confidence: {session.get('confidence', 0)}% ({session.get('tier', 'UNKNOWN')} tier)")
-    parts.append(f"- Risk: {session.get('risk', 0)}%")
-    parts.append(f"- Evidence Gathered: {session.get('evidence_count', 0)} items")
 
-    if session.get('files_read'):
-        files_str = ", ".join(session['files_read'])
-        parts.append(f"- Files Examined: {files_str}")
-
-    if session.get('tools_used'):
-        tools_str = ", ".join(session['tools_used'])
-        parts.append(f"- Tools Used: {tools_str}")
+def _format_session_section(session: Dict) -> List[str]:
+    """Format session state section."""
+    parts = [
+        "SESSION STATE:",
+        f"- Confidence: {session.get('confidence', 0)}% ({session.get('tier', 'UNKNOWN')} tier)",
+        f"- Risk: {session.get('risk', 0)}%",
+        f"- Evidence Gathered: {session.get('evidence_count', 0)} items",
+    ]
+    if session.get("files_read"):
+        parts.append(f"- Files Examined: {', '.join(session['files_read'])}")
+    if session.get("tools_used"):
+        parts.append(f"- Tools Used: {', '.join(session['tools_used'])}")
     parts.append("")
+    return parts
 
-    # Section 4: Relevant Memories
-    memories = context_data.get("memories", {})
-    if memories.get('lessons') or memories.get('decisions'):
-        parts.append("RELEVANT MEMORIES:")
 
-        if memories.get('lessons'):
-            parts.append("\nLessons:")
-            for lesson in memories['lessons']:
-                preview = lesson if len(lesson) < 200 else lesson[:200] + "..."
+def _format_memories_section(memories: Dict) -> List[str]:
+    """Format relevant memories section."""
+    if not memories.get("lessons") and not memories.get("decisions"):
+        return []
+    parts = ["RELEVANT MEMORIES:"]
+    for mem_type in ("lessons", "decisions"):
+        items = memories.get(mem_type, [])
+        if items:
+            parts.append(f"\n{mem_type.title()}:")
+            for item in items:
+                preview = item if len(item) < 200 else item[:200] + "..."
                 parts.append(f"  - {preview}")
+    parts.append("")
+    return parts
 
-        if memories.get('decisions'):
-            parts.append("\nDecisions:")
-            for decision in memories['decisions']:
-                preview = decision if len(decision) < 200 else decision[:200] + "..."
-                parts.append(f"  - {preview}")
-        parts.append("")
 
-    # Section 5: Related Sessions
+def _format_artifacts_section(file_artifacts: List[Dict]) -> List[str]:
+    """Format file artifacts section."""
+    if not file_artifacts:
+        return []
+    parts = ["=" * 70, "FILE ARTIFACTS (Mentioned in Proposal)", "=" * 70, ""]
+    for artifact in file_artifacts:
+        file_data = artifact["file_data"]
+        truncated_mark = ", TRUNCATED" if file_data["truncated"] else ""
+        parts.append(
+            f"### {artifact['filename']} ({file_data['total_lines']} lines{truncated_mark})"
+        )
+        parts.extend(["```", file_data["content"], "```", ""])
+    parts.extend(["=" * 70, ""])
+    return parts
+
+
+def format_context(proposal: str, context_data: Dict, project_root: Path) -> str:
+    """Format enriched context as string for council consumption."""
+    parts = ["PROPOSAL:", proposal, ""]
+
+    # Project and git context
+    repo_name = project_root.name if project_root else "unknown"
+    parts.extend(_format_git_section(context_data.get("git_status", {}), repo_name))
+
+    # Session state
+    parts.extend(_format_session_section(context_data.get("session_state", {})))
+
+    # Memories
+    parts.extend(_format_memories_section(context_data.get("memories", {})))
+
+    # Related sessions
     sessions = context_data.get("related_sessions", [])
     if sessions:
         parts.append("RELATED PAST SESSIONS:")
-        for session in sessions:
-            summary = session.get("summary", "No summary")
-            topic = session.get("current_topic", "Unknown topic")
-            parts.append(f"  - Topic: {topic}")
-            parts.append(f"    Summary: {summary}")
+        for sess in sessions:
+            parts.append(f"  - Topic: {sess.get('current_topic', 'Unknown topic')}")
+            parts.append(f"    Summary: {sess.get('summary', 'No summary')}")
         parts.append("")
 
-    # Section 6: File Artifacts (CRITICAL - provides literal context)
-    file_artifacts = context_data.get("file_artifacts", [])
-    if file_artifacts:
-        parts.append("=" * 70)
-        parts.append("FILE ARTIFACTS (Mentioned in Proposal)")
-        parts.append("=" * 70)
-        parts.append("")
+    # File artifacts
+    parts.extend(_format_artifacts_section(context_data.get("file_artifacts", [])))
 
-        for artifact in file_artifacts:
-            filename = artifact["filename"]
-            file_data = artifact["file_data"]
-            total_lines = file_data["total_lines"]
-            truncated = file_data["truncated"]
-            content = file_data["content"]
-
-            parts.append(f"### {filename} ({total_lines} lines{', TRUNCATED' if truncated else ''})")
-            parts.append("```")
-            parts.append(content)
-            parts.append("```")
-            parts.append("")
-
-        parts.append("=" * 70)
-        parts.append("")
-
-    # Section 7: Keywords
+    # Keywords
     keywords = context_data.get("keywords", [])
     if keywords:
-        keywords_str = ", ".join(keywords[:ContextConfig.TOP_KEYWORDS])
-        parts.append(f"KEYWORDS EXTRACTED: {keywords_str}")
+        parts.append(
+            f"KEYWORDS EXTRACTED: {', '.join(keywords[: ContextConfig.TOP_KEYWORDS])}"
+        )
         parts.append("")
 
     return "\n".join(parts)
+
+
+def _load_file_artifacts(proposal: str, project_root: Path) -> List[Dict]:
+    """Load file artifacts mentioned in proposal."""
+    mentioned_files = extract_mentioned_files(proposal, project_root)
+    if not mentioned_files:
+        return []
+
+    logger.info(f"Found {len(mentioned_files)} mentioned files in proposal")
+    artifacts = []
+    for filename, file_path, line_count in mentioned_files:
+        logger.info(f"  - {filename} ({line_count} lines)")
+        artifacts.append(
+            {
+                "filename": filename,
+                "file_path": str(file_path),
+                "file_data": read_file_with_truncation(file_path),
+            }
+        )
+    return artifacts
+
+
+def _gather_memories(
+    keywords: List[str], project_root: Path, warnings: List[str]
+) -> Dict:
+    """Gather memories with error handling."""
+    try:
+        return search_memories(keywords, project_root)
+    except FileNotFoundError as e:
+        warnings.append(f"Memory directory not found: {e}")
+        return {"lessons": [], "decisions": []}
 
 
 def build_council_context(
     proposal: str,
     session_id: str = "unknown",
     project_root: Path = None,
-    save_audit: bool = True
+    save_audit: bool = True,
 ) -> Dict:
     """
     Build enriched context for council consultation.
 
-    Args:
-        proposal: The original proposal text
-        session_id: Current session ID
-        project_root: Project root directory (auto-detected if None)
-        save_audit: Whether to save audit trail
-
     Returns:
-        Dict with:
-            - success: bool
-            - formatted: str (enriched context, if success=True)
-            - raw_data: dict (structured context data, if success=True)
-            - error: str (error message, if success=False)
-            - warnings: list of warning messages
+        Dict with success, formatted, raw_data, error, and warnings keys.
     """
     warnings = []
 
@@ -662,64 +756,46 @@ def build_council_context(
             return {
                 "success": False,
                 "error": f"Could not find project root (looking for {ContextConfig.ROOT_MARKER})",
-                "warnings": []
+                "warnings": [],
             }
 
     try:
-        # Extract keywords
         keywords = extract_keywords(proposal)
         if not keywords:
             warnings.append("No keywords extracted from proposal")
 
-        # Gather context from multiple sources
+        # Gather context - permission errors are fatal
         try:
             session_state = get_session_state(session_id, project_root)
         except PermissionError as e:
             return {"success": False, "error": str(e), "warnings": warnings}
 
-        try:
-            memories = search_memories(keywords, project_root)
-        except FileNotFoundError as e:
-            warnings.append(f"Memory directory not found: {e}")
-            memories = {"lessons": [], "decisions": []}
-        except PermissionError as e:
-            return {"success": False, "error": str(e), "warnings": warnings}
+        memories = _gather_memories(keywords, project_root, warnings)
+        if memories is None:  # PermissionError case handled differently
+            return {
+                "success": False,
+                "error": "Permission denied reading memories",
+                "warnings": warnings,
+            }
 
-        related_sessions = find_related_sessions(keywords, project_root, session_id)
         git_status = get_git_status(project_root)
-
         if git_status.get("error"):
             warnings.append(git_status["error"])
 
-        # Extract and load mentioned files (CRITICAL - provides literal context)
-        mentioned_files = extract_mentioned_files(proposal, project_root)
-        file_artifacts = []
-
-        if mentioned_files:
-            logger.info(f"Found {len(mentioned_files)} mentioned files in proposal")
-            for filename, file_path, line_count in mentioned_files:
-                logger.info(f"  - {filename} ({line_count} lines)")
-                file_data = read_file_with_truncation(file_path)
-                file_artifacts.append({
-                    "filename": filename,
-                    "file_path": str(file_path),
-                    "file_data": file_data
-                })
-
-        # Build context data structure
+        # Build context data
         context_data = {
             "keywords": keywords,
             "session_state": session_state,
             "memories": memories,
-            "related_sessions": related_sessions,
+            "related_sessions": find_related_sessions(
+                keywords, project_root, session_id
+            ),
             "git_status": git_status,
-            "file_artifacts": file_artifacts  # Add file artifacts
+            "file_artifacts": _load_file_artifacts(proposal, project_root),
         }
 
-        # Format as string
         formatted = format_context(proposal, context_data, project_root)
 
-        # Save audit trail
         if save_audit:
             try:
                 save_context_audit(session_id, proposal, context_data, project_root)
@@ -730,7 +806,7 @@ def build_council_context(
             "success": True,
             "formatted": formatted,
             "raw_data": context_data,
-            "warnings": warnings
+            "warnings": warnings,
         }
 
     except Exception as e:
@@ -738,7 +814,5 @@ def build_council_context(
         return {
             "success": False,
             "error": f"Unexpected error: {e}",
-            "warnings": warnings
+            "warnings": warnings,
         }
-
-

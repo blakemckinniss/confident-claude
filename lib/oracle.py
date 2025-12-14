@@ -10,6 +10,7 @@ Functions:
   - call_oracle_single(): Single-shot oracle consultation (from oracle.py pattern)
   - call_arbiter(): Arbiter synthesis (from council.py pattern)
 """
+
 import os
 import json
 import requests
@@ -18,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 
 class OracleAPIError(Exception):
     """Raised when OpenRouter API call fails"""
+
     pass
 
 
@@ -25,7 +27,7 @@ def call_openrouter(
     messages: List[Dict[str, str]],
     model: str = "openai/gpt-5.1",
     timeout: int = 120,
-    enable_reasoning: bool = True
+    enable_reasoning: bool = True,
 ) -> Dict:
     """
     Generic OpenRouter API wrapper.
@@ -88,11 +90,7 @@ def call_openrouter(
         content = choice.get("content", "")
         reasoning = choice.get("reasoning", "") or result.get("reasoning", "")
 
-        return {
-            "content": content,
-            "reasoning": reasoning,
-            "raw_response": result
-        }
+        return {"content": content, "reasoning": reasoning, "raw_response": result}
 
     except (KeyError, IndexError) as e:
         raise OracleAPIError(f"Unexpected response structure: {e}")
@@ -103,7 +101,7 @@ def call_oracle_single(
     persona: Optional[str] = None,
     custom_prompt: Optional[str] = None,
     model: str = "openai/gpt-5.1",
-    timeout: int = 120
+    timeout: int = 120,
 ) -> Tuple[str, str, str]:
     """
     Single-shot oracle consultation (oracle.py pattern).
@@ -134,7 +132,9 @@ def call_oracle_single(
     elif persona:
         # Caller must handle persona lookup, we just mark it
         # This function expects custom_prompt for persona system prompts
-        raise ValueError("Use custom_prompt for persona system prompts, not persona name")
+        raise ValueError(
+            "Use custom_prompt for persona system prompts, not persona name"
+        )
     else:
         # No system prompt (consult mode)
         title = "🧠 ORACLE CONSULTATION"
@@ -151,7 +151,7 @@ def call_arbiter(
     proposal: str,
     deliberation_context: str,
     model: str = "openai/gpt-5.1",
-    timeout: int = 60
+    timeout: int = 60,
 ) -> Dict:
     """
     Arbiter synthesis (council.py pattern).
@@ -200,32 +200,33 @@ REASONING: [Your synthesis of the multi-round deliberation, noting conviction pa
 
     # Parse arbiter output (basic parsing, caller can enhance)
     content = result["content"]
-    parsed = {
-        "verdict": None,
-        "confidence": None,
-        "reasoning": ""
-    }
+    parsed = {"verdict": None, "confidence": None, "reasoning": ""}
 
     # Extract VERDICT
     import re
-    verdict_match = re.search(r'VERDICT:\s*(PROCEED|CONDITIONAL_GO|STOP|ESCALATE|ABSTAIN)', content, re.IGNORECASE)
+
+    verdict_match = re.search(
+        r"VERDICT:\s*(PROCEED|CONDITIONAL_GO|STOP|ESCALATE|ABSTAIN)",
+        content,
+        re.IGNORECASE,
+    )
     if verdict_match:
         parsed["verdict"] = verdict_match.group(1).upper()
 
     # Extract CONFIDENCE
-    confidence_match = re.search(r'CONFIDENCE:\s*(\d+)', content)
+    confidence_match = re.search(r"CONFIDENCE:\s*(\d+)", content)
     if confidence_match:
         parsed["confidence"] = int(confidence_match.group(1))
 
     # Extract REASONING (everything after REASONING:)
-    reasoning_match = re.search(r'REASONING:\s*(.+)', content, re.DOTALL)
+    reasoning_match = re.search(r"REASONING:\s*(.+)", content, re.DOTALL)
     if reasoning_match:
         parsed["reasoning"] = reasoning_match.group(1).strip()
 
     return {
         "content": content,
         "reasoning": result["reasoning"],
-        "parsed_verdict": parsed
+        "parsed_verdict": parsed,
     }
 
 
@@ -236,13 +237,17 @@ def oracle_judge(query: str, persona_prompt: str, model: str = "openai/gpt-5.1")
     return content
 
 
-def oracle_critic(query: str, persona_prompt: str, model: str = "openai/gpt-5.1") -> str:
+def oracle_critic(
+    query: str, persona_prompt: str, model: str = "openai/gpt-5.1"
+) -> str:
     """Quick critic consultation"""
     content, _, _ = call_oracle_single(query, custom_prompt=persona_prompt, model=model)
     return content
 
 
-def oracle_skeptic(query: str, persona_prompt: str, model: str = "openai/gpt-5.1") -> str:
+def oracle_skeptic(
+    query: str, persona_prompt: str, model: str = "openai/gpt-5.1"
+) -> str:
     """Quick skeptic consultation"""
     content, _, _ = call_oracle_single(query, custom_prompt=persona_prompt, model=model)
     return content

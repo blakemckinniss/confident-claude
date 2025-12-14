@@ -22,76 +22,95 @@ _COMMANDS_CACHE: Optional[tuple] = None
 COMMAND_TRIGGERS = {
     # Task tracking (beads) - HIGHEST PRIORITY
     r"task|todo|track|planning|multi.?step|complex (task|work)|several (things|steps|tasks)": (
-        "/bd", "Use `/bd ready` to see available tasks, `/bd create` to add new ones"
+        "/bd",
+        "Use `/bd ready` to see available tasks, `/bd create` to add new ones",
     ),
     r"what.*(work|task|do next)|where (was i|did i leave)|pick up|resume": (
-        "/bd", "Use `/bd ready` to see tasks ready to work on"
+        "/bd",
+        "Use `/bd ready` to see tasks ready to work on",
     ),
     r"done with|finished|completed|close (the |this )?(task|issue|ticket)": (
-        "/bd", "Use `/bd close <id>` to mark tasks complete"
+        "/bd",
+        "Use `/bd close <id>` to mark tasks complete",
     ),
     r"depends on|blocked by|blocking|prerequisite|before (i|we) can": (
-        "/bd", "Use `/bd dep add <issue> <depends-on>` to track dependencies"
+        "/bd",
+        "Use `/bd dep add <issue> <depends-on>` to track dependencies",
     ),
     # Browser/UI testing
     r"browser|chrome|devtools|dom|screenshot|ui test": (
-        "/bdg", "Use `/bdg start` to launch Chrome, then `/bdg navigate <url>` to test"
+        "/bdg",
+        "Use `/bdg start` to launch Chrome, then `/bdg navigate <url>` to test",
     ),
     # Git operations
     r"commit|push|stage|git add": (
-        "/commit", "Use `/commit` for smart staging and commit with proper message"
+        "/commit",
+        "Use `/commit` for smart staging and commit with proper message",
     ),
     # Code review
     r"code review|review (my |the |this )?code|pr review|pull request": (
-        "/cr", "Use `/cr` to run CodeRabbit AI review on your changes"
+        "/cr",
+        "Use `/cr` to run CodeRabbit AI review on your changes",
     ),
     # Complex decisions
     r"should (i|we)|which (approach|option|way)|decide|tradeoff": (
-        "/council", "Use `/council` for multi-perspective analysis (Judge, Critic, Skeptic)"
+        "/council",
+        "Use `/council` for multi-perspective analysis (Judge, Critic, Skeptic)",
     ),
     # Debugging/investigation
     r"debug|investigate|root cause|why (is|does|did)": (
-        "/think", "Use `/think` to decompose the problem into steps"
+        "/think",
+        "Use `/think` to decompose the problem into steps",
     ),
     # Verification
     r"verify|check|make sure|confirm|validate": (
-        "/verify", "Use `/verify file_exists/grep_text/port_open` to confirm system state"
+        "/verify",
+        "Use `/verify file_exists/grep_text/port_open` to confirm system state",
     ),
     # Security/audit
     r"security|vulnerab|audit|xss|injection|owasp": (
-        "/audit", "Use `/audit <file>` for security, complexity, and style analysis"
+        "/audit",
+        "Use `/audit <file>` for security, complexity, and style analysis",
     ),
     # Best practices
     r"best (way|practice|approach)|how should|optimal": (
-        "/bestway", "Use `/bestway` to evaluate optimal approaches"
+        "/bestway",
+        "Use `/bestway` to evaluate optimal approaches",
     ),
     # Feasibility
     r"can (i|we|claude)|is it possible|feasible": (
-        "/cs", "Use `/cs` for quick feasibility and advisability check"
+        "/cs",
+        "Use `/cs` for quick feasibility and advisability check",
     ),
     # Memory/recall
     r"remember|previous|earlier|last (time|session)|we discussed": (
-        "/recall", "Use `/recall <topic>` to search past session context"
+        "/recall",
+        "Use `/recall <topic>` to search past session context",
     ),
     # Improvement
     r"improve|better|optimize|enhance|refactor": (
-        "/better", "Use `/better <target>` to identify concrete improvements"
+        "/better",
+        "Use `/better <target>` to identify concrete improvements",
     ),
     # Completeness
     r"missing|incomplete|stub|todo|gap|finish": (
-        "/void", "Use `/void <file>` to find stubs, missing CRUD, and gaps"
+        "/void",
+        "Use `/void <file>` to find stubs, missing CRUD, and gaps",
     ),
     # Research/docs
     r"documentation|docs|api|how does .* work": (
-        "/research", "Use `/research` for live web search via Tavily"
+        "/research",
+        "Use `/research` for live web search via Tavily",
     ),
     # System info
     r"system|cpu|memory|disk|wsl|service": (
-        "/sysinfo", "Use `/sysinfo` for WSL2 system health (CPU/mem/disk/services)"
+        "/sysinfo",
+        "Use `/sysinfo` for WSL2 system health (CPU/mem/disk/services)",
     ),
     # Skeptical review
     r"risk|fail|wrong|problem with|issue with|flaw": (
-        "/skeptic", "Use `/skeptic` for hostile review - finds ways things will fail"
+        "/skeptic",
+        "Use `/skeptic` for hostile review - finds ways things will fail",
     ),
 }
 
@@ -106,7 +125,8 @@ def _parse_commands() -> dict:
     # Get latest mtime
     try:
         latest_mtime = max(
-            f.stat().st_mtime for f in _COMMANDS_DIR.glob("*.md")
+            f.stat().st_mtime
+            for f in _COMMANDS_DIR.glob("*.md")
             if not f.name.startswith("README")
         )
     except ValueError:
@@ -126,8 +146,8 @@ def _parse_commands() -> dict:
             name = cmd_file.stem
 
             # Parse frontmatter
-            desc_match = re.search(r'^description:\s*(.+)$', content, re.MULTILINE)
-            hint_match = re.search(r'^argument-hint:\s*(.*)$', content, re.MULTILINE)
+            desc_match = re.search(r"^description:\s*(.+)$", content, re.MULTILINE)
+            hint_match = re.search(r"^argument-hint:\s*(.*)$", content, re.MULTILINE)
 
             commands[name] = {
                 "name": f"/{name}",

@@ -13,6 +13,7 @@ Handles:
 - Dynamic persona recruitment
 - Multi-round deliberation loop
 """
+
 import re
 import json
 import subprocess
@@ -55,7 +56,7 @@ class ConvergenceDetector:
                 "converged": False,
                 "agreement_ratio": 0.0,
                 "dominant_verdict": None,
-                "reason": "No valid verdicts"
+                "reason": "No valid verdicts",
             }
 
         # Calculate conviction-weighted scores
@@ -88,30 +89,28 @@ class ConvergenceDetector:
             agreement_ratio = count / len(verdicts)
         else:
             # Find dominant verdict by weighted score
-            most_common_verdict = max(weighted_scores.keys(), key=lambda v: weighted_scores[v])
+            most_common_verdict = max(
+                weighted_scores.keys(), key=lambda v: weighted_scores[v]
+            )
             agreement_ratio = weighted_scores[most_common_verdict] / total_weight
 
         # Detect low-conviction stalemate (bikeshedding)
-        avg_conviction = sum(p.get("conviction", 50) for p in round_outputs) / len(round_outputs)
+        avg_conviction = sum(p.get("conviction", 50) for p in round_outputs) / len(
+            round_outputs
+        )
         has_low_conviction_stalemate = (
-            agreement_ratio < 0.60 and  # Low agreement
-            avg_conviction < 60  # Low average conviction
+            agreement_ratio < 0.60  # Low agreement
+            and avg_conviction < 60  # Low average conviction
         )
 
         # Check for new information requests
-        has_new_requests = any(
-            len(p.get("info_needed", [])) > 0 for p in round_outputs
-        )
+        has_new_requests = any(len(p.get("info_needed", [])) > 0 for p in round_outputs)
 
         # Check for escalations
-        has_escalations = any(
-            p.get("escalate_to") is not None for p in round_outputs
-        )
+        has_escalations = any(p.get("escalate_to") is not None for p in round_outputs)
 
         # Check for recruitment requests
-        has_recruitments = any(
-            p.get("recruits") is not None for p in round_outputs
-        )
+        has_recruitments = any(p.get("recruits") is not None for p in round_outputs)
 
         # Convergence criteria:
         # 1. Agreement threshold met (via weighted voting)
@@ -120,11 +119,11 @@ class ConvergenceDetector:
         # 4. No new recruitment requests
         # 5. NOT a low-conviction stalemate (bikeshedding)
         converged = (
-            agreement_ratio >= self.threshold and
-            not has_new_requests and
-            not has_escalations and
-            not has_recruitments and
-            not has_low_conviction_stalemate
+            agreement_ratio >= self.threshold
+            and not has_new_requests
+            and not has_escalations
+            and not has_recruitments
+            and not has_low_conviction_stalemate
         )
 
         return {
@@ -138,21 +137,35 @@ class ConvergenceDetector:
             "has_low_conviction_stalemate": has_low_conviction_stalemate,
             "avg_conviction": avg_conviction,
             "reason": self._get_convergence_reason(
-                converged, agreement_ratio, has_new_requests,
-                has_escalations, has_recruitments, has_low_conviction_stalemate
-            )
+                converged,
+                agreement_ratio,
+                has_new_requests,
+                has_escalations,
+                has_recruitments,
+                has_low_conviction_stalemate,
+            ),
         }
 
     def _get_convergence_reason(
-        self, converged, ratio, requests, escalations, recruitments, low_conviction_stalemate=False
+        self,
+        converged,
+        ratio,
+        requests,
+        escalations,
+        recruitments,
+        low_conviction_stalemate=False,
     ) -> str:
         """Get human-readable convergence status"""
         if converged:
-            return f"Converged: {ratio*100:.0f}% weighted agreement, no pending requests"
+            return (
+                f"Converged: {ratio * 100:.0f}% weighted agreement, no pending requests"
+            )
 
         reasons = []
         if ratio < self.threshold:
-            reasons.append(f"Weighted agreement {ratio*100:.0f}% < {self.threshold*100:.0f}%")
+            reasons.append(
+                f"Weighted agreement {ratio * 100:.0f}% < {self.threshold * 100:.0f}%"
+            )
         if requests:
             reasons.append("New information requests pending")
         if escalations:
@@ -170,7 +183,15 @@ class InformationGatherer:
 
     def __init__(self, project_root: Path, file_patterns: List[str] = None):
         self.project_root = project_root
-        self.file_patterns = file_patterns or ["*.py", "*.js", "*.ts", "*.tsx", "*.go", "*.rs", "*.md"]
+        self.file_patterns = file_patterns or [
+            "*.py",
+            "*.js",
+            "*.ts",
+            "*.tsx",
+            "*.go",
+            "*.rs",
+            "*.md",
+        ]
 
     def gather_all_requests(
         self, round_outputs: List[Dict]
@@ -187,13 +208,15 @@ class InformationGatherer:
         for persona_output in round_outputs:
             persona_name = persona_output["persona_name"]
             for item in persona_output.get("info_needed", []):
-                all_requests.append({
-                    "id": f"{persona_name}_{len(all_requests)}",
-                    "requested_by": persona_name,
-                    "description": item,
-                    "priority": self._extract_priority(item),
-                    "type": self._classify_request(item)
-                })
+                all_requests.append(
+                    {
+                        "id": f"{persona_name}_{len(all_requests)}",
+                        "requested_by": persona_name,
+                        "description": item,
+                        "priority": self._extract_priority(item),
+                        "type": self._classify_request(item),
+                    }
+                )
 
         # Try to gather each request
         gathered = []
@@ -203,11 +226,9 @@ class InformationGatherer:
             result = self._attempt_gather(req)
 
             if result["success"]:
-                gathered.append({
-                    "request": req,
-                    "data": result["data"],
-                    "source": result["source"]
-                })
+                gathered.append(
+                    {"request": req, "data": result["data"], "source": result["source"]}
+                )
             else:
                 missing.append(req)
 
@@ -226,7 +247,10 @@ class InformationGatherer:
         if any(kw in item_lower for kw in ["team", "members", "people", "who"]):
             return "user_question"
 
-        if any(kw in item_lower for kw in ["current", "metrics", "volume", "latency", "p95"]):
+        if any(
+            kw in item_lower
+            for kw in ["current", "metrics", "volume", "latency", "p95"]
+        ):
             return "metrics"
 
         if any(kw in item_lower for kw in ["file", "code", "implementation", "uses"]):
@@ -260,7 +284,7 @@ class InformationGatherer:
         # Look for quoted terms or capitalized words
         terms = re.findall(r'"([^"]+)"', description)
         if not terms:
-            terms = re.findall(r'\b[A-Z][a-zA-Z]+\b', description)
+            terms = re.findall(r"\b[A-Z][a-zA-Z]+\b", description)
 
         if not terms:
             return {"success": False, "reason": "Could not extract search terms"}
@@ -274,10 +298,12 @@ class InformationGatherer:
                     glob_args.extend(["--glob", pattern])
 
                 result = subprocess.run(
-                    ["rg", "-i", "--max-count", "10"] + glob_args + [term, str(self.project_root)],
+                    ["rg", "-i", "--max-count", "10"]
+                    + glob_args
+                    + [term, str(self.project_root)],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
                 )
 
                 if result.returncode == 0 and result.stdout.strip():
@@ -286,7 +312,7 @@ class InformationGatherer:
                     return {
                         "success": True,
                         "data": "\n".join(lines),
-                        "source": f"codebase search for '{term}'"
+                        "source": f"codebase search for '{term}'",
                     }
             except Exception:
                 continue
@@ -312,11 +338,13 @@ class InformationGatherer:
 
                     # Check if digest mentions relevant terms
                     summary = data.get("summary", "").lower()
-                    if any(term in summary for term in ["metric", "performance", "latency"]):
+                    if any(
+                        term in summary for term in ["metric", "performance", "latency"]
+                    ):
                         return {
                             "success": True,
                             "data": data.get("summary", "No summary"),
-                            "source": f"session {digest_file.stem}"
+                            "source": f"session {digest_file.stem}",
                         }
                 except Exception:
                     continue
@@ -374,7 +402,7 @@ def build_round_context(
     proposal: str,
     round_history: List[Dict],
     persona_key: str,
-    enriched_context: str = ""
+    enriched_context: str = "",
 ) -> str:
     """
     Build context for persona in round N.
@@ -438,11 +466,11 @@ def build_round_context(
     parts.append("Consider all perspectives above. You may:")
     parts.append("- Maintain your position (if reasoning still holds)")
     parts.append("- Change your position (use CHANGED_POSITION field)")
-    parts.append("- Agree/disagree with specific personas (use AGREES_WITH/DISAGREES_WITH)")
+    parts.append(
+        "- Agree/disagree with specific personas (use AGREES_WITH/DISAGREES_WITH)"
+    )
     parts.append("- Request additional information (use INFO_NEEDED)")
     parts.append("- Recruit new personas if needed (use RECRUITS)")
     parts.append("")
 
     return "\n".join(parts)
-
-

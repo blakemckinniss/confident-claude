@@ -5,8 +5,8 @@ Hook Registry: Auto-discovery and validation of Claude Code hooks.
 Scans .claude/hooks/ directory, validates each hook, and maintains registry.
 Used by test suite and monitoring systems.
 """
+
 import json
-import subprocess
 import ast
 import sys
 from pathlib import Path
@@ -60,95 +60,117 @@ class HookRegistry:
             "filename": hook_path.name,
             "event_type": self._infer_event_type(hook_path),
             "last_scan": datetime.now().isoformat(),
-            "health": self.validate_hook(hook_path)
+            "health": self.validate_hook(hook_path),
         }
 
         # Extract docstring
         try:
-            with open(hook_path, 'r') as f:
+            with open(hook_path, "r") as f:
                 content = f.read()
                 tree = ast.parse(content)
                 docstring = ast.get_docstring(tree)
                 if docstring:
                     # First line only
-                    metadata["description"] = docstring.split('\n')[0].strip()
+                    metadata["description"] = docstring.split("\n")[0].strip()
         except Exception:
             pass
 
         return metadata
 
-    def _infer_event_type(self, hook_path: Path) -> Optional[str]:
-        """
-        Infer event type from hook content or settings.json.
+    def _match_hook_in_group(self, matcher_group, hook_name: str) -> bool:
+        """Check if hook matches a single matcher group."""
+        if isinstance(matcher_group, str):
+            return hook_name in matcher_group
+        if not isinstance(matcher_group, dict):
+            return False
+        # Check nested hooks array
+        if "hooks" in matcher_group:
+            for entry in matcher_group["hooks"]:
+                if isinstance(entry, dict) and hook_name in entry.get("command", ""):
+                    return True
+        # Check direct file reference
+        return hook_name in matcher_group.get("file", "")
 
-        Priority:
-        1. Check settings.json hook configuration
-        2. Parse hook file for event type hints
-        3. Return None if unclear
-        """
-        # Try reading settings.json
+    def _infer_from_settings(self, hook_path: Path) -> Optional[str]:
+        """Check settings.json for hook event type."""
         settings_path = self.project_root / ".claude" / "settings.json"
-        if settings_path.exists():
-            try:
-                with open(settings_path, 'r') as f:
-                    settings = json.load(f)
-                    hooks_config = settings.get("hooks", {})
-
-                    # Search all event types for this hook
-                    for event_type, hook_list in hooks_config.items():
-                        if isinstance(hook_list, list):
-                            for matcher_group in hook_list:
-                                # Handle nested hook arrays (matcher groups)
-                                if isinstance(matcher_group, dict) and 'hooks' in matcher_group:
-                                    for hook_entry in matcher_group['hooks']:
-                                        if isinstance(hook_entry, dict):
-                                            command = hook_entry.get('command', '')
-                                            if hook_path.name in command:
-                                                return event_type
-                                # Handle direct hook entries (legacy)
-                                elif isinstance(matcher_group, dict):
-                                    hook_file = matcher_group.get("file", "")
-                                    if hook_path.name in hook_file:
-                                        return event_type
-                                # Handle string paths
-                                elif isinstance(matcher_group, str) and hook_path.name in matcher_group:
-                                    return event_type
-            except Exception:
-                pass
-
-        # Fallback: check hook content for hints
+        if not settings_path.exists():
+            return None
         try:
-            with open(hook_path, 'r') as f:
-                content = f.read()
-
-                # Look for event type in comments or docstrings
-                if "SessionStart" in content:
-                    return "SessionStart"
-                elif "UserPromptSubmit" in content:
-                    return "UserPromptSubmit"
-                elif "PostToolUse" in content:
-                    return "PostToolUse"
-                elif "PreToolUse" in content:
-                    return "PreToolUse"
-                elif "SessionEnd" in content:
-                    return "SessionEnd"
+            with open(settings_path, "r") as f:
+                hooks_config = json.load(f).get("hooks", {})
+            for event_type, hook_list in hooks_config.items():
+                if not isinstance(hook_list, list):
+                    continue
+                for matcher_group in hook_list:
+                    if self._match_hook_in_group(matcher_group, hook_path.name):
+                        return event_type
         except Exception:
             pass
-
         return None
+
+    def _infer_from_content(self, hook_path: Path) -> Optional[str]:
+        """Infer event type from hook file content."""
+        event_hints = (
+            "SessionStart",
+            "UserPromptSubmit",
+            "PostToolUse",
+            "PreToolUse",
+            "SessionEnd",
+        )
+        try:
+            content = hook_path.read_text()
+            for event in event_hints:
+                if event in content:
+                    return event
+        except Exception:
+            pass
+        return None
+
+    def _infer_event_type(self, hook_path: Path) -> Optional[str]:
+        """Infer event type from hook content or settings.json."""
+        return self._infer_from_settings(hook_path) or self._infer_from_content(
+            hook_path
+        )
+
+    def _check_hook_syntax(self, hook_path: Path, health: dict) -> Optional[str]:
+        """Check syntax and return content if valid, None otherwise."""
+        try:
+            with open(hook_path, "r") as f:
+                content = f.read()
+            ast.parse(content)
+            health["syntax_valid"] = True
+            health["imports_valid"] = True  # AST parse validates this
+            return content
+        except SyntaxError as e:
+            health["errors"].append(f"Syntax error: {e}")
+        except Exception as e:
+            health["errors"].append(f"Syntax check failed: {e}")
+        return None
+
+    def _check_hook_structure(self, content: str, health: dict):
+        """Check for main function and proper return."""
+        try:
+            tree = ast.parse(content)
+            health["has_main"] = any(
+                isinstance(n, ast.FunctionDef) and n.name == "main"
+                for n in ast.walk(tree)
+            )
+            if health["has_main"]:
+                health["has_proper_return"] = (
+                    "hookSpecificOutput" in content or "return {" in content
+                )
+        except Exception as e:
+            health["errors"].append(f"Structure check failed: {e}")
 
     def validate_hook(self, hook_path: Path) -> dict:
         """
         Validate hook health: syntax, imports, structure.
 
         Performance: Caches results by file mtime to avoid repeated subprocess spawns.
-
-        Returns:
-            Dict with validation results
         """
         global _VALIDATION_CACHE
 
-        # Check cache first
         cache_key = str(hook_path)
         try:
             file_mtime = hook_path.stat().st_mtime
@@ -164,45 +186,12 @@ class HookRegistry:
             "imports_valid": False,
             "has_main": False,
             "has_proper_return": False,
-            "errors": []
+            "errors": [],
         }
 
-        # 1. Syntax check - use ast.parse instead of subprocess (much faster)
-        try:
-            with open(hook_path, 'r') as f:
-                content = f.read()
-            ast.parse(content)
-            health["syntax_valid"] = True
-        except SyntaxError as e:
-            health["errors"].append(f"Syntax error: {e}")
-        except Exception as e:
-            health["errors"].append(f"Syntax check failed: {e}")
-
-        if not health["syntax_valid"]:
-            _VALIDATION_CACHE[cache_key] = (file_mtime, health)
-            return health
-
-        # 2. Import check - skip subprocess, just verify AST parsed
-        # The ast.parse above already validates syntax and structure
-        health["imports_valid"] = True
-
-        # 3. Structure check (has main function)
-        try:
-            tree = ast.parse(content)
-
-            # Check for main() function
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef) and node.name == "main":
-                    health["has_main"] = True
-                    break
-
-            # Check for proper return statement in main
-            if health["has_main"]:
-                # Look for return with dict/hookSpecificOutput
-                if "hookSpecificOutput" in content or "return {" in content:
-                    health["has_proper_return"] = True
-        except Exception as e:
-            health["errors"].append(f"Structure check failed: {e}")
+        content = self._check_hook_syntax(hook_path, health)
+        if content:
+            self._check_hook_structure(content, health)
 
         # Cache result
         _VALIDATION_CACHE[cache_key] = (file_mtime, health)
@@ -238,13 +227,13 @@ class HookRegistry:
                 "last_updated": datetime.now().isoformat(),
                 "total_hooks": len(hooks),
                 "hooks": hooks,
-                "by_event_type": self.categorize_by_event(hooks)
+                "by_event_type": self.categorize_by_event(hooks),
             }
 
             # Ensure directory exists
             self.registry_path.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(self.registry_path, 'w') as f:
+            with open(self.registry_path, "w") as f:
                 json.dump(registry, f, indent=2)
 
             return True
@@ -260,7 +249,7 @@ class HookRegistry:
             return None
 
         try:
-            with open(self.registry_path, 'r') as f:
+            with open(self.registry_path, "r") as f:
                 return json.load(f)
         except Exception:
             return None
@@ -304,7 +293,5 @@ class HookRegistry:
             "warnings": warnings,
             "failing": failing,
             "failed_hooks": failed_hooks,
-            "warned_hooks": warned_hooks
+            "warned_hooks": warned_hooks,
         }
-
-

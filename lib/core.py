@@ -3,6 +3,7 @@
 Whitebox SDK Core Library
 Shared utilities for all scripts in the arsenal.
 """
+
 import argparse
 import logging
 import os
@@ -44,6 +45,7 @@ def load_config() -> dict:
     Returns cached config dict. Falls back to empty dict if file missing.
     """
     import json
+
     config_path = get_project_root() / ".claude" / "config" / "enforcement.json"
     try:
         with open(config_path) as f:

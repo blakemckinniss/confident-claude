@@ -54,6 +54,25 @@ All 4 hook runners refactored for maintainability:
 
 **Result:** 21 → 0 C901 violations, avg complexity B (7.25)
 
+### Lib Files Complexity (Dec 2025)
+
+Key lib files refactored for maintainability:
+
+| File | Functions Refactored | Before | After |
+|------|---------------------|--------|-------|
+| `context_builder.py` | 4 (`find_related_sessions`, `format_context`, `build_council_context`) | C (13-20) | A-B (5-9) |
+| `confidence.py` | 1 (`check_tool_permission`) | C (19) | B (8) |
+| `hook_registry.py` | 2 (`_infer_from_settings`, `validate_hook`) | C (11-15) | A-B (5-7) |
+| `ast_analysis.py` | 1 (`_check_attribute_call`) | C (13) | B (7) |
+
+**Patterns applied:**
+- Helper extraction (`_load_session_digests()`, `_score_digest()`, `_format_*_section()`)
+- Module-level frozensets (`_ALWAYS_ALLOWED_TOOLS`, `_WRITE_TOOLS`)
+- Data-driven tuples (`_JS_FRAMEWORKS`, `_PY_FRAMEWORKS`)
+- Early returns to flatten nesting
+
+**Result:** Overall lib complexity A (4.49 avg), 29 C901 violations remaining (down from ~50+)
+
 ---
 
 ## 🔒 Security Gates

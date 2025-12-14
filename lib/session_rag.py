@@ -61,7 +61,7 @@ def _parse_session_file(filepath: Path) -> list[dict]:
             if cached_mtime == mtime:
                 return cached_records
 
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -76,12 +76,16 @@ def _parse_session_file(filepath: Path) -> list[dict]:
 
                     text = _extract_text_from_message(record)
                     if text and len(text) > 50:  # Skip trivial messages
-                        records.append({
-                            "text": text,
-                            "role": record.get("message", {}).get("role", "unknown"),
-                            "timestamp": record.get("timestamp", ""),
-                            "session_id": record.get("sessionId", filepath.stem),
-                        })
+                        records.append(
+                            {
+                                "text": text,
+                                "role": record.get("message", {}).get(
+                                    "role", "unknown"
+                                ),
+                                "timestamp": record.get("timestamp", ""),
+                                "session_id": record.get("sessionId", filepath.stem),
+                            }
+                        )
                 except json.JSONDecodeError:
                     continue
 
@@ -128,13 +132,32 @@ def _build_index(max_files: int = 20) -> dict:
             # Extract keywords (simple tokenization)
             text = rec["text"].lower()
             # Remove common noise
-            text = re.sub(r'[^\w\s]', ' ', text)
+            text = re.sub(r"[^\w\s]", " ", text)
             words = set(text.split())
 
             # Filter: 4+ chars, not stopwords
-            stopwords = {'this', 'that', 'with', 'from', 'have', 'been', 'will',
-                        'would', 'could', 'should', 'their', 'there', 'they',
-                        'what', 'when', 'where', 'which', 'were', 'your', 'about'}
+            stopwords = {
+                "this",
+                "that",
+                "with",
+                "from",
+                "have",
+                "been",
+                "will",
+                "would",
+                "could",
+                "should",
+                "their",
+                "there",
+                "they",
+                "what",
+                "when",
+                "where",
+                "which",
+                "were",
+                "your",
+                "about",
+            }
             keywords = [w for w in words if len(w) >= 4 and w not in stopwords]
 
             excerpt = {
@@ -174,7 +197,7 @@ def search_sessions(query: str, max_results: int = 5) -> list[dict]:
 
     # Extract query keywords
     query_lower = query.lower()
-    query_words = re.sub(r'[^\w\s]', ' ', query_lower).split()
+    query_words = re.sub(r"[^\w\s]", " ", query_lower).split()
     query_keywords = [w for w in query_words if len(w) >= 3]
 
     if not query_keywords:
@@ -249,5 +272,5 @@ if __name__ == "__main__":
             print(f"Found {len(results)} results for: {query}\n")
             for i, r in enumerate(results, 1):
                 print(f"--- [{i}] {r['role']} @ {r['timestamp'][:10]} ---")
-                print(r['text'][:300])
+                print(r["text"][:300])
                 print()

@@ -76,7 +76,7 @@ def query_lessons(keywords: list[str], max_results: int = 3) -> list[str]:
         lines = _LESSONS_CACHE[1]
     else:
         try:
-            lines = LESSONS_FILE.read_text().split('\n')
+            lines = LESSONS_FILE.read_text().split("\n")
             _LESSONS_CACHE = (file_mtime, lines)
         except (IOError, OSError):
             return []
@@ -121,6 +121,7 @@ def query_session_history(query: str, max_results: int = 2) -> list[str]:
     if _SESSION_RAG_AVAILABLE is None:
         try:
             import session_rag
+
             _SESSION_RAG_AVAILABLE = True
         except ImportError:
             _SESSION_RAG_AVAILABLE = False
@@ -130,6 +131,7 @@ def query_session_history(query: str, max_results: int = 2) -> list[str]:
 
     try:
         import session_rag
+
         results = session_rag.search_sessions(query, max_results=max_results)
 
         # Format as concise strings
@@ -146,8 +148,9 @@ def query_session_history(query: str, max_results: int = 2) -> list[str]:
         return []
 
 
-def fire_synapses(prompt: str, include_constraints: bool = True,
-                   include_session_history: bool = True) -> dict:
+def fire_synapses(
+    prompt: str, include_constraints: bool = True, include_session_history: bool = True
+) -> dict:
     """
     Core synapse firing logic - returns associations and memories.
 
@@ -211,10 +214,10 @@ def fire_synapses(prompt: str, include_constraints: bool = True,
             constraint = random.choice(random_constraints)
 
     has_content = (
-        len(associations) > 0 or
-        len(memories) > 0 or
-        len(session_history) > 0 or
-        constraint is not None
+        len(associations) > 0
+        or len(memories) > 0
+        or len(session_history) > 0
+        or constraint is not None
     )
 
     return {
@@ -237,6 +240,7 @@ def invalidate_cache():
     if _SESSION_RAG_AVAILABLE:
         try:
             import session_rag
+
             session_rag.invalidate_cache()
         except Exception:
             pass

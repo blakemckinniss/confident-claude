@@ -91,31 +91,31 @@ HISTORICAL_PATTERNS: Dict[str, Dict] = {
     r"websocket|socket\.io|realtime|ws://": {
         "count": 3,
         "message": "**HISTORICAL:** You forgot heartbeat/ping 3x before.\n"
-                   "Add keepalive with 30s interval. Connections die silently without it.",
-        "time_saved": "~2 hours"
+        "Add keepalive with 30s interval. Connections die silently without it.",
+        "time_saved": "~2 hours",
     },
     r"mock|unittest\.mock|@patch": {
         "count": 2,
         "message": "**HISTORICAL:** Over-mocking broke tests 2x.\n"
-                   "Mock at BOUNDARIES only (APIs, DB, filesystem).",
-        "time_saved": "~1 hour"
+        "Mock at BOUNDARIES only (APIs, DB, filesystem).",
+        "time_saved": "~1 hour",
     },
     r"async.*except|try.*await|asyncio": {
         "count": 2,
         "message": "**HISTORICAL:** Async error handling forgotten 2x.\n"
-                   "Wrap await calls in try/except.",
-        "time_saved": "~30 min"
+        "Wrap await calls in try/except.",
+        "time_saved": "~30 min",
     },
     r"subprocess|os\.system|shell=True": {
         "count": 2,
         "message": "**HISTORICAL:** Shell injection risk.\n"
-                   "Use shell=False with list args. Sanitize all user input.",
-        "time_saved": "security"
+        "Use shell=False with list args. Sanitize all user input.",
+        "time_saved": "security",
     },
     r"\.env|environ|getenv.*api.*key": {
         "count": 1,
         "message": "**REMINDER:** Check .env.example exists and secrets aren't committed.",
-        "time_saved": "~15 min"
+        "time_saved": "~15 min",
     },
 }
 
@@ -127,12 +127,14 @@ def check_historical_patterns(text: str) -> List[Directive]:
 
     for pattern, data in HISTORICAL_PATTERNS.items():
         if re.search(pattern, text_lower, re.IGNORECASE):
-            directives.append(Directive(
-                strength=DirectiveStrength.WARN,
-                category="historical",
-                message=data["message"],
-                time_saved=data["time_saved"]
-            ))
+            directives.append(
+                Directive(
+                    strength=DirectiveStrength.WARN,
+                    category="historical",
+                    message=data["message"],
+                    time_saved=data["time_saved"],
+                )
+            )
 
     return directives
 
@@ -152,7 +154,12 @@ ERROR_PATTERNS = [
     (r"Traceback \(most recent call last\)", "traceback", 0.7, ["error", "traceback"]),
     (r"AssertionError", "assertion_error", 0.9, ["assert", "test"]),
     (r"PermissionError|EACCES", "permission_error", 0.9, ["permission", "access"]),
-    (r"ConnectionError|ConnectionRefused", "connection_error", 0.85, ["connection", "network"]),
+    (
+        r"ConnectionError|ConnectionRefused",
+        "connection_error",
+        0.85,
+        ["connection", "network"],
+    ),
 ]
 
 
@@ -193,17 +200,14 @@ def estimate_tokens(text: str) -> int:
 
 def score_association(text: str, source: str, match_strength: float = 0.5) -> float:
     """Score an association by relevance."""
-    source_scores = {
-        "error": 0.9,
-        "pattern": 0.7,
-        "memory": 0.5,
-        "constraint": 0.3
-    }
+    source_scores = {"error": 0.9, "pattern": 0.7, "memory": 0.5, "constraint": 0.3}
     base = source_scores.get(source, 0.5)
 
     # Boost for actionable keywords
     boost = 0.0
-    if any(kw in text for kw in ["Tool:", "Pattern:", "Action:", "DANGER:", "Protocol:"]):
+    if any(
+        kw in text for kw in ["Tool:", "Pattern:", "Action:", "DANGER:", "Protocol:"]
+    ):
         boost += 0.1
     if "Lesson:" in text:
         boost += 0.1
@@ -214,8 +218,7 @@ def score_association(text: str, source: str, match_strength: float = 0.5) -> fl
 
 
 def budget_associations(
-    associations: List[ScoredAssociation],
-    max_tokens: int = MAX_CONTEXT_TOKENS
+    associations: List[ScoredAssociation], max_tokens: int = MAX_CONTEXT_TOKENS
 ) -> List[ScoredAssociation]:
     """Select associations within token budget."""
     sorted_assocs = sorted(associations)
@@ -300,7 +303,7 @@ def validate_file_path(file_path: str) -> bool:
     """Block path traversal attacks."""
     if not file_path:
         return True
-    if '..' in file_path:
+    if ".." in file_path:
         return False
     return True
 
@@ -309,17 +312,31 @@ def validate_file_path(file_path: str) -> bool:
 _THINKING_BLOCKS_CACHE: Dict[tuple, List[str]] = {}
 
 
+def _extract_thinking_from_entry(entry: dict) -> List[str]:
+    """Extract thinking text from a transcript entry."""
+    if entry.get("type") != "assistant":
+        return []
+    blocks = entry.get("message", {}).get("content", [])
+    if not isinstance(blocks, list):
+        return []
+    return [
+        b.get("thinking", "")
+        for b in blocks
+        if isinstance(b, dict)
+        and b.get("type") == "thinking"
+        and len(b.get("thinking", "")) > 50
+    ]
+
+
 def extract_thinking_blocks(transcript_path: str, max_bytes: int = 15000) -> List[str]:
-    """Extract thinking blocks from transcript JSONL.
-
-    Performance: Caches by (path, file_size) to avoid repeated parsing.
-    """
-    if not transcript_path or not validate_file_path(transcript_path):
+    """Extract thinking blocks from transcript JSONL."""
+    if (
+        not transcript_path
+        or not validate_file_path(transcript_path)
+        or not os.path.exists(transcript_path)
+    ):
         return []
-    if not os.path.exists(transcript_path):
-        return []
 
-    # Check cache by file size (transcript only grows)
     try:
         file_size = os.path.getsize(transcript_path)
     except OSError:
@@ -331,29 +348,19 @@ def extract_thinking_blocks(transcript_path: str, max_bytes: int = 15000) -> Lis
 
     thinking_blocks = []
     try:
-        with open(transcript_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(transcript_path, "r", encoding="utf-8", errors="replace") as f:
             f.seek(max(0, file_size - max_bytes))
             content = f.read()
 
-        for line in content.split('\n'):
+        for line in content.split("\n"):
             if not line.strip():
                 continue
             try:
-                entry = json.loads(line)
-                if entry.get("type") != "assistant":
-                    continue
-                message = entry.get("message", {})
-                content_blocks = message.get("content", [])
-                if isinstance(content_blocks, list):
-                    for block in content_blocks:
-                        if isinstance(block, dict) and block.get("type") == "thinking":
-                            thinking = block.get("thinking", "")
-                            if thinking and len(thinking) > 50:
-                                thinking_blocks.append(thinking)
+                thinking_blocks.extend(_extract_thinking_from_entry(json.loads(line)))
             except json.JSONDecodeError:
                 continue
 
-        result = thinking_blocks[-3:]  # Last 3 thinking blocks
+        result = thinking_blocks[-3:]
         _THINKING_BLOCKS_CACHE[cache_key] = result
         return result
     except (IOError, OSError):
@@ -366,7 +373,7 @@ def check_sudo_in_transcript(transcript_path: str, lookback: int = 3000) -> bool
         return False
     try:
         if os.path.exists(transcript_path):
-            with open(transcript_path, encoding='utf-8', errors='replace') as f:
+            with open(transcript_path, encoding="utf-8", errors="replace") as f:
                 f.seek(0, 2)
                 f.seek(max(0, f.tell() - lookback))
                 return "SUDO" in f.read()
@@ -383,7 +390,7 @@ def extract_recent_text(transcript_path: str, max_chars: int = 8000) -> str:
         return ""
 
     try:
-        with open(transcript_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(transcript_path, "r", encoding="utf-8", errors="replace") as f:
             f.seek(0, 2)
             f.seek(max(0, f.tell() - max_chars))
             chunk = f.read()
@@ -391,16 +398,16 @@ def extract_recent_text(transcript_path: str, max_chars: int = 8000) -> str:
         thoughts = []
         current_block = []
 
-        for line in chunk.split('\n'):
+        for line in chunk.split("\n"):
             # Skip tool results and user messages
-            if '<' in line or 'tool_result' in line.lower():
+            if "<" in line or "tool_result" in line.lower():
                 if current_block:
-                    thoughts.append(' '.join(current_block))
+                    thoughts.append(" ".join(current_block))
                     current_block = []
                 continue
-            if line.strip().startswith(('Human:', 'user:')):
+            if line.strip().startswith(("Human:", "user:")):
                 if current_block:
-                    thoughts.append(' '.join(current_block))
+                    thoughts.append(" ".join(current_block))
                     current_block = []
                 continue
 
@@ -409,9 +416,9 @@ def extract_recent_text(transcript_path: str, max_chars: int = 8000) -> str:
                 current_block.append(stripped)
 
         if current_block:
-            thoughts.append(' '.join(current_block))
+            thoughts.append(" ".join(current_block))
 
-        return ' '.join(thoughts[-3:])[:2000]
+        return " ".join(thoughts[-3:])[:2000]
     except (IOError, OSError):
         return ""
 
@@ -421,7 +428,9 @@ def extract_recent_text(transcript_path: str, max_chars: int = 8000) -> str:
 # =============================================================================
 
 
-def log_block(hook_name: str, reason: str, tool_name: str = "", tool_input: dict = None):
+def log_block(
+    hook_name: str, reason: str, tool_name: str = "", tool_input: dict = None
+):
     """Log a hook block for later reflection.
 
     Blocks are logged to .claude/memory/block_log.jsonl with metadata
@@ -484,12 +493,15 @@ def clear_acknowledged_block(hook_name: str, session_id: str = None):
                 try:
                     entry = json.loads(line.strip())
                     # Keep if different session or different hook
-                    if entry.get("session_id") != session_id or entry.get("hook") != hook_name:
+                    if (
+                        entry.get("session_id") != session_id
+                        or entry.get("hook") != hook_name
+                    ):
                         remaining.append(line)
                 except json.JSONDecodeError:
                     remaining.append(line)
 
-        with open(log_file, 'w') as f:
+        with open(log_file, "w") as f:
             f.writelines(remaining)
     except (IOError, OSError):
         pass
@@ -552,7 +564,7 @@ def clear_session_blocks(session_id: str = None):
                     remaining.append(line)  # Keep malformed lines
 
         # Write back filtered entries
-        with open(log_file, 'w') as f:
+        with open(log_file, "w") as f:
             f.writelines(remaining)
     except (IOError, OSError):
         pass
@@ -565,7 +577,7 @@ def output_hook_result(
     reason: str = "",
     hook_name: str = "",
     tool_name: str = "",
-    tool_input: dict = None
+    tool_input: dict = None,
 ):
     """Output standardized hook result.
 
@@ -595,7 +607,8 @@ def output_hook_result(
             if not effective_hook and reason:
                 # Try to extract from reason like "**COMMIT BLOCKED**"
                 import re
-                match = re.search(r'\*\*(\w+(?:\s+\w+)?)\s+BLOCKED\*\*', reason)
+
+                match = re.search(r"\*\*(\w+(?:\s+\w+)?)\s+BLOCKED\*\*", reason)
                 if match:
                     effective_hook = match.group(1).lower().replace(" ", "_") + "_gate"
 
