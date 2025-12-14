@@ -104,7 +104,9 @@ def run_hooks(data: dict, state: SessionState) -> dict:
     # Load info gain state from disk (fixes persistence bug - was never persisted)
     if INFO_GAIN_STATE_FILE.exists():
         try:
-            runner_state["info_gain_state"] = json.loads(INFO_GAIN_STATE_FILE.read_text())
+            runner_state["info_gain_state"] = json.loads(
+                INFO_GAIN_STATE_FILE.read_text()
+            )
         except (json.JSONDecodeError, OSError):
             pass
 

@@ -27,12 +27,12 @@ from session_state import SessionState, get_adaptive_threshold, record_threshold
 # Quality scanner (ruff + radon)
 try:
     from _quality_scanner import scan_file as quality_scan_file, format_report
+
     QUALITY_SCANNER_AVAILABLE = True
 except ImportError:
     QUALITY_SCANNER_AVAILABLE = False
     quality_scan_file = None
     format_report = None
-
 
 
 # Assumption detection patterns
@@ -168,7 +168,9 @@ def check_verification_reminder(
     verify_run = getattr(state, "verify_run", False)
 
     if fix_indicators and not verify_run:
-        return HookResult.with_context(f"⚠️ VERIFY REMINDER: {', '.join(fix_indicators)} → run `verify` or tests before claiming fixed")
+        return HookResult.with_context(
+            f"⚠️ VERIFY REMINDER: {', '.join(fix_indicators)} → run `verify` or tests before claiming fixed"
+        )
 
     return HookResult.none()
 
@@ -212,7 +214,9 @@ def check_ui_verification(
     if browser_used:
         return HookResult.none()
 
-    return HookResult.with_context(f"📸 UI VERIFY: {', '.join(indicators[:2])} → `browser page screenshot -o .claude/tmp/ui_check.png`")
+    return HookResult.with_context(
+        f"📸 UI VERIFY: {', '.join(indicators[:2])} → `browser page screenshot -o .claude/tmp/ui_check.png`"
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -632,6 +636,10 @@ def check_large_file(data: dict, state: SessionState, runner_state: dict) -> Hoo
     if not file_path:
         return HookResult.none()
 
+    # Guard against non-dict results
+    if not isinstance(tool_result, dict):
+        return HookResult.none()
+
     # Check if file is large (estimate from output)
     output = tool_result.get("output", "")
     line_count = output.count("\n")
@@ -751,5 +759,3 @@ def check_tool_awareness(
             return HookResult.with_context(config["reminder"])
 
     return HookResult.none()
-
-

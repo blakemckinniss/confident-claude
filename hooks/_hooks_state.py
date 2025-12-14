@@ -218,6 +218,9 @@ def detect_stubs_in_content(content: str) -> list[str]:
 
 def _handle_read_tool(tool_input: dict, result: dict, state: SessionState) -> None:
     """Handle Read tool state updates."""
+    # Guard against non-dict results
+    if not isinstance(result, dict):
+        result = {}
     filepath = tool_input.get("file_path", "")
     read_error = _detect_error_in_result(
         result, keywords=("no such file", "permission denied", "not found")
@@ -384,22 +387,35 @@ def _track_bash_failures(
     command: str, output: str, success: bool, state: SessionState
 ) -> None:
     """Track failures, errors, and self-heal triggers."""
-    approach_sig = f"Bash:{command.split()[0][:20]}" if command.split() else "Bash:unknown"
+    approach_sig = (
+        f"Bash:{command.split()[0][:20]}" if command.split() else "Bash:unknown"
+    )
 
     if not success:
         error_type = _classify_error(output)
         track_error(state, error_type, output[:500])
         track_failure(state, approach_sig)
         if _is_framework_command(command):
-            _trigger_self_heal(state, target=command.split()[0] if command.split() else "bash", error=output[:200])
+            _trigger_self_heal(
+                state,
+                target=command.split()[0] if command.split() else "bash",
+                error=output[:200],
+            )
 
-    if success and getattr(state, "self_heal_required", False) and _is_framework_command(command):
+    if (
+        success
+        and getattr(state, "self_heal_required", False)
+        and _is_framework_command(command)
+    ):
         _clear_self_heal(state)
 
     if success and state.errors_unresolved:
         reset_failures(state)
         for error in state.errors_unresolved[:]:
-            if any(word in command.lower() for word in error.get("type", "").lower().split()):
+            if any(
+                word in command.lower()
+                for word in error.get("type", "").lower().split()
+            ):
                 resolve_error(state, error.get("type", ""))
 
 
@@ -421,6 +437,9 @@ def _track_bash_test_failures(command: str, output: str, state: SessionState) ->
 def _handle_bash_tool(tool_input: dict, result: dict, state: SessionState) -> None:
     """Handle Bash tool state updates. Delegates to specialized trackers."""
     command = tool_input.get("command", "")
+    # Guard against non-dict results (e.g., list from some tool responses)
+    if not isinstance(result, dict):
+        result = {}
     output = result.get("output", "")
     exit_code = result.get("exit_code", 0)
     success = exit_code == 0
@@ -662,7 +681,9 @@ def _track_researched_libraries(tool_name: str, tool_input: dict, state: Session
 
 
 # Decay boost lookup tables
-_PAL_HIGH_BOOST = frozenset(("thinkdeep", "debug", "codereview", "consensus", "precommit"))
+_PAL_HIGH_BOOST = frozenset(
+    ("thinkdeep", "debug", "codereview", "consensus", "precommit")
+)
 _PAL_LOW_BOOST = frozenset(("chat", "challenge", "apilookup"))
 _DECAY_BOOST_FIXED = {
     "AskUserQuestion": (2, "user-clarification"),
@@ -875,9 +896,22 @@ def _build_reducer_context(
         if command:
             activity_parts.append(command[:200])
 
+    # Extract output string from tool_result for confidence increasers
+    # (they expect a string, not dict/list)
+    if isinstance(tool_result, dict):
+        result_str = (
+            tool_result.get("output", "")
+            or tool_result.get("content", "")
+            or str(tool_result)
+        )
+    elif isinstance(tool_result, str):
+        result_str = tool_result
+    else:
+        result_str = str(tool_result) if tool_result else ""
+
     context = {
         "tool_name": tool_name,
-        "tool_result": tool_result,
+        "tool_result": result_str,
         "current_activity": " ".join(activity_parts),
         "prompt": getattr(state, "last_user_prompt", ""),
         "assistant_output": data.get("assistant_output", ""),
@@ -967,7 +1001,9 @@ def _detect_repetition_patterns(
             ctx["git_spam"] = True
 
 
-def _was_file_edited_after(file_path: str, last_read_turn: int, files_edited: list) -> bool:
+def _was_file_edited_after(
+    file_path: str, last_read_turn: int, files_edited: list
+) -> bool:
     """Check if file was edited after a given turn."""
     for entry in files_edited:
         if isinstance(entry, dict):
@@ -986,9 +1022,14 @@ def _detect_time_wasters(
     if tool_name == "Read":
         file_path = tool_input.get("file_path", "")
         files_read = getattr(state, "files_read", {})
+        # Guard: files_read must be dict, not list
+        if not isinstance(files_read, dict):
+            files_read = {}
         if file_path and file_path in files_read:
             last_read_turn = files_read.get(file_path, {}).get("turn", 0)
-            if not _was_file_edited_after(file_path, last_read_turn, getattr(state, "files_edited", [])):
+            if not _was_file_edited_after(
+                file_path, last_read_turn, getattr(state, "files_edited", [])
+            ):
                 ctx["reread_unchanged"] = True
 
     # Huge output dump
@@ -1047,6 +1088,9 @@ def check_confidence_reducer(
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     tool_result = data.get("tool_result", {})
+    # Guard against non-dict results
+    if not isinstance(tool_result, dict):
+        tool_result = {}
 
     # Build context and detect patterns
     context = _build_reducer_context(tool_name, tool_input, tool_result, data, state)
@@ -1105,7 +1149,9 @@ def check_confidence_reducer(
 # -----------------------------------------------------------------------------
 
 
-_RESEARCH_TOOLS = frozenset({"WebSearch", "WebFetch", "mcp__crawl4ai__crawl", "mcp__crawl4ai__search"})
+_RESEARCH_TOOLS = frozenset(
+    {"WebSearch", "WebFetch", "mcp__crawl4ai__crawl", "mcp__crawl4ai__search"}
+)
 _SEARCH_TOOLS = frozenset({"Grep", "Glob", "Task"})
 _DELEGATION_AGENTS = frozenset({"Explore", "scout", "Plan"})
 
@@ -1127,21 +1173,38 @@ def _build_natural_signals(
         _track_researched_libraries(tool_name, tool_input, state)
     elif tool_name in _SEARCH_TOOLS:
         context["search_performed"] = True
-        if tool_name == "Task" and tool_input.get("subagent_type", "") in _DELEGATION_AGENTS:
+        if (
+            tool_name == "Task"
+            and tool_input.get("subagent_type", "") in _DELEGATION_AGENTS
+        ):
             context["subagent_delegation"] = True
     elif tool_name == "AskUserQuestion":
         context["asked_user"] = True
     elif tool_name in {"Edit", "Write"} and (
-        "CLAUDE.md" in file_path or "/rules/" in file_path or "/.claude/rules" in file_path
+        "CLAUDE.md" in file_path
+        or "/rules/" in file_path
+        or "/.claude/rules" in file_path
     ):
         context["rules_updated"] = True
 
 
 _GIT_EXPLORE_CMDS = ("git log", "git diff", "git status", "git show", "git blame")
-_PRODUCTIVE_BASH = tuple(re.compile(p) for p in [
-    r"^ls\b", r"^pwd$", r"^which\b", r"^type\b", r"^file\b",
-    r"^wc\b", r"^du\b", r"^df\b", r"^env\b", r"^tree\b", r"^stat\b",
-])
+_PRODUCTIVE_BASH = tuple(
+    re.compile(p)
+    for p in [
+        r"^ls\b",
+        r"^pwd$",
+        r"^which\b",
+        r"^type\b",
+        r"^file\b",
+        r"^wc\b",
+        r"^du\b",
+        r"^df\b",
+        r"^env\b",
+        r"^tree\b",
+        r"^stat\b",
+    ]
+)
 
 
 def _build_bash_signals(tool_input: dict, data: dict, context: dict) -> None:
@@ -1156,7 +1219,9 @@ def _build_bash_signals(tool_input: dict, data: dict, context: dict) -> None:
         context["bead_created"] = True
     if any(g in command for g in _GIT_EXPLORE_CMDS):
         context["git_explored"] = True
-    if re.match(r"^git\s+(commit|add\s+.*&&\s*git\s+commit)", cmd_stripped) and ("-m" in command or "--message" in command):
+    if re.match(r"^git\s+(commit|add\s+.*&&\s*git\s+commit)", cmd_stripped) and (
+        "-m" in command or "--message" in command
+    ):
         context["git_committed"] = True
     if any(p.match(cmd_stripped) for p in _PRODUCTIVE_BASH):
         context["productive_bash"] = True
@@ -1244,7 +1309,10 @@ def _build_time_saver_signals(
         context["chained_commands"] = True
 
     if tool_name == "Edit":
-        old_s, new_s = tool_input.get("old_string", ""), tool_input.get("new_string", "")
+        old_s, new_s = (
+            tool_input.get("old_string", ""),
+            tool_input.get("new_string", ""),
+        )
         if old_s and new_s and (old_s.count("\n") >= 3 or new_s.count("\n") >= 3):
             context["batch_fix"] = True
 
@@ -1309,10 +1377,20 @@ def check_confidence_increaser(
     tool_result = data.get("tool_result", {})
     tool_input = data.get("tool_input", {})
 
+    # Extract output string from tool_result (confidence increasers expect string)
+    if isinstance(tool_result, dict):
+        result_str = (
+            tool_result.get("output", "") or tool_result.get("content", "") or ""
+        )
+    elif isinstance(tool_result, str):
+        result_str = tool_result
+    else:
+        result_str = str(tool_result) if tool_result else ""
+
     # Build context for increasers
     context = {
         "tool_name": tool_name,
-        "tool_result": tool_result,
+        "tool_result": result_str,
         "assistant_output": data.get("assistant_output", ""),
     }
 
@@ -1455,5 +1533,3 @@ def check_thinking_quality_boost(
         )
 
     return HookResult.none()
-
-
