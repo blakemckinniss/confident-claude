@@ -132,7 +132,8 @@ COMPLETION_PATTERNS = [
 ]
 
 # Confidence threshold for completion claims
-COMPLETION_CONFIDENCE_THRESHOLD = 80  # Stasis floor - healthy operating range
+COMPLETION_CONFIDENCE_THRESHOLD = 70  # Lowered threshold
+COMPLETION_TREND_THRESHOLD = 75  # Below this, must not be declining
 
 
 # =============================================================================
@@ -459,20 +460,29 @@ def check_dismissal(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("completion_gate", priority=45)
 def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
-    """Block completion claims if confidence < 80% (stasis floor).
+    """Block completion claims if confidence < 70%, or < 75% with negative trend.
 
     This prevents lazy completion and reward hacking - Claude must earn
     confidence through actual verification (test pass, build success, user OK)
-    before claiming a task is complete. 80% is the floor of the healthy
-    operating range (80-90%).
+    before claiming a task is complete.
     """
     # Import confidence utilities
     from confidence import get_tier_info, INCREASERS
 
-    # Check current confidence
+    # Check current confidence and trend
     confidence = getattr(state, "confidence", 70)
+    prev_confidence = getattr(state, "completion_gate_prev_confidence", confidence)
+    state.completion_gate_prev_confidence = confidence  # Track for next check
+
+    is_declining = confidence < prev_confidence
+
+    # Pass if above threshold
     if confidence >= COMPLETION_CONFIDENCE_THRESHOLD:
-        return HookResult.ok()
+        # But block if in danger zone (< 75%) AND declining
+        if confidence < COMPLETION_TREND_THRESHOLD and is_declining:
+            pass  # Fall through to block
+        else:
+            return HookResult.ok()
 
     # Scan recent assistant output for completion claims
     transcript_path = data.get("transcript_path", "")
@@ -501,16 +511,19 @@ def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
                         f"  • {inc.name}: {inc.description} (+{inc.delta})"
                     )
 
+            # Determine block reason
+            if confidence < COMPLETION_CONFIDENCE_THRESHOLD:
+                reason = f"below {COMPLETION_CONFIDENCE_THRESHOLD}%"
+            else:
+                reason = f"declining in danger zone (<{COMPLETION_TREND_THRESHOLD}%)"
+
             return HookResult.block(
-                f"🚫 **COMPLETION BLOCKED** - Confidence too low\n\n"
-                f"Current: {emoji} {confidence}% ({tier_name})\n"
-                f"Required: 🟢 {COMPLETION_CONFIDENCE_THRESHOLD}% (stasis floor)\n\n"
-                f"**You cannot claim completion without earning confidence.**\n"
-                f"This prevents lazy completion and reward hacking.\n\n"
-                f"**How to raise confidence:**\n"
-                + "\n".join(boost_options[:6])
-                + "\n\n"
-                "Or get explicit user approval: 'CONFIDENCE_BOOST_APPROVED'"
+                f"🚫 **COMPLETION BLOCKED** - Confidence {reason}\n\n"
+                f"Current: {emoji} {confidence}% ({tier_name})"
+                + (f" ↓ (was {prev_confidence}%)" if is_declining else "")
+                + "\n\n**How to raise confidence:**\n"
+                + "\n".join(boost_options[:5])
+                + "\n\nOr: 'CONFIDENCE_BOOST_APPROVED'"
             )
 
     return HookResult.ok()
@@ -686,6 +699,31 @@ BAD_LANGUAGE_PATTERNS = {
             r"\b(?:run|do)\s+(?:the\s+)?(?:tests?|builds?)\s+(?:to\s+)?(?:verify|check|confirm)\b",
         ],
     },
+    "surrender_pivot": {
+        "delta": -20,  # Severe penalty - this is CANCER behavior
+        "patterns": [
+            # Invented time constraints (LLMs have no time limits)
+            r"\b(given|due\s+to)\s+(the\s+)?time\s+constraints?\b",
+            r"\btime\s+(is\s+)?limited\b",
+            r"\bfor\s+(the\s+)?sake\s+of\s+time\b",
+            r"\bto\s+save\s+time\b",
+            r"\bquickly\s+switch\s+to\b",
+            # Unilateral pivots without asking
+            r"\blet\s+me\s+(switch|use|try)\s+\w+\s+instead\b",
+            r"\bi'?ll\s+(switch|use)\s+\w+\s+instead\b",
+            r"\bswitching\s+to\s+\w+\s+(instead|which)\b",
+            # Abandoning because "incomplete" without fixing
+            r"\b(is\s+)?incomplete[.,]?\s+(so\s+)?(let\s+me|i'?ll)\s+(switch|use)\b",
+            r"\bdoesn'?t\s+work[.,]?\s+(so\s+)?(let\s+me|i'?ll)\s+(switch|use)\b",
+            # "Proven/out-of-the-box" as excuse
+            r"\bproven\s+(model|solution|approach)\s+that\s+works\b",
+            r"\bout[- ]of[- ]the[- ]box\s+(solution|alternative)\b",
+            r"\bworks\s+out[- ]of[- ]the[- ]box\b",
+            # Goal abandonment language
+            r"\bgiven\s+(the\s+)?(issues?|problems?|difficulties?)[.,]\s+(let\s+me|i'?ll)\s+(switch|use|try)\b",
+            r"\beasier\s+(to\s+)?(just\s+)?use\s+\w+\s+instead\b",
+        ],
+    },
 }
 
 
@@ -737,10 +775,31 @@ def check_bad_language(data: dict, state: SessionState) -> HookResult:
     if not triggered:
         return HookResult.ok()
 
-    # Apply penalties with rate limiting
+    # Apply penalties with COMPOUNDING multiplier for multiple violations
+    # Single violation = base penalty
+    # Multiple violations = exponentially worse (this is CANCER behavior)
     old_confidence = state.confidence
     total_delta = sum(delta for _, delta in triggered)
-    total_delta = apply_rate_limit(total_delta, state)
+
+    # Compounding multiplier: more patterns = exponentially worse
+    num_violations = len(triggered)
+    if num_violations >= 4:
+        multiplier = 3.0  # Catastrophic - 4+ patterns
+    elif num_violations >= 3:
+        multiplier = 2.0  # Severe - 3 patterns
+    elif num_violations >= 2:
+        multiplier = 1.5  # Bad - 2 patterns
+    else:
+        multiplier = 1.0  # Single violation
+
+    # Apply multiplier BEFORE rate limiting (compounding bypasses normal caps)
+    total_delta = int(total_delta * multiplier)
+
+    # Skip rate limiting for surrender_pivot - this is unforgivable
+    has_surrender = any(name == "surrender_pivot" for name, _ in triggered)
+    if not has_surrender:
+        total_delta = apply_rate_limit(total_delta, state)
+
     new_confidence = max(0, min(100, old_confidence + total_delta))
 
     set_confidence(state, new_confidence, "bad language detected")
@@ -1099,11 +1158,7 @@ def check_session_debt(data: dict, state: SessionState) -> HookResult:
     - Pending integration greps
     - TODO/FIXME left behind in edited files
     """
-    from confidence import (
-        format_confidence_change,
-        get_tier_info,
-        set_confidence,
-    )
+    from confidence import get_tier_info, set_confidence
 
     debt_items = []
     debt_score = 0
@@ -1161,27 +1216,17 @@ def check_session_debt(data: dict, state: SessionState) -> HookResult:
 
     set_confidence(state, new_confidence, "session debt penalty")
 
-    _, emoji, desc = get_tier_info(new_confidence)
-    change_msg = format_confidence_change(
-        old_confidence, new_confidence, "session_debt"
-    )
-
+    _, emoji, _ = get_tier_info(new_confidence)
     debt_list = "\n".join(f"  • {item}" for item in debt_items[:5])
 
     # Block if debt is severe (score >= 15) or confidence drops too low
     if debt_score >= 15 or new_confidence < 70:
         return HookResult.block(
-            f"🚫 **SESSION DEBT BLOCKED** - Cannot end with this much debt!\n\n"
-            f"{change_msg}\n\n"
-            f"**Debt detected:**\n{debt_list}\n\n"
-            f"**Fix the debt before ending session.**\n"
-            f"Say SUDO to force end anyway."
+            f"🚫 **SESSION DEBT BLOCKED**: {debt_list[:100]}... | Fix debt or SUDO"
         )
 
     return HookResult.warn(
-        f"⚠️ **SESSION DEBT WARNING**\n{change_msg}\n\n"
-        f"**Debt detected:**\n{debt_list}\n\n"
-        f"Current: {emoji} {new_confidence}% - {desc}"
+        f"⚠️ **SESSION DEBT**: {emoji} {new_confidence}% | {debt_list[:80]}"
     )
 
 

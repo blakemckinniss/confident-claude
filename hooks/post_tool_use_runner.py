@@ -1872,12 +1872,7 @@ def check_verification_reminder(
     verify_run = getattr(state, "verify_run", False)
 
     if fix_indicators and not verify_run:
-        return HookResult.with_context(
-            f"**VERIFY REMINDER** (Hard Block #3)\n"
-            f"Indicators: {', '.join(fix_indicators)}\n"
-            f"Before claiming 'fixed': run `verify` or tests.\n"
-            f'Pattern: verify command_success "<test_cmd>"'
-        )
+        return HookResult.with_context(f"⚠️ VERIFY REMINDER: {', '.join(fix_indicators)} → run `verify` or tests before claiming fixed")
 
     return HookResult.none()
 
@@ -1921,12 +1916,7 @@ def check_ui_verification(
     if browser_used:
         return HookResult.none()
 
-    return HookResult.with_context(
-        f"**UI VERIFICATION NEEDED** (Auto-Invoke Rule)\n"
-        f"Detected: {', '.join(indicators[:2])}\n"
-        f"Before claiming UI works, run:\n"
-        f"```bash\nbrowser page screenshot -o .claude/tmp/ui_check.png\n```"
-    )
+    return HookResult.with_context(f"📸 UI VERIFY: {', '.join(indicators[:2])} → `browser page screenshot -o .claude/tmp/ui_check.png`")
 
 
 # -----------------------------------------------------------------------------
@@ -2784,21 +2774,9 @@ def check_info_gain(data: dict, state: SessionState, runner_state: dict) -> Hook
 
             # Escalate message if many reads without action
             severity = "⚠️" if reads < READS_BEFORE_CRYSTALLIZE else "🛑"
-            crystallize_hint = ""
-            if reads >= READS_BEFORE_CRYSTALLIZE:
-                crystallize_hint = (
-                    "\n\n  💡 **CRYSTALLIZE**: Write what you know to `.claude/tmp/notes.md`\n"
-                    "     to solidify understanding before continuing."
-                )
-
+            hint = " → crystallize to .claude/tmp/" if reads >= READS_BEFORE_CRYSTALLIZE else ""
             return HookResult.with_context(
-                f"\n{severity} INFORMATION GAIN CHECK:\n"
-                f"  Reads since last action: {reads}\n"
-                f"  Files: {file_list}\n\n"
-                f"  **Questions to answer:**\n"
-                f"  1. What specific question am I trying to answer?\n"
-                f"  2. Did the last read give me actionable info?\n"
-                f"  3. Should I act on what I know, or do I need more?{crystallize_hint}\n"
+                f"{severity} INFO GAIN: {reads} reads ({file_list}) - act or need more?{hint}"
             )
 
     elif tool_name in PROGRESS_TOOLS:

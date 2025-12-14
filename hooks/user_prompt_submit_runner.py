@@ -516,13 +516,8 @@ def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
             )
             if times_warned >= 2 or severity == "escalate":
                 return HookResult.deny(
-                    f"**SCOPE EXPANSION BLOCKED** (One-Feature-Per-Session)\n\n"
-                    f"🎯 **Current goal**: {state.original_goal[:80]}\n"
-                    f"🚫 **Detected**: {expansion_reason}\n\n"
-                    f"**Options:**\n"
-                    f"1. Complete current feature first, then start new session\n"
-                    f"2. Add 'SUDO SCOPE' to explicitly override\n"
-                    f"3. Rephrase request as continuation of current goal"
+                    f"🚫 **SCOPE BLOCKED**: {expansion_reason}\n"
+                    f"Goal: {state.original_goal[:60]}... | SUDO SCOPE to override"
                 )
             else:
                 return HookResult.allow(

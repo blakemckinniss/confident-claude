@@ -77,6 +77,7 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `sycophancy` | -8 | "you're absolutely right", "great point" | 2 turns |
 | `unresolved_antipattern` | -10 | Mentioning issues without fixing | 3 turns |
 | `hook_block` | -5 | When hooks block actions | 1 turn |
+| `surrender_pivot` | -20 | Abandoning user's goal for "easier" alternative | NO LIMIT |
 
 **Code quality reducers (v4.4):**
 
@@ -170,9 +171,22 @@ Example: `edit_oscillation` base cooldown is 5 turns.
 - **< 51%**: Production writes blocked (only scratch allowed)
 
 ### Stop Blocks (completion_gate)
-- **< 80%**: Cannot claim task "complete", "done", "finished"
-- Must be in stasis range (80-90%) to claim completion
+- **< 70%**: Cannot claim task "complete", "done", "finished"
+- **< 75% with negative trend**: Also blocked (prevents completing while falling)
 - Earn confidence through test_pass, build_success, git_explore, or user_ok
+
+## Compounding Penalties (v4.7)
+
+When multiple bad language patterns fire in a single message, penalties compound:
+
+| Violations | Multiplier | Example |
+|------------|------------|---------|
+| 1 pattern | 1.0x | -8 stays -8 |
+| 2 patterns | 1.5x | -16 becomes -24 |
+| 3 patterns | 2.0x | -24 becomes -48 |
+| 4+ patterns | 3.0x | -32 becomes -96 |
+
+**`surrender_pivot` bypasses rate limiting entirely** - unforgivable behavior gets full penalty every time.
 
 ## Escalation Protocol
 

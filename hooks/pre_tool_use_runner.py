@@ -221,12 +221,7 @@ def check_loop_detector(data: dict, state: SessionState) -> HookResult:
     for pattern in _BASH_LOOP_PATTERNS:
         match = pattern.search(check_cmd)
         if match:
-            return HookResult.deny(
-                f"**BASH LOOP BLOCKED** (Hard Block #6)\n"
-                f"Detected: `{match.group(0)}`\n"
-                f"Use `parallel.py` or `swarm` instead.\n"
-                f"Bypass: Include 'SUDO LOOP' in description."
-            )
+            return HookResult.deny(f"⛔ BASH LOOP BLOCKED: `{match.group(0)}` → Use parallel.py/swarm. SUDO LOOP to bypass.")
     return HookResult.approve()
 
 
@@ -287,7 +282,7 @@ def check_script_nudge(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("background_enforcer", "Bash", priority=15)
 def check_background_enforcer(data: dict, state: SessionState) -> HookResult:
-    """Enforce background execution for slow commands."""
+    """Enforce background execution for slow commands (unless truncated/fast)."""
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
     run_in_background = tool_input.get("run_in_background", False)
@@ -320,15 +315,30 @@ def check_background_enforcer(data: dict, state: SessionState) -> HookResult:
         "python -m pytest",
     ]
 
+    # Patterns that truncate output or are inherently fast
+    FAST_PATTERNS = [
+        "| head",      # Terminates after N lines
+        "|head",
+        "| tail",      # Only outputs last N lines (still reads all, but fast enough)
+        "|tail",
+        "--help",      # Instant help output
+        "-h ",         # Short help flag (with space to avoid false matches)
+        "--version",   # Instant version output
+        "-V ",         # Short version flag
+        "timeout ",    # Explicit timeout wrapper
+    ]
+
     # Strip heredoc content to avoid false positives on content mentioning slow commands
     cmd_to_check = strip_heredoc_content(command).lower()
+
+    # Check if command has fast/truncating patterns - allow foreground
+    for fast in FAST_PATTERNS:
+        if fast in cmd_to_check:
+            return HookResult.approve()
+
     for slow in SLOW_COMMANDS:
         if slow in cmd_to_check:
-            return HookResult.deny(
-                f"⛔ USE BACKGROUND EXECUTION\n"
-                f"Command contains `{slow}` which is slow.\n"
-                f"Re-issue with: run_in_background=true"
-            )
+            return HookResult.deny(f"⛔ BACKGROUND REQUIRED: `{slow}` is slow → run_in_background=true")
     return HookResult.approve()
 
 
@@ -370,12 +380,8 @@ def check_probe_gate(data: dict, state: SessionState) -> HookResult:
                 found_libs.append((lib, api_hint))
 
     if found_libs and len(found_libs) <= 2:
-        suggestions = [f"• `{lib}` ({hint})" for lib, hint in found_libs[:2]]
-        return HookResult.approve(
-            "🔬 PROBE SUGGESTION: Unfamiliar library API\n"
-            + "\n".join(suggestions)
-            + '\n→ `probe "<lib>.<object>"` prevents API guessing'
-        )
+        libs = ", ".join(lib for lib, _ in found_libs[:2])
+        return HookResult.approve(f"🔬 PROBE? Unfamiliar: {libs} → `probe \"<lib>.<obj>\"`")
     return HookResult.approve()
 
 
@@ -571,20 +577,12 @@ def check_self_heal_enforcer(data: dict, state: SessionState) -> HookResult:
     if attempts >= max_attempts:
         # Hard block - escalate to user
         return HookResult.deny(
-            f"**🚨 SELF-HEAL BLOCKED** (attempt {attempts}/{max_attempts})\n"
-            f"Framework error in `{target}` must be fixed first.\n"
-            f"Error: {error[:100]}\n\n"
-            f"**Options:**\n"
-            f"1. Fix the error in .claude/ files\n"
-            f"2. Say **SUDO** to bypass and continue\n"
-            f"3. Ask user for help diagnosing the issue"
+            f"🚨 **SELF-HEAL BLOCKED** ({attempts}/{max_attempts}): `{target}` - {error[:80]}. Fix or SUDO."
         )
 
     # Soft nudge - remind but allow
     return HookResult.approve(
-        f"⚠️ **SELF-HEAL PENDING** (attempt {attempts + 1}/{max_attempts})\n"
-        f"Framework error: `{target}` - {error[:80]}\n"
-        f"Fix .claude/ error before continuing other work."
+        f"⚠️ Self-heal ({attempts + 1}/{max_attempts}): `{target}` - {error[:60]}"
     )
 
 
@@ -917,12 +915,7 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     state.bead_enforcement_blocks = state.bead_enforcement_blocks + 1
 
     return HookResult.deny(
-        "🚫 **BEAD REQUIRED**: Cannot edit project files without tracking.\n\n"
-        "**Quick start:**\n"
-        '```bash\nbd create --title="<what you\'re doing>" --type=task\n'
-        "bd update <id> --status=in_progress\n```\n\n"
-        "**Bypass:** Say SUDO to skip this check.\n"
-        "**Why:** Beads enable parallel agent delegation and session continuity."
+        "🚫 **BEAD REQUIRED**: Run `bd create` + `bd update <id> --status=in_progress` first. SUDO to bypass."
     )
 
 
@@ -965,24 +958,15 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     if state.consecutive_single_tasks >= 3:
         # HARD BLOCK after 3+ sequential singles with beads available
         return HookResult.deny(
-            f"🚫 **PARALLEL REQUIRED**: {bead_count} independent beads available.\n\n"
-            "You've spawned single Tasks 3+ times with parallel work available.\n"
-            "Spawn multiple Task agents in ONE message.\n\n"
-            f"{task_structure}\n\n"
-            "**Bypass:** Say SUDO or use `run_in_background: true`"
+            f"🚫 **PARALLEL REQUIRED**: {bead_count} beads ready. Spawn multiple Tasks in ONE message. SUDO to bypass.\n{task_structure}"
         )
     elif state.consecutive_single_tasks >= 2:
         # Strong nudge at 2
-        return HookResult.approve(
-            f"⚡ **PARALLEL BEADS**: {bead_count} independent beads ready for parallel work.\n\n"
-            f"{task_structure}"
-        )
+        return HookResult.approve(f"⚡ {bead_count} beads ready for parallel:\n{task_structure}")
     elif bead_count >= 2:
-        # Soft nudge when beads available (regardless of sequential count)
+        # Soft nudge when beads available
         bead_list = ", ".join(f"`{b.get('id', '?')[:12]}`" for b in independent_beads)
-        return HookResult.approve(
-            f"💡 **Parallel opportunity**: {bead_count} beads available: {bead_list}\n"
-            "Consider spawning multiple Task agents in one message."
+        return HookResult.approve(f"💡 Parallel: {bead_list}"
         )
 
     return HookResult.approve()
@@ -1363,11 +1347,7 @@ def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
         if result.severity == "block":
             message = format_detection_message(result)
             return HookResult.deny(
-                f"{message}\n\n"
-                f"**Bypass options:**\n"
-                f"1. Add `# LARGE_FILE_OK: <reason>` as first line of file (permanent bypass)\n"
-                f"2. Say SUDO to bypass once\n"
-                f"3. Files in `.claude/tmp/` are never blocked"
+                f"{message}\nBypass: `# LARGE_FILE_OK: reason` as first line, SUDO, or use .claude/tmp/"
             )
         elif result.severity == "warn":
             message = format_detection_message(result)
