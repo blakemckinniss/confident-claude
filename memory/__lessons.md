@@ -274,3 +274,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-14 10:36
 - [abandoned_stubs] ⚠️ ABANDONED WORK: powers.test.ts, integration.test.ts, handlers.test.ts, selection-effects.test.ts, control-effects.test.ts, power-effects.test.ts, card-effects.test.ts contain stubs/TODOs
+
+### 2025-12-14 16:15
+- [abandoned_stubs] ⚠️ ABANDONED WORK: _prompt_suggestions.py contain stubs/TODOs

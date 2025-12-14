@@ -63,7 +63,7 @@ from epistemology import (
 # RE-EXPORTS: Reducers and Increasers
 # =============================================================================
 
-from _confidence_reducers import ConfidenceReducer, REDUCERS
+from _confidence_reducers import ConfidenceReducer, REDUCERS, UserCorrectionReducer
 from _confidence_increasers import ConfidenceIncreaser, INCREASERS
 
 # =============================================================================
@@ -238,6 +238,7 @@ __all__ = [
     # Classes
     "ConfidenceReducer",
     "ConfidenceIncreaser",
+    "UserCorrectionReducer",
     # Registries
     "REDUCERS",
     "INCREASERS",
