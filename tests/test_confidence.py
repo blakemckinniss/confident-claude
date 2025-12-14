@@ -40,6 +40,9 @@ from confidence import (
     DeferralReducer,
     ApologeticReducer,
     SycophancyReducer,
+    OverconfidentCompletionReducer,
+    DebtBashReducer,
+    LargeDiffReducer,
     # Increaser classes
     PassedTestsIncreaser,
     BuildSuccessIncreaser,
@@ -811,6 +814,175 @@ class TestSycophancyReducer:
         context = {"assistant_output": "You're absolutely right!"}
 
         # Act - last triggered 1 turn ago (cooldown is 2)
+        should_trigger = reducer.should_trigger(context, state, 2)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestOverconfidentCompletionReducer:
+    """Tests for OverconfidentCompletionReducer - '100% done' claims."""
+
+    def test_triggers_on_100_percent_done(self):
+        # Arrange
+        reducer = OverconfidentCompletionReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "The feature is 100% done now."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_completely_finished(self):
+        # Arrange
+        reducer = OverconfidentCompletionReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "This is completely finished."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_nothing_left_to_do(self):
+        # Arrange
+        reducer = OverconfidentCompletionReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "There's nothing left to do here."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_humble_completion(self):
+        # Arrange
+        reducer = OverconfidentCompletionReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "I've completed the implementation."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestDebtBashReducer:
+    """Tests for DebtBashReducer - debt-creating bash commands."""
+
+    def test_triggers_on_force_flag(self):
+        # Arrange
+        reducer = DebtBashReducer()
+        state = MockSessionState()
+        context = {"bash_command": "git push --force origin main"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_git_reset_hard(self):
+        # Arrange
+        reducer = DebtBashReducer()
+        state = MockSessionState()
+        context = {"bash_command": "git reset --hard HEAD~1"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_no_verify(self):
+        # Arrange
+        reducer = DebtBashReducer()
+        state = MockSessionState()
+        context = {"bash_command": "git commit --no-verify -m 'skip hooks'"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_normal_command(self):
+        # Arrange
+        reducer = DebtBashReducer()
+        state = MockSessionState()
+        context = {"bash_command": "git status"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_command(self):
+        # Arrange
+        reducer = DebtBashReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestLargeDiffReducer:
+    """Tests for LargeDiffReducer - diffs over 400 LOC."""
+
+    def test_triggers_when_large_diff_flag_set(self):
+        # Arrange
+        reducer = LargeDiffReducer()
+        state = MockSessionState()
+        context = {"large_diff": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_when_flag_false(self):
+        # Arrange
+        reducer = LargeDiffReducer()
+        state = MockSessionState()
+        context = {"large_diff": False}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = LargeDiffReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        reducer = LargeDiffReducer()
+        state = MockSessionState()
+        state.turn_count = 2
+        context = {"large_diff": True}
+
+        # Act - last triggered 0 turns ago (cooldown is 1)
         should_trigger = reducer.should_trigger(context, state, 2)
 
         # Assert
