@@ -2406,6 +2406,229 @@ class TestPremiseChallengeIncreaser:
 
 
 # =============================================================================
+# COOLDOWN BOUNDARY EDGE CASE TESTS
+# =============================================================================
+
+
+class TestCooldownBoundaryEdgeCases:
+    """Tests for exact cooldown boundary conditions to catch off-by-one errors.
+
+    Cooldown logic: turn_count - last_trigger_turn < cooldown → blocked
+    At exact boundary: turn_count - last_trigger_turn == cooldown → should trigger
+    """
+
+    def test_user_correction_exactly_at_cooldown_boundary(self):
+        """UserCorrectionReducer has cooldown=3. At exactly 3 turns, should trigger."""
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "That's wrong"}
+        last_trigger_turn = 7  # 10 - 7 = 3 (exactly at cooldown)
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_user_correction_one_turn_before_cooldown(self):
+        """UserCorrectionReducer at cooldown-1 should NOT trigger."""
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "That's wrong"}
+        last_trigger_turn = 8  # 10 - 8 = 2 (one before cooldown of 3)
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_user_correction_one_turn_after_cooldown(self):
+        """UserCorrectionReducer at cooldown+1 should trigger."""
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "That's wrong"}
+        last_trigger_turn = 6  # 10 - 6 = 4 (one after cooldown of 3)
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_sycophancy_exactly_at_cooldown_boundary(self):
+        """SycophancyReducer has cooldown=2. At exactly 2 turns, should trigger."""
+        # Arrange
+        reducer = SycophancyReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"assistant_output": "You're absolutely right!"}
+        last_trigger_turn = 8  # 10 - 8 = 2 (exactly at cooldown)
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_sycophancy_one_turn_before_cooldown(self):
+        """SycophancyReducer at cooldown-1 should NOT trigger."""
+        # Arrange
+        reducer = SycophancyReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"assistant_output": "You're absolutely right!"}
+        last_trigger_turn = 9  # 10 - 9 = 1 (one before cooldown of 2)
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_git_explore_exactly_at_cooldown_boundary(self):
+        """GitExploreIncreaser has cooldown=5. At exactly 5 turns, should trigger."""
+        # Arrange
+        increaser = GitExploreIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"git_explored": True}
+        last_trigger_turn = 5  # 10 - 5 = 5 (exactly at cooldown)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_git_explore_one_turn_before_cooldown(self):
+        """GitExploreIncreaser at cooldown-1 should NOT trigger."""
+        # Arrange
+        increaser = GitExploreIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"git_explored": True}
+        last_trigger_turn = 6  # 10 - 6 = 4 (one before cooldown of 5)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_ask_user_exactly_at_cooldown_boundary(self):
+        """AskUserIncreaser has cooldown=8. At exactly 8 turns, should trigger."""
+        # Arrange
+        increaser = AskUserIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"asked_user": True}
+        last_trigger_turn = 2  # 10 - 2 = 8 (exactly at cooldown)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_ask_user_one_turn_before_cooldown(self):
+        """AskUserIncreaser at cooldown-1 should NOT trigger."""
+        # Arrange
+        increaser = AskUserIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"asked_user": True}
+        last_trigger_turn = 3  # 10 - 3 = 7 (one before cooldown of 8)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_trust_regained_exactly_at_cooldown_boundary(self):
+        """TrustRegainedIncreaser has cooldown=5. At exactly 5 turns, should trigger."""
+        # Arrange
+        increaser = TrustRegainedIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "CONFIDENCE_BOOST_APPROVED"}
+        last_trigger_turn = 5  # 10 - 5 = 5 (exactly at cooldown)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_trust_regained_one_turn_before_cooldown(self):
+        """TrustRegainedIncreaser at cooldown-1 should NOT trigger."""
+        # Arrange
+        increaser = TrustRegainedIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"prompt": "CONFIDENCE_BOOST_APPROVED"}
+        last_trigger_turn = 6  # 10 - 6 = 4 (one before cooldown of 5)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_zero_cooldown_always_triggers(self):
+        """FileReadIncreaser has cooldown=0. Should trigger even on same turn."""
+        # Arrange
+        increaser = FileReadIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"files_read_count": 1}
+        last_trigger_turn = 10  # Same turn (10 - 10 = 0)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_cooldown_one_blocks_same_turn(self):
+        """SearchToolIncreaser has cooldown=1. Same turn should NOT trigger."""
+        # Arrange
+        increaser = SearchToolIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"search_performed": True}
+        last_trigger_turn = 10  # Same turn (10 - 10 = 0 < 1)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_cooldown_one_allows_next_turn(self):
+        """SearchToolIncreaser has cooldown=1. Next turn should trigger."""
+        # Arrange
+        increaser = SearchToolIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"search_performed": True}
+        last_trigger_turn = 9  # Previous turn (10 - 9 = 1 >= 1)
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, last_trigger_turn)
+
+        # Assert
+        assert should_trigger is True
+
+
+# =============================================================================
 # APPLY REDUCERS/INCREASERS INTEGRATION TESTS
 # =============================================================================
 
