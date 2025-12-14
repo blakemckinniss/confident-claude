@@ -505,247 +505,269 @@ def check_read_cache_invalidator(
     return HookResult.allow()
 
 
+def _handle_read_tool(
+    tool_input: dict, result: dict, state: SessionState
+) -> None:
+    """Handle Read tool state updates."""
+    filepath = tool_input.get("file_path", "")
+    read_error = _detect_error_in_result(
+        result, keywords=("no such file", "permission denied", "not found")
+    )
+    if read_error and filepath and ".claude/" in filepath:
+        _trigger_self_heal(state, target=filepath, error=read_error)
+
+    if filepath:
+        track_file_read(state, filepath)
+        add_domain_signal(state, filepath)
+        clear_pending_file(state, filepath)
+        content = result.get("output", "")
+        if filepath.endswith((".py", ".js", ".ts")):
+            for lib in extract_libraries_from_code(content):
+                track_library_used(state, lib)
+        if filepath.endswith((".py", ".js", ".ts", ".tsx", ".rs", ".go", ".java")):
+            for todo in extract_todos_from_content(content, filepath):
+                add_work_item(
+                    state,
+                    item_type="todo",
+                    source=filepath,
+                    description=todo.get("description", "TODO"),
+                    priority=todo.get("priority", 50),
+                )
+
+
+def _handle_edit_tool(
+    tool_input: dict, result: dict, state: SessionState
+) -> None:
+    """Handle Edit tool state updates."""
+    filepath = tool_input.get("file_path", "")
+    edit_error = _detect_error_in_result(result)
+    if edit_error and filepath and ".claude/" in filepath:
+        _trigger_self_heal(state, target=filepath, error=edit_error)
+
+    if filepath:
+        old_code = tool_input.get("old_string", "")
+        new_code = tool_input.get("new_string", "")
+        track_file_edit(state, filepath, old_code, new_code)
+        track_feature_file(state, filepath)
+        if new_code:
+            for lib in extract_libraries_from_code(new_code):
+                track_library_used(state, lib)
+            if filepath.endswith((".py", ".js", ".ts", ".tsx", ".rs", ".go")):
+                old_func_lines = extract_function_def_lines(old_code)
+                new_func_lines = extract_function_def_lines(new_code)
+                for func_name, old_def in old_func_lines.items():
+                    new_def = new_func_lines.get(func_name)
+                    if new_def is not None and old_def != new_def:
+                        add_pending_integration_grep(state, func_name, filepath)
+        if (
+            not edit_error
+            and getattr(state, "self_heal_required", False)
+            and ".claude/" in filepath
+        ):
+            _clear_self_heal(state)
+
+
+def _handle_write_tool(
+    tool_input: dict, result: dict, state: SessionState
+) -> str | None:
+    """Handle Write tool state updates. Returns warning message if any."""
+    filepath = tool_input.get("file_path", "")
+    warning = None
+    write_error = _detect_error_in_result(result)
+    if write_error and filepath and ".claude/" in filepath:
+        _trigger_self_heal(state, target=filepath, error=write_error)
+
+    if filepath:
+        is_new_file = filepath not in state.files_read
+        if is_new_file:
+            track_file_create(state, filepath)
+        else:
+            track_file_edit(state, filepath)
+        track_feature_file(state, filepath)
+        content = tool_input.get("content", "")
+        if content:
+            for lib in extract_libraries_from_code(content):
+                track_library_used(state, lib)
+            if is_new_file:
+                stubs = detect_stubs_in_content(content)
+                if stubs:
+                    fname = Path(filepath).name
+                    warning = (
+                        f"⚠️ STUB DETECTED in new file `{fname}`: "
+                        f"{', '.join(stubs)}\n   Remember to complete before session ends!"
+                    )
+        if (
+            not write_error
+            and getattr(state, "self_heal_required", False)
+            and ".claude/" in filepath
+        ):
+            _clear_self_heal(state)
+    return warning
+
+
+def _handle_bash_tool(
+    tool_input: dict, result: dict, state: SessionState
+) -> None:
+    """Handle Bash tool state updates.
+
+    Tracks:
+    - Command execution and success/failure
+    - Ops tool usage
+    - Files read via cat/head/tail
+    - Git commits (creates checkpoints)
+    - Errors and failures
+    - Test failure discovery
+    - Grep/search pattern clearing
+    """
+    command = tool_input.get("command", "")
+    output = result.get("output", "")
+    exit_code = result.get("exit_code", 0)
+    success = exit_code == 0
+    track_command(state, command, success, output)
+
+    # Track ops tool usage (v3.9)
+    if ".claude/ops/" in command:
+        ops_match = re.search(r"\.claude/ops/(\w+)\.py", command)
+        if ops_match:
+            tool_name_ops = ops_match.group(1)
+            track_ops_tool(state, tool_name_ops, success)
+
+            # Track audit/void verification for production files
+            if success and tool_name_ops in ("audit", "void"):
+                parts = command.split()
+                for i, part in enumerate(parts):
+                    if part.endswith(f"{tool_name_ops}.py") and i + 1 < len(parts):
+                        target_file = parts[i + 1]
+                        if not target_file.startswith("-"):
+                            mark_production_verified(state, target_file, tool_name_ops)
+                        break
+
+    # Track files read via cat/head/tail
+    if success:
+        read_cmds = ["cat ", "head ", "tail ", "less ", "more "]
+        if any(command.startswith(cmd) or f" {cmd}" in command for cmd in read_cmds):
+            parts = command.split()
+            for part in parts[1:]:
+                if not part.startswith("-") and ("/" in part or "." in part):
+                    track_file_read(state, part)
+
+    # Checkpoint on git commit
+    if success and re.search(r"\bgit\s+commit\b", command, re.IGNORECASE):
+        commit_hash = ""
+        hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]{7,})\]", output)
+        if hash_match:
+            commit_hash = hash_match.group(1)
+        msg_match = re.search(r'-m\s+["\']([^"\']+)["\']', command)
+        notes = msg_match.group(1)[:50] if msg_match else "commit"
+        create_checkpoint(state, commit_hash=commit_hash, notes=notes)
+        completion_keywords = [
+            "fix", "complete", "done", "finish", "implement", "resolve", "close"
+        ]
+        if state.current_feature and any(
+            kw in notes.lower() for kw in completion_keywords
+        ):
+            complete_feature(state, status="completed")
+
+    # Track failures
+    approach_sig = (
+        f"Bash:{command.split()[0][:20]}" if command.split() else "Bash:unknown"
+    )
+    if not success or "error" in output.lower() or "failed" in output.lower():
+        error_patterns = [
+            (r"(\d{3})\s*(Unauthorized|Forbidden|Not Found)", "HTTP error"),
+            (r"(ModuleNotFoundError|ImportError)", "Import error"),
+            (r"(SyntaxError|TypeError|ValueError)", "Python error"),
+            (r"(ENOENT|EACCES|EPERM)", "Filesystem error"),
+            (r"(connection refused|timeout)", "Network error"),
+        ]
+        error_type = "Command error"
+        for pattern, etype in error_patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                error_type = etype
+                break
+        if not success:
+            track_error(state, error_type, output[:500])
+            track_failure(state, approach_sig)
+
+            # SELF-HEAL: Detect framework errors
+            if ".claude/" in command or ".claude\\" in command:
+                _trigger_self_heal(
+                    state,
+                    target=command.split()[0] if command.split() else "bash",
+                    error=output[:200],
+                )
+
+    # SELF-HEAL: Clear if successful operation on framework files
+    if success and getattr(state, "self_heal_required", False):
+        if ".claude/" in command or ".claude\\" in command:
+            _clear_self_heal(state)
+
+    if success and state.errors_unresolved:
+        reset_failures(state)
+        for error in state.errors_unresolved[:]:
+            if any(
+                word in command.lower()
+                for word in error.get("type", "").lower().split()
+            ):
+                resolve_error(state, error.get("type", ""))
+
+    # Test failure discovery
+    if (
+        "pytest" in command
+        or "npm test" in command
+        or "jest" in command
+        or "cargo test" in command
+    ):
+        for failure in extract_test_failures(output):
+            add_work_item(
+                state,
+                item_type="test_failure",
+                source=failure.get("file", "tests"),
+                description=failure.get("description", "Fix test failure"),
+                priority=failure.get("priority", 80),
+            )
+
+    # Clear pending items for bash grep/find
+    if "grep " in command or command.startswith("grep") or "rg " in command:
+        patterns = re.findall(r'grep[^\|]*?["\']([^"\']+)["\']', command)
+        patterns += re.findall(r"grep\s+(?:-\w+\s+)*(\w+)", command)
+        for pattern in patterns:
+            if len(pattern) > 3:
+                clear_integration_grep(state, pattern)
+                clear_pending_search(state, pattern)
+
+
 @register_hook("state_updater", None, priority=10)
 def check_state_updater(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Update session state based on tool usage."""
+    """Update session state based on tool usage.
+
+    Delegates to helper functions for each tool type.
+    """
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     result = data.get("tool_result", {})
-    # Normalize string results to dict format
     if isinstance(result, str):
         result = {"output": result}
     elif not isinstance(result, dict):
         result = {}
     warning = None
 
-    # Update tool count
     state.tool_counts[tool_name] = state.tool_counts.get(tool_name, 0) + 1
     track_batch_tool(state, tool_name, tools_in_message=1)
 
-    # Process by tool type
     if tool_name == "Read":
-        filepath = tool_input.get("file_path", "")
-        # SELF-HEAL: Detect Read failures on framework files
-        read_error = _detect_error_in_result(
-            result, keywords=("no such file", "permission denied", "not found")
-        )
-        if read_error and filepath and ".claude/" in filepath:
-            _trigger_self_heal(state, target=filepath, error=read_error)
-
-        if filepath:
-            track_file_read(state, filepath)
-            add_domain_signal(state, filepath)
-            clear_pending_file(state, filepath)
-            content = result.get("output", "")
-            if filepath.endswith((".py", ".js", ".ts")):
-                for lib in extract_libraries_from_code(content):
-                    track_library_used(state, lib)
-            if filepath.endswith((".py", ".js", ".ts", ".tsx", ".rs", ".go", ".java")):
-                for todo in extract_todos_from_content(content, filepath):
-                    add_work_item(
-                        state,
-                        item_type="todo",
-                        source=filepath,
-                        description=todo.get("description", "TODO"),
-                        priority=todo.get("priority", 50),
-                    )
+        _handle_read_tool(tool_input, result, state)
 
     elif tool_name == "Edit":
-        filepath = tool_input.get("file_path", "")
-        # SELF-HEAL: Detect Edit failures on framework files
-        edit_error = _detect_error_in_result(result)
-        if edit_error and filepath and ".claude/" in filepath:
-            _trigger_self_heal(state, target=filepath, error=edit_error)
-
-        if filepath:
-            old_code = tool_input.get("old_string", "")
-            new_code = tool_input.get("new_string", "")
-            track_file_edit(state, filepath, old_code, new_code)
-            track_feature_file(state, filepath)
-            if new_code:
-                for lib in extract_libraries_from_code(new_code):
-                    track_library_used(state, lib)
-                if filepath.endswith((".py", ".js", ".ts", ".tsx", ".rs", ".go")):
-                    old_func_lines = extract_function_def_lines(old_code)
-                    new_func_lines = extract_function_def_lines(new_code)
-                    for func_name, old_def in old_func_lines.items():
-                        new_def = new_func_lines.get(func_name)
-                        # Only track if signature CHANGED (not removed)
-                        # Removed functions cause immediate errors at call sites
-                        if new_def is not None and old_def != new_def:
-                            add_pending_integration_grep(state, func_name, filepath)
-            # SELF-HEAL: Clear if successful edit on framework files (no error)
-            if (
-                not edit_error
-                and getattr(state, "self_heal_required", False)
-                and ".claude/" in filepath
-            ):
-                _clear_self_heal(state)
+        _handle_edit_tool(tool_input, result, state)
 
     elif tool_name == "Write":
-        filepath = tool_input.get("file_path", "")
-        # SELF-HEAL: Detect Write failures on framework files
-        write_error = _detect_error_in_result(result)
-        if write_error and filepath and ".claude/" in filepath:
-            _trigger_self_heal(state, target=filepath, error=write_error)
-
-        if filepath:
-            is_new_file = filepath not in state.files_read
-            if is_new_file:
-                track_file_create(state, filepath)
-            else:
-                track_file_edit(state, filepath)
-            track_feature_file(state, filepath)
-            content = tool_input.get("content", "")
-            if content:
-                for lib in extract_libraries_from_code(content):
-                    track_library_used(state, lib)
-                if is_new_file:
-                    stubs = detect_stubs_in_content(content)
-                    if stubs:
-                        fname = Path(filepath).name
-                        warning = f"⚠️ STUB DETECTED in new file `{fname}`: {', '.join(stubs)}\n   Remember to complete before session ends!"
-            # SELF-HEAL: Clear if successful write on framework files
-            if (
-                not write_error
-                and getattr(state, "self_heal_required", False)
-                and ".claude/" in filepath
-            ):
-                _clear_self_heal(state)
+        warning = _handle_write_tool(tool_input, result, state)
 
     elif tool_name == "Bash":
-        command = tool_input.get("command", "")
-        output = result.get("output", "")
-        exit_code = result.get("exit_code", 0)
-        success = exit_code == 0
-        track_command(state, command, success, output)
-
-        # Track ops tool usage (v3.9)
-        if ".claude/ops/" in command:
-            # Extract tool name from command
-            ops_match = re.search(r"\.claude/ops/(\w+)\.py", command)
-            if ops_match:
-                tool_name_ops = ops_match.group(1)
-                track_ops_tool(state, tool_name_ops, success)
-
-                # Track audit/void verification for production files
-                if success and tool_name_ops in ("audit", "void"):
-                    # Extract target file from command args
-                    # Pattern: audit.py <filepath> or void.py <filepath>
-                    parts = command.split()
-                    for i, part in enumerate(parts):
-                        if part.endswith(f"{tool_name_ops}.py") and i + 1 < len(parts):
-                            target_file = parts[i + 1]
-                            # Normalize path
-                            if not target_file.startswith("-"):
-                                mark_production_verified(
-                                    state, target_file, tool_name_ops
-                                )
-                            break
-
-        # Track files read via cat/head/tail
-        if success:
-            read_cmds = ["cat ", "head ", "tail ", "less ", "more "]
-            if any(
-                command.startswith(cmd) or f" {cmd}" in command for cmd in read_cmds
-            ):
-                parts = command.split()
-                for part in parts[1:]:
-                    if not part.startswith("-") and ("/" in part or "." in part):
-                        track_file_read(state, part)
-
-        # Checkpoint on git commit
-        if success and re.search(r"\bgit\s+commit\b", command, re.IGNORECASE):
-            commit_hash = ""
-            hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]{7,})\]", output)
-            if hash_match:
-                commit_hash = hash_match.group(1)
-            msg_match = re.search(r'-m\s+["\']([^"\']+)["\']', command)
-            notes = msg_match.group(1)[:50] if msg_match else "commit"
-            create_checkpoint(state, commit_hash=commit_hash, notes=notes)
-            completion_keywords = [
-                "fix",
-                "complete",
-                "done",
-                "finish",
-                "implement",
-                "resolve",
-                "close",
-            ]
-            if state.current_feature and any(
-                kw in notes.lower() for kw in completion_keywords
-            ):
-                complete_feature(state, status="completed")
-
-        # Track failures
-        approach_sig = (
-            f"Bash:{command.split()[0][:20]}" if command.split() else "Bash:unknown"
-        )
-        if not success or "error" in output.lower() or "failed" in output.lower():
-            error_patterns = [
-                (r"(\d{3})\s*(Unauthorized|Forbidden|Not Found)", "HTTP error"),
-                (r"(ModuleNotFoundError|ImportError)", "Import error"),
-                (r"(SyntaxError|TypeError|ValueError)", "Python error"),
-                (r"(ENOENT|EACCES|EPERM)", "Filesystem error"),
-                (r"(connection refused|timeout)", "Network error"),
-            ]
-            error_type = "Command error"
-            for pattern, etype in error_patterns:
-                if re.search(pattern, output, re.IGNORECASE):
-                    error_type = etype
-                    break
-            if not success:
-                track_error(state, error_type, output[:500])
-                track_failure(state, approach_sig)
-
-                # SELF-HEAL: Detect framework errors (errors in .claude/ paths)
-                if ".claude/" in command or ".claude\\" in command:
-                    _trigger_self_heal(
-                        state,
-                        target=command.split()[0] if command.split() else "bash",
-                        error=output[:200],
-                    )
-
-        # SELF-HEAL: Clear if successful operation on framework files
-        if success and getattr(state, "self_heal_required", False):
-            if ".claude/" in command or ".claude\\" in command:
-                _clear_self_heal(state)
-
-        if success and state.errors_unresolved:
-            reset_failures(state)
-            for error in state.errors_unresolved[:]:
-                if any(
-                    word in command.lower()
-                    for word in error.get("type", "").lower().split()
-                ):
-                    resolve_error(state, error.get("type", ""))
-
-        # Test failure discovery
-        if (
-            "pytest" in command
-            or "npm test" in command
-            or "jest" in command
-            or "cargo test" in command
-        ):
-            for failure in extract_test_failures(output):
-                add_work_item(
-                    state,
-                    item_type="test_failure",
-                    source=failure.get("file", "tests"),
-                    description=failure.get("description", "Fix test failure"),
-                    priority=failure.get("priority", 80),
-                )
-
-        # Clear pending items for bash grep/find
-        if "grep " in command or command.startswith("grep") or "rg " in command:
-            patterns = re.findall(r'grep[^\|]*?["\']([^"\']+)["\']', command)
-            patterns += re.findall(r"grep\s+(?:-\w+\s+)*(\w+)", command)
-            for pattern in patterns:
-                if len(pattern) > 3:
-                    clear_integration_grep(state, pattern)
-                    clear_pending_search(state, pattern)
+        _handle_bash_tool(tool_input, result, state)
 
     elif tool_name == "Grep":
         pattern = tool_input.get("pattern", "")
