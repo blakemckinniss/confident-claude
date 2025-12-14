@@ -1263,84 +1263,51 @@ def check_content_gate(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 
+def _get_projected_content(tool_name: str, tool_input: dict, file_path: str) -> str | None:
+    """Get content that will exist after edit. Returns None if can't determine."""
+    from pathlib import Path
+    path = Path(file_path)
+    if tool_name == "Write":
+        return tool_input.get("content", "")
+    elif tool_name == "Edit":
+        if not path.exists():
+            return None
+        existing = path.read_text()
+        old_str = tool_input.get("old_string", "")
+        if old_str not in existing:
+            return None
+        return existing.replace(old_str, tool_input.get("new_string", ""), 1)
+    return None
+
+
 @register_hook("god_component_gate", "Edit|Write", priority=48)
 def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
-    """
-    Block edits that would create God components.
-
-    Uses three layers:
-    1. Allowlist - Known-large file patterns, explicit markers
-    2. Complexity - AST-based function/import counting
-    3. Churn - Edit frequency tracking (escalates warning to block)
-    """
-    tool_name = data.get("tool_name", "")
+    """Block edits that would create God components."""
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    if not file_path:
+    if not file_path or ".claude/tmp/" in file_path or "/.claude/" in file_path:
         return HookResult.approve()
-
-    # Skip scratch files and framework infrastructure
-    if ".claude/tmp/" in file_path or "/.claude/" in file_path:
-        return HookResult.approve()
-
-    # SUDO bypass
     if data.get("_sudo_bypass"):
         return HookResult.approve()
 
-    # Get the content that WILL exist after the edit
     try:
-        from pathlib import Path
-
-        path = Path(file_path)
-
-        if tool_name == "Write":
-            # Write replaces entire file
-            content = tool_input.get("content", "")
-        elif tool_name == "Edit":
-            # Edit modifies existing content
-            if not path.exists():
-                return HookResult.approve()
-            existing = path.read_text()
-            old_string = tool_input.get("old_string", "")
-            new_string = tool_input.get("new_string", "")
-            if old_string not in existing:
-                return HookResult.approve()  # Let gap_detector handle this
-            content = existing.replace(old_string, new_string, 1)
-        else:
-            return HookResult.approve()
-
+        content = _get_projected_content(data.get("tool_name", ""), tool_input, file_path)
         if not content:
             return HookResult.approve()
-
     except Exception:
         return HookResult.approve()
 
-    # Track edit count for churn detection
-    edit_count = (
-        state.get_file_edit_count(file_path)
-        if hasattr(state, "get_file_edit_count")
-        else 0
-    )
+    edit_count = state.get_file_edit_count(file_path) if hasattr(state, "get_file_edit_count") else 0
 
-    # Run detection
     try:
-        from analysis.god_component_detector import (
-            detect_god_component,
-            format_detection_message,
-        )
-
+        from analysis.god_component_detector import detect_god_component, format_detection_message
         result = detect_god_component(file_path, content, edit_count)
-
         if result.severity == "block":
-            message = format_detection_message(result)
-            return HookResult.deny(
-                f"{message}\nBypass: `# LARGE_FILE_OK: reason` as first line, SUDO, or use .claude/tmp/"
-            )
+            msg = format_detection_message(result)
+            return HookResult.deny(f"{msg}\nBypass: `# LARGE_FILE_OK: reason` as first line, SUDO, or use .claude/tmp/")
         elif result.severity == "warn":
-            message = format_detection_message(result)
-            return HookResult.approve_with_context(message)
-
+            return HookResult.approve_with_context(format_detection_message(result))
     except Exception:
         pass
     return HookResult.approve()

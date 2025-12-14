@@ -750,21 +750,31 @@ def _handle_bash_tool(tool_input: dict, result: dict, state: SessionState) -> No
                 clear_pending_search(state, pattern)
 
 
+def _handle_search_tool(tool_name: str, tool_input: dict, state: SessionState) -> None:
+    """Handle Grep/Glob search tools."""
+    pattern = tool_input.get("pattern", "")
+    add_domain_signal(state, pattern)
+    if pattern:
+        clear_pending_search(state, pattern)
+        if tool_name == "Grep":
+            clear_integration_grep(state, pattern)
+
+
+def _normalize_result(result: any) -> dict:
+    """Normalize tool result to dict."""
+    if isinstance(result, str):
+        return {"output": result}
+    return result if isinstance(result, dict) else {}
+
+
 @register_hook("state_updater", None, priority=10)
 def check_state_updater(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Update session state based on tool usage.
-
-    Delegates to helper functions for each tool type.
-    """
+    """Update session state based on tool usage."""
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
-    result = data.get("tool_result", {})
-    if isinstance(result, str):
-        result = {"output": result}
-    elif not isinstance(result, dict):
-        result = {}
+    result = _normalize_result(data.get("tool_result", {}))
     warning = None
 
     state.tool_counts[tool_name] = state.tool_counts.get(tool_name, 0) + 1
@@ -772,43 +782,21 @@ def check_state_updater(
 
     if tool_name == "Read":
         _handle_read_tool(tool_input, result, state)
-
     elif tool_name == "Edit":
         _handle_edit_tool(tool_input, result, state)
-
     elif tool_name == "Write":
         warning = _handle_write_tool(tool_input, result, state)
-
     elif tool_name == "Bash":
         _handle_bash_tool(tool_input, result, state)
-
-    elif tool_name == "Grep":
-        pattern = tool_input.get("pattern", "")
-        add_domain_signal(state, pattern)
-        if pattern:
-            clear_pending_search(state, pattern)
-            clear_integration_grep(state, pattern)
-
-    elif tool_name == "Glob":
-        pattern = tool_input.get("pattern", "")
-        add_domain_signal(state, pattern)
-        if pattern:
-            clear_pending_search(state, pattern)
-
+    elif tool_name in ("Grep", "Glob"):
+        _handle_search_tool(tool_name, tool_input, state)
     elif tool_name == "Task":
-        prompt = tool_input.get("prompt", "")
-        add_domain_signal(state, prompt[:200])
+        add_domain_signal(state, tool_input.get("prompt", "")[:200])
 
-    # Track last tool for sequential repetition detection
-    bash_cmd = ""
-    if tool_name == "Bash":
-        bash_cmd = tool_input.get("command", "")[
-            :50
-        ]  # First 50 chars for pattern matching
     state.last_tool_info = {
         "tool_name": tool_name,
         "turn": state.turn_count,
-        "bash_cmd": bash_cmd,
+        "bash_cmd": tool_input.get("command", "")[:50] if tool_name == "Bash" else "",
     }
 
     return HookResult.with_context(warning) if warning else HookResult.none()
@@ -2571,57 +2559,49 @@ IGNORE_PATTERNS = [
 ]
 
 
+def _learn_from_bash_error(tool_output: str) -> str | None:
+    """Extract lesson from bash error output."""
+    if not tool_output or not any(k in tool_output.lower() for k in ("error", "failed")):
+        return None
+    if any(re.search(p, tool_output, re.IGNORECASE) for p in IGNORE_PATTERNS):
+        return None
+    for pattern, template in LEARNABLE_PATTERNS:
+        if match := re.search(pattern, tool_output):
+            try:
+                return template.format(*match.groups())[:60]
+            except (IndexError, KeyError):
+                pass
+    return None
+
+
+def _get_quality_hint(tool_name: str, tool_input: dict, runner_state: dict) -> str | None:
+    """Get quality hint for tool usage."""
+    hints_shown = runner_state.setdefault("hints_shown", [])
+    if tool_name in ("Write", "Edit") and tool_input.get("file_path", "").endswith(".py"):
+        if "py_ruff" not in hints_shown:
+            hints_shown.append("py_ruff")
+            return "💡 Run `ruff check --fix && ruff format` after editing Python"
+    elif tool_name == "Bash":
+        cmd = tool_input.get("command", "")
+        if re.search(r"\bgrep\s+-r", cmd) and "rg " not in cmd and "use_rg" not in hints_shown:
+            hints_shown.append("use_rg")
+            return "💡 Use `rg` (ripgrep) instead of `grep -r` for 10-100x speed"
+    return None
+
+
 @register_hook("auto_learn", None, priority=60)
 def check_auto_learn(data: dict, state: SessionState, runner_state: dict) -> HookResult:
     """Capture lessons from errors and provide quality hints."""
-    tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", {})
-    tool_output = data.get("tool_output", "")
     messages = []
 
-    # Error learning (Bash only)
-    if (
-        tool_name == "Bash"
-        and tool_output
-        and ("error" in tool_output.lower() or "failed" in tool_output.lower())
-    ):
-        skip = any(re.search(p, tool_output, re.IGNORECASE) for p in IGNORE_PATTERNS)
-        if not skip:
-            for pattern, template in LEARNABLE_PATTERNS:
-                match = re.search(pattern, tool_output)
-                if match:
-                    try:
-                        lesson = template.format(*match.groups())
-                        messages.append(f"🐘 Auto-learned: {lesson[:60]}...")
-                    except (IndexError, KeyError):
-                        pass
-                    break
+    if data.get("tool_name") == "Bash":
+        if lesson := _learn_from_bash_error(data.get("tool_output", "")):
+            messages.append(f"🐘 Auto-learned: {lesson}...")
 
-    # Quality hints
-    if tool_name in ("Write", "Edit"):
-        file_path = tool_input.get("file_path", "")
-        if file_path.endswith(".py"):
-            hint_id = "py_ruff"
-            if hint_id not in runner_state.get("hints_shown", []):
-                runner_state.setdefault("hints_shown", []).append(hint_id)
-                messages.append(
-                    "💡 Run `ruff check --fix && ruff format` after editing Python"
-                )
+    if hint := _get_quality_hint(data.get("tool_name", ""), data.get("tool_input", {}), runner_state):
+        messages.append(hint)
 
-    elif tool_name == "Bash":
-        command = tool_input.get("command", "")
-        if re.search(r"\bgrep\s+-r", command) and "rg " not in command:
-            hint_id = "use_rg"
-            if hint_id not in runner_state.get("hints_shown", []):
-                runner_state.setdefault("hints_shown", []).append(hint_id)
-                messages.append(
-                    "💡 Use `rg` (ripgrep) instead of `grep -r` for 10-100x speed"
-                )
-
-    if messages:
-        return HookResult.with_context("\n".join(messages[:2]))
-
-    return HookResult.none()
+    return HookResult.with_context("\n".join(messages[:2])) if messages else HookResult.none()
 
 
 # -----------------------------------------------------------------------------
