@@ -13,7 +13,7 @@
       "url": "https://github.com/anthropics/claude-code.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-plugins",
-    "lastUpdated": "2025-12-14T04:27:43.065Z"
+    "lastUpdated": "2025-12-14T04:44:45.057Z"
   },
   "claude-code-workflows": {
     "source": {
@@ -29,7 +29,7 @@
       "url": "https://github.com/yamadashy/repomix.git"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/repomix",
-    "lastUpdated": "2025-12-14T04:30:20.377Z"
+    "lastUpdated": "2025-12-14T05:02:21.947Z"
   },
   "claude-code-templates": {
     "source": {
@@ -45,6 +45,6 @@
       "repo": "sawyerhood/dev-browser"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/dev-browser-marketplace",
-    "lastUpdated": "2025-12-14T01:36:45.739Z"
+    "lastUpdated": "2025-12-14T04:32:10.965Z"
   }
 }

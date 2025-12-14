@@ -4,6 +4,42 @@
 
 Hooks are registered via decorator and stored in the `HOOKS` list. The runner executes them in priority order, checking matchers against the tool name.
 
+## File Structure
+
+### Runners (4 main entry points)
+| File | Event | Purpose |
+|------|-------|---------|
+| `post_tool_use_runner.py` | PostToolUse | ~60 hooks for tool output processing |
+| `pre_tool_use_runner.py` | PreToolUse | Permission gates, blocking checks |
+| `user_prompt_submit_runner.py` | UserPromptSubmit | Context injection, dispute detection |
+| `stop_runner.py` | Stop | Completion gate, cleanup |
+
+### Additional Runners
+| File | Event | Purpose |
+|------|-------|---------|
+| `session_init.py` | SessionStart | Session initialization |
+| `session_cleanup.py` | SessionEnd | Session cleanup |
+| `subagent_stop.py` | SubagentStop | Subagent completion handling |
+| `pre_compact.py` | PreCompact | Pre-compaction processing |
+| `statusline.py` | Statusline | Status bar rendering |
+
+### Helper Modules (Private)
+| File | Purpose |
+|------|---------|
+| `_hook_result.py` | HookResult class (approve/deny/none) |
+| `_cooldown.py` | Cooldown management |
+| `_config.py` | Centralized configuration |
+| `_patterns.py` | Path patterns (scratch detection) |
+| `_beads.py` | Bead/task tracking helpers |
+| `_logging.py` | Hook logging utilities |
+| `_ast_utils.py` | AST analysis utilities |
+| `_lib_path.py` | Library path management |
+| `_pal_mandates.py` | PAL MCP mandate handling |
+| `_quality_scanner.py` | Code quality scanning |
+| `_cache.py` | Hook result caching |
+| `_intent_classifier.py` | Intent classification |
+| `py` | Python wrapper script (auto-detects venv) |
+
 ## Registration Pattern
 
 ```python
@@ -57,31 +93,6 @@ def check_hook_name(data: dict, state: SessionState, config: dict) -> HookResult
 - `"Bash|Edit|Write"`: OR pattern (pipe-separated)
 - Uses `re.match()` internally
 
-## Runner Execution Flow
-
-```python
-def run_hooks(data: dict, state: SessionState, config: dict) -> HookResult:
-    # 1. Pre-compute SUDO bypass (once per call)
-    data["_sudo_bypass"] = check_sudo_in_response(data)
-    
-    # 2. Sort hooks by priority
-    sorted_hooks = sorted(HOOKS, key=lambda h: h[3])
-    
-    # 3. Execute matching hooks
-    messages = []
-    for name, matcher, func, priority in sorted_hooks:
-        if matcher and not re.match(matcher, tool_name):
-            continue
-        result = func(data, state, config)
-        if result.decision == "deny":
-            return result  # Early exit on block
-        if result.message:
-            messages.append(result.message)
-    
-    # 4. Aggregate approved messages
-    return HookResult.approve("\n".join(messages)) if messages else HookResult.approve()
-```
-
 ## HookResult API
 
 ```python
@@ -115,7 +126,7 @@ CLAUDE_HOOK_DISABLE_CODE_QUALITY=1 claude
 
 ## Adding a New Hook
 
-1. Choose appropriate runner file (`pre_tool_use_runner.py`, `post_tool_use_runner.py`, etc.)
+1. Choose appropriate runner file
 2. Add function with `@register_hook` decorator
 3. Assign priority in correct range
 4. Return `HookResult.approve()`, `.deny()`, or `.none()`

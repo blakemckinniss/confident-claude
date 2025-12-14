@@ -3,9 +3,9 @@
 ## Purpose
 Claude Code hooks and ops infrastructure - a comprehensive workflow automation system for Claude Code CLI. This is a **global WSL2 system assistant framework** providing:
 
-- **79 hooks** across 4 runners (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
-- **35 ops tools** for code quality, debugging, and workflow automation
-- **65+ slash commands** for common development tasks
+- **79 hooks** across 4 main runners (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
+- **36 ops tools** for code quality, debugging, and workflow automation
+- **65 slash commands** for common development tasks
 - **Dynamic confidence system** that mechanically regulates Claude's behavior
 - **Beads task tracking** (`bd` CLI) for persistent cross-session task management
 
@@ -35,3 +35,29 @@ radon>=6.0.0           # Complexity analysis
 - **OS**: Linux (WSL2 Ubuntu 24.04)
 - **Host**: Windows 11
 - **Location**: `/home/jinx/.claude/`
+
+## Architecture Summary
+
+### Hook System
+4 main runners orchestrate hooks:
+1. `pre_tool_use_runner.py` - Permission gates, blocking checks
+2. `post_tool_use_runner.py` - Tool output processing (~60 hooks)
+3. `user_prompt_submit_runner.py` - Context injection, dispute detection
+4. `stop_runner.py` - Completion gate, cleanup
+
+Plus: `session_init.py`, `session_cleanup.py`, `subagent_stop.py`, `pre_compact.py`, `statusline.py`
+
+### Library Modules
+- `lib/core.py` - Script utilities
+- `lib/confidence.py` - Confidence regulation
+- `lib/session_state.py` - State management
+- `lib/oracle.py` - External LLM
+- `lib/spark_core.py` - Memory system
+- `lib/cache/` - Caching subsystem
+
+### Ops Tools Categories
+- Code Quality: audit, void, drift, gaps, xray
+- External LLM: oracle, council, think, research, docs, groq, swarm
+- Workflow: upkeep, verify, scope, evidence, detour
+- System: sysinfo, housekeeping, inventory, bdg, playwright
+- Memory: remember, spark, compress_session

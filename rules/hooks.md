@@ -10,18 +10,28 @@ Rules for developing and maintaining the Whitebox hook system.
 
 ```
 ~/.claude/hooks/
-├── pre_tool_use_runner.py    # PreToolUse orchestrator (gates)
-├── post_tool_use_runner.py   # PostToolUse orchestrator (learning)
-├── user_prompt_submit_runner.py  # UserPromptSubmit orchestrator (injection)
-├── stop_runner.py            # Stop orchestrator (session cleanup)
-├── synapse_core.py           # Shared utilities
-├── _beads.py                 # Bead/task tracking helpers (bd CLI)
-├── _config.py                # Centralized config with hot-reload
-├── _cooldown.py              # Cooldown management (spam prevention)
-├── _hook_result.py           # HookResult API (approve/deny/none)
-├── _patterns.py              # Path patterns (scratch, protected paths)
-├── analysis/                 # Analysis modules
-└── py                        # Python wrapper script
+├── pre_tool_use_runner.py       # PreToolUse orchestrator (gates)
+├── post_tool_use_runner.py      # PostToolUse orchestrator (~60 hooks)
+├── user_prompt_submit_runner.py # UserPromptSubmit orchestrator (injection)
+├── stop_runner.py               # Stop orchestrator (completion gate)
+├── session_init.py              # SessionStart handler
+├── session_cleanup.py           # SessionEnd handler
+├── subagent_stop.py             # SubagentStop handler
+├── pre_compact.py               # PreCompact handler
+├── statusline.py                # Status bar renderer
+├── _hook_result.py              # HookResult API (approve/deny/none)
+├── _config.py                   # Centralized config with hot-reload
+├── _cooldown.py                 # Cooldown management (spam prevention)
+├── _patterns.py                 # Path patterns (scratch, protected paths)
+├── _beads.py                    # Bead/task tracking helpers (bd CLI)
+├── _logging.py                  # Hook logging utilities
+├── _ast_utils.py                # AST analysis utilities
+├── _lib_path.py                 # Library path management
+├── _pal_mandates.py             # PAL MCP mandate handling
+├── _quality_scanner.py          # Code quality scanning
+├── _cache.py                    # Hook result caching
+├── _intent_classifier.py        # Intent classification
+└── py                           # Python wrapper script (auto-detects venv)
 ```
 
 ## Hook Registration Pattern

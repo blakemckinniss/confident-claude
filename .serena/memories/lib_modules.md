@@ -7,7 +7,6 @@ The `lib/` directory contains shared Python modules used by hooks and ops script
 ## Module Index
 
 ### Core Utilities
-
 | Module | Purpose |
 |--------|---------|
 | `core.py` | Script setup utilities (`setup_script`, `finalize`, `safe_execute`) |
@@ -15,29 +14,38 @@ The `lib/` directory contains shared Python modules used by hooks and ops script
 | `confidence.py` | Confidence system (reducers, increasers, zones, gates) |
 
 ### External LLM Integration
-
 | Module | Purpose |
 |--------|---------|
 | `oracle.py` | OpenRouter API calls, personas (judge, critic, skeptic) |
 | `council_engine.py` | Multi-model consensus, parallel consultation |
 
 ### Memory & Context
-
 | Module | Purpose |
 |--------|---------|
 | `spark_core.py` | Synapse/memory system (`fire_synapses`, `query_lessons`) |
+| `synapse_core.py` | Core synapse firing logic |
 | `session_rag.py` | Session history RAG (retrieval augmented generation) |
 | `context_builder.py` | Context assembly for prompts |
+| `epistemology.py` | Knowledge/evidence handling |
 
 ### Code Analysis
-
 | Module | Purpose |
 |--------|---------|
 | `ast_analysis.py` | AST parsing and analysis |
-| `analysis/` | Analysis submodules (god_component_detector) |
+| `analysis/` | Analysis submodule |
+| `analysis/__init__.py` | Submodule init |
+| `analysis/god_component_detector.py` | Detects overloaded components |
+
+### Caching Subsystem (`cache/`)
+| Module | Purpose |
+|--------|---------|
+| `cache/__init__.py` | Cache submodule init |
+| `cache/grounding_analyzer.py` | Grounding/hallucination analysis |
+| `cache/embedding_client.py` | Embedding API client |
+| `cache/read_cache.py` | File read caching |
+| `cache/exploration_cache.py` | Codebase exploration caching |
 
 ### Workflow Management
-
 | Module | Purpose |
 |--------|---------|
 | `detour.py` | Blocking issue stack management |
@@ -45,13 +53,11 @@ The `lib/` directory contains shared Python modules used by hooks and ops script
 | `project_detector.py` | Project type detection |
 
 ### Utilities
-
 | Module | Purpose |
 |--------|---------|
 | `hook_registry.py` | Hook discovery and registration |
 | `command_awareness.py` | Command/tool awareness |
 | `persona_parser.py` | Persona prompt parsing |
-| `epistemology.py` | Knowledge/evidence handling |
 
 ## Key Module Details
 
@@ -83,9 +89,6 @@ def oracle_critic(idea: str) -> str:
 
 def oracle_skeptic(proposal: str) -> str:
     """Hostile review persona."""
-
-def oracle_consult(question: str) -> str:
-    """General consultation."""
 ```
 
 ### `spark_core.py`
@@ -113,9 +116,21 @@ def pop_detour() -> Optional[Detour]:
 
 def get_active_detours() -> list[Detour]:
     """Get all unresolved detours."""
+```
 
-def get_resume_prompt(detour: Detour) -> str:
-    """Generate prompt to resume after detour."""
+### `confidence.py`
+```python
+def apply_reducers(context: dict, state: SessionState) -> list[tuple]:
+    """Apply all reducers, return (name, delta, reason) tuples."""
+
+def apply_increasers(context: dict, state: SessionState) -> list[tuple]:
+    """Apply all increasers, return (name, delta, reason) tuples."""
+
+def get_tier_info(confidence: int) -> tuple[str, str, str]:
+    """Return (zone_name, emoji, capabilities)."""
+
+def check_tool_permission(tool: str, confidence: int, path: str) -> tuple[bool, str]:
+    """Check if tool is allowed at current confidence."""
 ```
 
 ## Import Pattern
@@ -132,12 +147,3 @@ from core import setup_script, finalize
 from session_state import load_state, save_state
 from confidence import apply_reducers
 ```
-
-## Analysis Submodule
-
-```python
-# lib/analysis/__init__.py
-from .god_component_detector import detect_god_components
-```
-
-Detects components with too many responsibilities (> threshold methods/props).
