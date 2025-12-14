@@ -1317,6 +1317,28 @@ class ObviousNextStepsReducer(ConfidenceReducer):
 
 
 @dataclass
+class SequentialWhenParallelReducer(ConfidenceReducer):
+    """Triggers on 3+ sequential single-tool messages when parallel was possible.
+
+    Wastes tokens and time doing one thing at a time when multiple
+    independent operations could run in parallel.
+    """
+
+    name: str = "sequential_when_parallel"
+    delta: int = -2
+    description: str = "Sequential single-tool calls (could parallelize)"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Track consecutive single reads/searches (guard for mock states)
+        return getattr(state, "consecutive_single_reads", 0) >= 3
+
+
+@dataclass
 class TestIgnoredReducer(ConfidenceReducer):
     """Triggers when test files are modified but tests aren't run.
 
@@ -1386,6 +1408,7 @@ REDUCERS: list[ConfidenceReducer] = [
     LargeDiffReducer(),  # Diffs > 400 LOC
     HookBlockReducer(),  # Soft/hard hook blocks
     SequentialRepetitionReducer(),  # Same tool 3+ times sequentially (-1)
+    SequentialWhenParallelReducer(),  # Sequential when parallel possible (-2) v4.6
     # Verification theater reducers (GPT-5.2 recommendations)
     UnbackedVerificationClaimReducer(),  # Claim without tool evidence (-15)
     FixedWithoutChainReducer(),  # "Fixed" without write+verify (-8)
@@ -2002,6 +2025,48 @@ class ChainedCommandsIncreaser(ConfidenceIncreaser):
 
 
 @dataclass
+class TargetedReadIncreaser(ConfidenceIncreaser):
+    """Triggers when using offset/limit on Read for large files.
+
+    Reading targeted sections saves tokens vs reading entire file.
+    """
+
+    name: str = "targeted_read"
+    delta: int = 2
+    description: str = "Used targeted read (offset/limit) for efficiency"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("targeted_read", False)
+
+
+@dataclass
+class SubagentDelegationIncreaser(ConfidenceIncreaser):
+    """Triggers when using Task(Explore) for open-ended exploration.
+
+    Delegating exploration to subagents saves main context window.
+    """
+
+    name: str = "subagent_delegation"
+    delta: int = 2
+    description: str = "Delegated exploration to subagent (context saved)"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        return context.get("subagent_delegation", False)
+
+
+@dataclass
 class PremiseChallengeIncreaser(ConfidenceIncreaser):
     """Triggers when suggesting existing solutions instead of building from scratch.
 
@@ -2339,6 +2404,8 @@ INCREASERS: list[ConfidenceIncreaser] = [
     BatchFixIncreaser(),  # Multiple fixes in one edit (+3)
     DirectActionIncreaser(),  # No preamble, just action (+2)
     ChainedCommandsIncreaser(),  # Commands with && or ; (+1)
+    TargetedReadIncreaser(),  # Used offset/limit on Read (+2) v4.6
+    SubagentDelegationIncreaser(),  # Delegated to subagent (+2) v4.6
     # Build-vs-buy (v4.3)
     PremiseChallengeIncreaser(),  # Suggest alternatives (+5)
     # Completion quality increasers (v4.4)

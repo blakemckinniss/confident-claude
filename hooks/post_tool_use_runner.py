@@ -1428,6 +1428,9 @@ def _build_natural_signals(
         context["files_read_count"] = 1
         if "/.claude/memory" in file_path or "/memory/" in file_path:
             context["memory_consulted"] = True
+        # v4.6: Targeted read with offset/limit saves tokens
+        if tool_input.get("offset") or tool_input.get("limit"):
+            context["targeted_read"] = True
 
     # Research tools = due diligence (+2)
     if tool_name in {
@@ -1442,6 +1445,11 @@ def _build_natural_signals(
     # Search tools = gathering understanding (+2)
     if tool_name in {"Grep", "Glob", "Task"}:
         context["search_performed"] = True
+        # v4.6: Subagent delegation saves main context
+        if tool_name == "Task":
+            subagent_type = tool_input.get("subagent_type", "")
+            if subagent_type in {"Explore", "scout", "Plan"}:
+                context["subagent_delegation"] = True
 
     # Asking user = epistemic humility (+20)
     if tool_name == "AskUserQuestion":
