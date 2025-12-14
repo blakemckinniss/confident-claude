@@ -66,7 +66,8 @@ Key lib files refactored for maintainability:
 | `ast_analysis.py` | 1 (`_check_attribute_call`) | C (13) | B (7) |
 | `project_detector.py` | 2 (`find_project_file`, `detect_project`) | C (12-13) | A-B (4-7) |
 | `session_rag.py` | 2 (`_build_index`, `search_sessions`) | C (12-16) | A-B (4-6) |
-| `synapse_core.py` | 1 (`extract_recent_text`) | C (11) | A (5) |
+| `synapse_core.py` | 2 (`extract_recent_text`, `output_hook_result`) | C (11) | A (5) |
+| `command_awareness.py` | 1 (`_parse_commands`) | C (12) | B (7) |
 
 **Patterns applied:**
 - Helper extraction (`_load_session_digests()`, `_score_digest()`, `_format_*_section()`)
@@ -74,7 +75,7 @@ Key lib files refactored for maintainability:
 - Data-driven tuples (`_JS_FRAMEWORKS`, `_PY_FRAMEWORKS`, `_PROJECT_FILES`)
 - Early returns to flatten nesting
 
-**Result:** Overall lib complexity A (4.35 avg), 21 C901 violations remaining (down from ~50+)
+**Result:** Overall lib complexity A (4.33 avg), 19 C901 violations remaining (down from ~50+)
 
 ---
 

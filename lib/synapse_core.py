@@ -577,6 +577,28 @@ def clear_session_blocks(session_id: str = None):
         pass
 
 
+# Pre-compiled pattern for extracting hook name from block reason
+_BLOCKED_PATTERN = re.compile(r"\*\*(\w+(?:\s+\w+)?)\s+BLOCKED\*\*")
+
+
+def _extract_hook_name_from_reason(reason: str) -> str:
+    """Extract hook name from reason like '**COMMIT BLOCKED**'."""
+    match = _BLOCKED_PATTERN.search(reason)
+    if match:
+        return match.group(1).lower().replace(" ", "_") + "_gate"
+    return "unknown"
+
+
+def _handle_deny_decision(
+    result: dict, reason: str, hook_name: str, tool_name: str, tool_input: dict
+) -> str:
+    """Handle deny decision: append acknowledgment and log block."""
+    reason_with_ack = reason + format_block_acknowledgment(hook_name or "hook")
+    effective_hook = hook_name or _extract_hook_name_from_reason(reason)
+    log_block(effective_hook, reason_with_ack, tool_name, tool_input)
+    return reason_with_ack
+
+
 def output_hook_result(
     lifecycle: str,
     context: str = "",
@@ -590,11 +612,7 @@ def output_hook_result(
 
     If decision is "deny", automatically logs the block for later reflection.
     """
-    result = {
-        "hookSpecificOutput": {
-            "hookEventName": lifecycle,
-        }
-    }
+    result = {"hookSpecificOutput": {"hookEventName": lifecycle}}
 
     if context:
         result["hookSpecificOutput"]["additionalContext"] = context
@@ -602,23 +620,10 @@ def output_hook_result(
     if decision:
         result["hookSpecificOutput"]["permissionDecision"] = decision
         if reason:
-            # Append acknowledgment prompt for blocks
             if decision == "deny":
-                reason = reason + format_block_acknowledgment(hook_name or "hook")
+                reason = _handle_deny_decision(
+                    result, reason, hook_name, tool_name, tool_input
+                )
             result["hookSpecificOutput"]["permissionDecisionReason"] = reason
-
-        # Auto-log blocks
-        if decision == "deny":
-            # Extract hook name from reason if not provided
-            effective_hook = hook_name
-            if not effective_hook and reason:
-                # Try to extract from reason like "**COMMIT BLOCKED**"
-                import re
-
-                match = re.search(r"\*\*(\w+(?:\s+\w+)?)\s+BLOCKED\*\*", reason)
-                if match:
-                    effective_hook = match.group(1).lower().replace(" ", "_") + "_gate"
-
-            log_block(effective_hook or "unknown", reason, tool_name, tool_input)
 
     print(json.dumps(result))

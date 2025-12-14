@@ -115,21 +115,41 @@ COMMAND_TRIGGERS = {
 }
 
 
-def _parse_commands() -> dict:
-    """Parse command files and extract metadata."""
-    global _COMMANDS_CACHE
-
+def _get_latest_command_mtime() -> Optional[float]:
+    """Get latest mtime of command files, or None if no commands."""
     if not _COMMANDS_DIR.exists():
-        return {}
-
-    # Get latest mtime
+        return None
     try:
-        latest_mtime = max(
+        return max(
             f.stat().st_mtime
             for f in _COMMANDS_DIR.glob("*.md")
             if not f.name.startswith("README")
         )
     except ValueError:
+        return None
+
+
+def _parse_command_file(cmd_file: Path) -> Optional[dict]:
+    """Parse a single command file and extract metadata."""
+    try:
+        content = cmd_file.read_text()
+        desc_match = re.search(r"^description:\s*(.+)$", content, re.MULTILINE)
+        hint_match = re.search(r"^argument-hint:\s*(.*)$", content, re.MULTILINE)
+        return {
+            "name": f"/{cmd_file.stem}",
+            "description": desc_match.group(1).strip() if desc_match else "",
+            "hint": hint_match.group(1).strip() if hint_match else "",
+        }
+    except Exception:
+        return None
+
+
+def _parse_commands() -> dict:
+    """Parse command files and extract metadata."""
+    global _COMMANDS_CACHE
+
+    latest_mtime = _get_latest_command_mtime()
+    if latest_mtime is None:
         return {}
 
     # Check cache
@@ -140,22 +160,9 @@ def _parse_commands() -> dict:
     for cmd_file in _COMMANDS_DIR.glob("*.md"):
         if cmd_file.name.startswith("README"):
             continue
-
-        try:
-            content = cmd_file.read_text()
-            name = cmd_file.stem
-
-            # Parse frontmatter
-            desc_match = re.search(r"^description:\s*(.+)$", content, re.MULTILINE)
-            hint_match = re.search(r"^argument-hint:\s*(.*)$", content, re.MULTILINE)
-
-            commands[name] = {
-                "name": f"/{name}",
-                "description": desc_match.group(1).strip() if desc_match else "",
-                "hint": hint_match.group(1).strip() if hint_match else "",
-            }
-        except Exception:
-            continue
+        parsed = _parse_command_file(cmd_file)
+        if parsed:
+            commands[cmd_file.stem] = parsed
 
     _COMMANDS_CACHE = (latest_mtime, commands)
     return commands
