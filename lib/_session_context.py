@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from _session_constants import Domain, OPS_DIR, _OPS_SCRIPTS_CACHE, _OPS_SCRIPTS_MTIME
+from _session_constants import Domain, OPS_DIR
 
 if TYPE_CHECKING:
     from _session_state_class import SessionState

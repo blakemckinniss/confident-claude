@@ -15,8 +15,6 @@ from _session_constants import (
     MEMORY_DIR,
     STATE_FILE,
     STATE_LOCK_FILE,
-    _STATE_CACHE,
-    _STATE_CACHE_MTIME,
 )
 
 if TYPE_CHECKING:
