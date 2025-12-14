@@ -505,9 +505,7 @@ def check_read_cache_invalidator(
     return HookResult.allow()
 
 
-def _handle_read_tool(
-    tool_input: dict, result: dict, state: SessionState
-) -> None:
+def _handle_read_tool(tool_input: dict, result: dict, state: SessionState) -> None:
     """Handle Read tool state updates."""
     filepath = tool_input.get("file_path", "")
     read_error = _detect_error_in_result(
@@ -535,9 +533,7 @@ def _handle_read_tool(
                 )
 
 
-def _handle_edit_tool(
-    tool_input: dict, result: dict, state: SessionState
-) -> None:
+def _handle_edit_tool(tool_input: dict, result: dict, state: SessionState) -> None:
     """Handle Edit tool state updates."""
     filepath = tool_input.get("file_path", "")
     edit_error = _detect_error_in_result(result)
@@ -639,7 +635,13 @@ def _track_bash_git_commit(command: str, output: str, state: SessionState) -> No
     create_checkpoint(state, commit_hash=commit_hash, notes=notes)
 
     completion_keywords = [
-        "fix", "complete", "done", "finish", "implement", "resolve", "close"
+        "fix",
+        "complete",
+        "done",
+        "finish",
+        "implement",
+        "resolve",
+        "close",
     ]
     if state.current_feature and any(kw in notes.lower() for kw in completion_keywords):
         complete_feature(state, status="completed")
@@ -710,9 +712,7 @@ def _track_bash_test_failures(command: str, output: str, state: SessionState) ->
         )
 
 
-def _handle_bash_tool(
-    tool_input: dict, result: dict, state: SessionState
-) -> None:
+def _handle_bash_tool(tool_input: dict, result: dict, state: SessionState) -> None:
     """Handle Bash tool state updates. Delegates to specialized trackers."""
     command = tool_input.get("command", "")
     output = result.get("output", "")
@@ -1042,7 +1042,10 @@ def _calculate_decay_penalty(
         new_code = tool_input.get("new_string", "") or tool_input.get("content", "")
         if new_code:
             stub_patterns = [
-                "pass  # TODO", "raise NotImplementedError", "# FIXME", "...  # stub"
+                "pass  # TODO",
+                "raise NotImplementedError",
+                "# FIXME",
+                "...  # stub",
             ]
             if any(p in new_code for p in stub_patterns):
                 penalty += 1
@@ -2037,7 +2040,8 @@ def _check_quality_markers(
     # Debug statements (skip CLI tools)
     threshold_debug = get_adaptive_threshold(state, "quality_debug_statements")
     debug_count = (
-        len(PATTERN_DEBUG_PY.findall(code)) if is_python
+        len(PATTERN_DEBUG_PY.findall(code))
+        if is_python
         else (len(PATTERN_DEBUG_JS.findall(code)) if is_js else 0)
     )
     if debug_count > threshold_debug and not is_cli_tool:
@@ -2069,7 +2073,18 @@ def check_code_quality(
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    code_extensions = (".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".rb", ".sh")
+    code_extensions = (
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+        ".sh",
+    )
     if not file_path.endswith(code_extensions):
         return HookResult.none()
 
@@ -2617,7 +2632,9 @@ def _check_self_check_pattern(
 
 def _check_oscillation_pattern(last_5: list, state: SessionState) -> str | None:
     """Detect Read→Edit→Read→Edit oscillation."""
-    pattern = "".join("R" if t == "Read" else "E" for t in last_5 if t in ("Read", "Edit", "Write"))
+    pattern = "".join(
+        "R" if t == "Read" else "E" for t in last_5 if t in ("Read", "Edit", "Write")
+    )
     if "RERE" in pattern or "ERER" in pattern:
         record_threshold_trigger(state, "velocity_oscillation", 1)
         return (
