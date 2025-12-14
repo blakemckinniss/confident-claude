@@ -605,73 +605,55 @@ def _handle_write_tool(
     return warning
 
 
-def _handle_bash_tool(
-    tool_input: dict, result: dict, state: SessionState
+def _track_bash_ops_usage(command: str, success: bool, state: SessionState) -> None:
+    """Track ops tool usage and audit/void verification."""
+    if ".claude/ops/" not in command:
+        return
+    ops_match = re.search(r"\.claude/ops/(\w+)\.py", command)
+    if not ops_match:
+        return
+    tool_name_ops = ops_match.group(1)
+    track_ops_tool(state, tool_name_ops, success)
+
+    # Track audit/void verification for production files
+    if success and tool_name_ops in ("audit", "void"):
+        parts = command.split()
+        for i, part in enumerate(parts):
+            if part.endswith(f"{tool_name_ops}.py") and i + 1 < len(parts):
+                target_file = parts[i + 1]
+                if not target_file.startswith("-"):
+                    mark_production_verified(state, target_file, tool_name_ops)
+                break
+
+
+def _track_bash_git_commit(command: str, output: str, state: SessionState) -> None:
+    """Handle git commit checkpoints and feature completion."""
+    if not re.search(r"\bgit\s+commit\b", command, re.IGNORECASE):
+        return
+    commit_hash = ""
+    hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]{7,})\]", output)
+    if hash_match:
+        commit_hash = hash_match.group(1)
+    msg_match = re.search(r'-m\s+["\']([^"\']+)["\']', command)
+    notes = msg_match.group(1)[:50] if msg_match else "commit"
+    create_checkpoint(state, commit_hash=commit_hash, notes=notes)
+
+    completion_keywords = [
+        "fix", "complete", "done", "finish", "implement", "resolve", "close"
+    ]
+    if state.current_feature and any(kw in notes.lower() for kw in completion_keywords):
+        complete_feature(state, status="completed")
+
+
+def _track_bash_failures(
+    command: str, output: str, success: bool, state: SessionState
 ) -> None:
-    """Handle Bash tool state updates.
-
-    Tracks:
-    - Command execution and success/failure
-    - Ops tool usage
-    - Files read via cat/head/tail
-    - Git commits (creates checkpoints)
-    - Errors and failures
-    - Test failure discovery
-    - Grep/search pattern clearing
-    """
-    command = tool_input.get("command", "")
-    output = result.get("output", "")
-    exit_code = result.get("exit_code", 0)
-    success = exit_code == 0
-    track_command(state, command, success, output)
-
-    # Track ops tool usage (v3.9)
-    if ".claude/ops/" in command:
-        ops_match = re.search(r"\.claude/ops/(\w+)\.py", command)
-        if ops_match:
-            tool_name_ops = ops_match.group(1)
-            track_ops_tool(state, tool_name_ops, success)
-
-            # Track audit/void verification for production files
-            if success and tool_name_ops in ("audit", "void"):
-                parts = command.split()
-                for i, part in enumerate(parts):
-                    if part.endswith(f"{tool_name_ops}.py") and i + 1 < len(parts):
-                        target_file = parts[i + 1]
-                        if not target_file.startswith("-"):
-                            mark_production_verified(state, target_file, tool_name_ops)
-                        break
-
-    # Track files read via cat/head/tail
-    if success:
-        read_cmds = ["cat ", "head ", "tail ", "less ", "more "]
-        if any(command.startswith(cmd) or f" {cmd}" in command for cmd in read_cmds):
-            parts = command.split()
-            for part in parts[1:]:
-                if not part.startswith("-") and ("/" in part or "." in part):
-                    track_file_read(state, part)
-
-    # Checkpoint on git commit
-    if success and re.search(r"\bgit\s+commit\b", command, re.IGNORECASE):
-        commit_hash = ""
-        hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]{7,})\]", output)
-        if hash_match:
-            commit_hash = hash_match.group(1)
-        msg_match = re.search(r'-m\s+["\']([^"\']+)["\']', command)
-        notes = msg_match.group(1)[:50] if msg_match else "commit"
-        create_checkpoint(state, commit_hash=commit_hash, notes=notes)
-        completion_keywords = [
-            "fix", "complete", "done", "finish", "implement", "resolve", "close"
-        ]
-        if state.current_feature and any(
-            kw in notes.lower() for kw in completion_keywords
-        ):
-            complete_feature(state, status="completed")
-
-    # Track failures
+    """Track failures, errors, and self-heal triggers."""
     approach_sig = (
         f"Bash:{command.split()[0][:20]}" if command.split() else "Bash:unknown"
     )
+
+    # Detect and classify errors
     if not success or "error" in output.lower() or "failed" in output.lower():
         error_patterns = [
             (r"(\d{3})\s*(Unauthorized|Forbidden|Not Found)", "HTTP error"),
@@ -702,6 +684,7 @@ def _handle_bash_tool(
         if ".claude/" in command or ".claude\\" in command:
             _clear_self_heal(state)
 
+    # Resolve errors on success
     if success and state.errors_unresolved:
         reset_failures(state)
         for error in state.errors_unresolved[:]:
@@ -711,21 +694,48 @@ def _handle_bash_tool(
             ):
                 resolve_error(state, error.get("type", ""))
 
-    # Test failure discovery
-    if (
-        "pytest" in command
-        or "npm test" in command
-        or "jest" in command
-        or "cargo test" in command
-    ):
-        for failure in extract_test_failures(output):
-            add_work_item(
-                state,
-                item_type="test_failure",
-                source=failure.get("file", "tests"),
-                description=failure.get("description", "Fix test failure"),
-                priority=failure.get("priority", 80),
-            )
+
+def _track_bash_test_failures(command: str, output: str, state: SessionState) -> None:
+    """Discover and track test failures from test runner output."""
+    test_commands = ["pytest", "npm test", "jest", "cargo test"]
+    if not any(tc in command for tc in test_commands):
+        return
+    for failure in extract_test_failures(output):
+        add_work_item(
+            state,
+            item_type="test_failure",
+            source=failure.get("file", "tests"),
+            description=failure.get("description", "Fix test failure"),
+            priority=failure.get("priority", 80),
+        )
+
+
+def _handle_bash_tool(
+    tool_input: dict, result: dict, state: SessionState
+) -> None:
+    """Handle Bash tool state updates. Delegates to specialized trackers."""
+    command = tool_input.get("command", "")
+    output = result.get("output", "")
+    exit_code = result.get("exit_code", 0)
+    success = exit_code == 0
+    track_command(state, command, success, output)
+
+    # Delegate to specialized trackers
+    _track_bash_ops_usage(command, success, state)
+
+    # Track files read via cat/head/tail
+    if success:
+        read_cmds = ["cat ", "head ", "tail ", "less ", "more "]
+        if any(command.startswith(cmd) or f" {cmd}" in command for cmd in read_cmds):
+            for part in command.split()[1:]:
+                if not part.startswith("-") and ("/" in part or "." in part):
+                    track_file_read(state, part)
+
+    if success:
+        _track_bash_git_commit(command, output, state)
+
+    _track_bash_failures(command, output, success, state)
+    _track_bash_test_failures(command, output, state)
 
     # Clear pending items for bash grep/find
     if "grep " in command or command.startswith("grep") or "rg " in command:
@@ -957,111 +967,62 @@ def _track_researched_libraries(tool_name: str, tool_input: dict, state: Session
             track_library_researched(state, lib)
 
 
-@register_hook("confidence_decay", None, priority=11)
-def check_confidence_decay(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """Dynamic confidence system with survival mechanics.
+def _calculate_decay_boost(
+    tool_name: str, tool_input: dict, state: SessionState
+) -> tuple[float, str]:
+    """Calculate recovery action boosts for confidence decay.
 
-    DECAY (harsh - every action costs):
-    - Base: -1.0 per tool call
-    - High confidence tax: +0.5 extra above 85%
-
-    RECOVERY ACTIONS (amplified when struggling):
-    - PAL consultation (thinkdeep/debug/etc): +2 base
-    - AskUserQuestion: +2 base
-    - Task delegation: +1.5 base
-    - Read/Memory/Web: +0.5 base
-
-    PENALTIES (scaled by confidence):
-    - Edit/Write: -1 base, -2 extra without read, -1 stub
-    - Bash: -1
-
-    SURVIVAL MODE (prevents death spiral):
-    - Below 30%: 3x boost multiplier (desperate)
-    - Below 50%: 2x boost multiplier (struggling)
-    - Below 70%: 1.5x boost multiplier (working hard)
-    - 70-84%: 1x (normal)
-    - 85%+: 0.5x (can't coast to higher)
-
-    Shows 🆘 indicator when survival boost is active.
+    Returns (boost_value, boost_reason).
     """
-    tool_name = data.get("tool_name", "")
-
-    # _decay_accumulator is now a SessionState dataclass field with default 0.0
-
-    # Base decay per tool call (moderate: actions have cost but not punishing)
-    base_decay = 0.4
-
-    # High confidence tax: above 85%, decay faster (complacency penalty)
-    if state.confidence >= 85:
-        base_decay += 0.3  # 0.7 total at high confidence
-
-    state._decay_accumulator += base_decay
-
-    # Boosts for RECOVERY ACTIONS - these help regain trust
-    # Base values are modest; boost_multiplier amplifies when struggling
-    boost = 0
-    boost_reason = ""
-    tool_input = data.get("tool_input", {})
-
-    # === RECOVERY ACTIONS (rewarded more when struggling) ===
-
     # PAL external consultation - shows humility, seeking help
     if tool_name.startswith("mcp__pal__"):
         pal_tool = tool_name.replace("mcp__pal__", "")
         if pal_tool in ("thinkdeep", "debug", "codereview", "consensus", "precommit"):
-            # Heavy consultation = major recovery action
-            boost = 2
-            boost_reason = f"pal-{pal_tool}"
+            return 2, f"pal-{pal_tool}"
         elif pal_tool in ("chat", "challenge", "apilookup"):
-            # Light consultation
-            boost = 1
-            boost_reason = f"pal-{pal_tool}"
+            return 1, f"pal-{pal_tool}"
 
     # User clarification - reaching out shows humility
-    elif tool_name == "AskUserQuestion":
-        boost = 2
-        boost_reason = "user-clarification"
+    if tool_name == "AskUserQuestion":
+        return 2, "user-clarification"
 
     # Agent delegation - distributing work wisely
-    elif tool_name == "Task":
-        boost = 1.5
-        boost_reason = "agent-delegation"
+    if tool_name == "Task":
+        return 1.5, "agent-delegation"
 
-    # === INFORMATION GATHERING (modest boosts with diminishing returns) ===
-
-    elif tool_name == "Read":
-        # Diminishing returns: first 3 reads = +0.5, then +0.25, then +0.1
-        read_count = len([f for f in state.files_read if f])  # Count files read
+    # Read - diminishing returns
+    if tool_name == "Read":
+        read_count = len([f for f in state.files_read if f])
         if read_count <= 3:
-            boost = 0.5
+            return 0.5, f"file-read({read_count})"
         elif read_count <= 6:
-            boost = 0.25
-        else:
-            boost = 0.1  # Spam reads barely help
-        boost_reason = f"file-read({read_count})"
+            return 0.25, f"file-read({read_count})"
+        return 0.1, f"file-read({read_count})"
 
-    elif tool_name.startswith("mcp__") and "mem" in tool_name.lower():
-        boost = 0.5
-        boost_reason = "memory-access"
+    # Memory access
+    if tool_name.startswith("mcp__") and "mem" in tool_name.lower():
+        return 0.5, "memory-access"
 
-    elif tool_name in ("WebSearch", "WebFetch"):
-        boost = 0.5
-        boost_reason = "web-research"
+    # Web research
+    if tool_name in ("WebSearch", "WebFetch"):
+        return 0.5, "web-research"
 
-    elif tool_name.startswith("mcp__crawl4ai__"):
-        boost = 0.5
-        boost_reason = "web-crawl"
+    if tool_name.startswith("mcp__crawl4ai__"):
+        return 0.5, "web-crawl"
 
-    # Grep/Glob/EnterPlanMode - no boost (searching/planning ≠ understanding)
+    return 0, ""
 
-    # Penalties for risky actions (in addition to decay)
-    # Cooldowns prevent constant drain during active work
-    penalty = 0
-    penalty_reason = ""
 
+def _calculate_decay_penalty(
+    tool_name: str, tool_input: dict, state: SessionState
+) -> tuple[float, str]:
+    """Calculate penalties for risky actions.
+
+    Returns (penalty_value, penalty_reason).
+    """
     if tool_name in ("Edit", "Write"):
+        penalty = 0
+        reason_parts = []
         file_path = tool_input.get("file_path", "")
 
         # Base edit penalty with cooldown (max 1 per 3 turns)
@@ -1069,36 +1030,59 @@ def check_confidence_decay(
         last_edit_risk = getattr(state, edit_risk_key, 0)
         if state.turn_count - last_edit_risk >= 3:
             penalty = 1
-            penalty_reason = "edit-risk"
+            reason_parts.append("edit-risk")
             setattr(state, edit_risk_key, state.turn_count)
 
-        # Edit without reading first = extra penalty for skipping context
+        # Edit without reading first = extra penalty
         if file_path and file_path not in state.files_read:
             penalty += 2
-            penalty_reason = "edit-without-read"
+            reason_parts = ["edit-without-read"]
 
         # Check for stubs in new code
         new_code = tool_input.get("new_string", "") or tool_input.get("content", "")
         if new_code:
             stub_patterns = [
-                "pass  # TODO",
-                "raise NotImplementedError",
-                "# FIXME",
-                "...  # stub",
+                "pass  # TODO", "raise NotImplementedError", "# FIXME", "...  # stub"
             ]
             if any(p in new_code for p in stub_patterns):
                 penalty += 1
-                penalty_reason += "+stub"
+                reason_parts.append("stub")
 
-    # Bash commands are risky - state changes, potential failures
-    # Cooldown prevents constant drain during active work (max 1 per 3 turns)
-    elif tool_name == "Bash":
+        return penalty, "+".join(reason_parts) if reason_parts else ""
+
+    # Bash commands are risky - cooldown prevents constant drain
+    if tool_name == "Bash":
         bash_risk_key = "_bash_risk_last_turn"
         last_bash_risk = getattr(state, bash_risk_key, 0)
         if state.turn_count - last_bash_risk >= 3:
-            penalty = 1
-            penalty_reason = "bash-risk"
             setattr(state, bash_risk_key, state.turn_count)
+            return 1, "bash-risk"
+
+    return 0, ""
+
+
+@register_hook("confidence_decay", None, priority=11)
+def check_confidence_decay(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Dynamic confidence system with survival mechanics.
+
+    See _calculate_decay_boost() and _calculate_decay_penalty() for details.
+    Shows 🆘 indicator when survival boost is active.
+    """
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Base decay per tool call (moderate: actions have cost but not punishing)
+    base_decay = 0.4
+    if state.confidence >= 85:
+        base_decay += 0.3  # High confidence tax
+
+    state._decay_accumulator += base_decay
+
+    # Calculate boost and penalty via helpers
+    boost, boost_reason = _calculate_decay_boost(tool_name, tool_input, state)
+    penalty, penalty_reason = _calculate_decay_penalty(tool_name, tool_input, state)
 
     # Calculate net adjustment (decay + penalty - boosts)
     # Only apply when accumulator reaches whole number
@@ -1972,6 +1956,111 @@ PATTERN_MAGIC_NUMBERS = re.compile(
 PATTERN_TODO_FIXME = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b", re.IGNORECASE)
 
 
+def _check_structure_patterns(
+    code: str, file_path: str, state: SessionState
+) -> tuple[list[str], list[tuple[str, int]]]:
+    """Check structural code patterns (length, complexity, nesting)."""
+    hints = []
+    triggered = []
+
+    threshold_lines = get_adaptive_threshold(state, "quality_long_method")
+    threshold_complexity = get_adaptive_threshold(state, "quality_high_complexity")
+    threshold_nesting = get_adaptive_threshold(state, "quality_deep_nesting")
+
+    # Long method
+    lines = code.count("\n") + 1
+    if lines > threshold_lines:
+        hints.append(f"📏 **Long Code Block**: {lines} lines (<{int(threshold_lines)})")
+        triggered.append(("quality_long_method", lines))
+
+    # High complexity
+    conditionals = len(PATTERN_CONDITIONALS.findall(code))
+    if conditionals > threshold_complexity:
+        hints.append(f"🌀 **High Complexity**: {conditionals} conditionals")
+        triggered.append(("quality_high_complexity", conditionals))
+
+    # Deep nesting
+    max_indent = max(
+        (len(ln) - len(ln.lstrip()) for ln in code.split("\n") if ln.strip()), default=0
+    )
+    nesting_levels = max_indent // 4
+    if nesting_levels > threshold_nesting:
+        hints.append(f"🪆 **Deep Nesting**: {nesting_levels} levels")
+        triggered.append(("quality_deep_nesting", nesting_levels))
+
+    return hints, triggered
+
+
+def _check_perf_patterns(code: str, file_path: str) -> list[str]:
+    """Check performance-related anti-patterns."""
+    hints = []
+    is_python = file_path.endswith(".py")
+    is_js = file_path.endswith((".js", ".ts", ".jsx", ".tsx"))
+
+    # N+1 query
+    if PATTERN_N_PLUS_ONE.search(code):
+        hints.append("⚡ **Potential N+1**: DB/API call in loop")
+
+    # Nested loops
+    if PATTERN_TRIPLE_LOOP.search(code):
+        hints.append("🔄 **Triple Nested Loops**: O(n³) complexity!")
+    elif PATTERN_NESTED_LOOPS.search(code):
+        hints.append("🔄 **Nested Loops**: O(n²) complexity")
+
+    # String concat in loops
+    if PATTERN_STRING_CONCAT_LOOP.search(code):
+        hints.append("📝 **String Concat in Loop**: Use join() instead")
+
+    # Blocking I/O
+    if is_js and PATTERN_BLOCKING_IO_NODE.search(code):
+        hints.append("🐌 **Blocking I/O**: Use async fs methods")
+    elif is_python and PATTERN_BLOCKING_IO_PY.search(code):
+        hints.append("🐌 **Blocking Read**: Use `with open()` pattern")
+
+    return hints
+
+
+def _check_quality_markers(
+    code: str, file_path: str, state: SessionState
+) -> tuple[list[str], list[tuple[str, int]]]:
+    """Check code quality markers (debug, magic numbers, TODOs)."""
+    hints = []
+    triggered = []
+    is_python = file_path.endswith(".py")
+    is_js = file_path.endswith((".js", ".ts", ".jsx", ".tsx"))
+    is_cli_tool = "/ops/" in file_path or "/.claude/hooks/" in file_path
+
+    # Missing error handling
+    if PATTERN_TRY_BLOCK.search(code) and not PATTERN_EXCEPT_BLOCK.search(code):
+        hints.append("⚠️ **Missing Error Handler**: try without catch/except")
+
+    # Debug statements (skip CLI tools)
+    threshold_debug = get_adaptive_threshold(state, "quality_debug_statements")
+    debug_count = (
+        len(PATTERN_DEBUG_PY.findall(code)) if is_python
+        else (len(PATTERN_DEBUG_JS.findall(code)) if is_js else 0)
+    )
+    if debug_count > threshold_debug and not is_cli_tool:
+        hints.append(f"🐛 **Debug Statements**: {debug_count} found")
+        triggered.append(("quality_debug_statements", debug_count))
+
+    # Magic numbers
+    threshold_magic = get_adaptive_threshold(state, "quality_magic_numbers")
+    magic_count = len(PATTERN_MAGIC_NUMBERS.findall(code))
+    if magic_count > threshold_magic:
+        hints.append(f"🔢 **Magic Numbers**: {magic_count} literals")
+        triggered.append(("quality_magic_numbers", magic_count))
+
+    # Tech debt markers
+    threshold_debt = get_adaptive_threshold(state, "quality_tech_debt_markers")
+    todo_count = len(PATTERN_TODO_FIXME.findall(code))
+    if todo_count > threshold_debt:
+        hints.append(f"📝 **Tech Debt**: {todo_count} TODO/FIXME markers")
+        triggered.append(("quality_tech_debt_markers", todo_count))
+
+    return hints, triggered
+
+
 @register_hook("code_quality_gate", "Edit|Write", priority=35)
 def check_code_quality(
     data: dict, state: SessionState, runner_state: dict
@@ -1980,18 +2069,7 @@ def check_code_quality(
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    code_extensions = (
-        ".py",
-        ".js",
-        ".ts",
-        ".jsx",
-        ".tsx",
-        ".go",
-        ".rs",
-        ".java",
-        ".rb",
-        ".sh",
-    )
+    code_extensions = (".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".rb", ".sh")
     if not file_path.endswith(code_extensions):
         return HookResult.none()
 
@@ -1999,116 +2077,21 @@ def check_code_quality(
     if not code or len(code) < 50:
         return HookResult.none()
 
+    # Collect hints from specialized checkers
     hints = []
-    triggered_patterns = []  # Track which patterns fired for adaptive learning
+    triggered_patterns = []
 
-    # Get adaptive thresholds (auto-adjust based on usage patterns)
-    threshold_lines = get_adaptive_threshold(state, "quality_long_method")
-    threshold_complexity = get_adaptive_threshold(state, "quality_high_complexity")
-    threshold_debug = get_adaptive_threshold(state, "quality_debug_statements")
-    threshold_nesting = get_adaptive_threshold(state, "quality_deep_nesting")
+    struct_hints, struct_triggered = _check_structure_patterns(code, file_path, state)
+    hints.extend(struct_hints)
+    triggered_patterns.extend(struct_triggered)
 
-    # Long method
-    lines = code.count("\n") + 1
-    if lines > threshold_lines:
-        hints.append(
-            f"📏 **Long Code Block**: {lines} lines. Consider breaking into smaller functions (<{int(threshold_lines)} lines)."
-        )
-        triggered_patterns.append(("quality_long_method", lines))
+    hints.extend(_check_perf_patterns(code, file_path))
 
-    # High complexity
-    conditionals = len(PATTERN_CONDITIONALS.findall(code))
-    if conditionals > threshold_complexity:
-        hints.append(
-            f"🌀 **High Complexity**: {conditionals} conditionals. Consider simplifying."
-        )
-        triggered_patterns.append(("quality_high_complexity", conditionals))
-
-    # Missing error handling
-    if PATTERN_TRY_BLOCK.search(code) and not PATTERN_EXCEPT_BLOCK.search(code):
-        hints.append(
-            "⚠️ **Missing Error Handler**: Try block without catch/except clause."
-        )
-
-    # Debug statements (skip for CLI tools in ops/ where print IS the output)
-    is_python = file_path.endswith(".py")
-    is_js = file_path.endswith((".js", ".ts", ".jsx", ".tsx"))
-    is_cli_tool = "/ops/" in file_path or "/.claude/hooks/" in file_path
-    debug_count = (
-        len(PATTERN_DEBUG_PY.findall(code))
-        if is_python
-        else (len(PATTERN_DEBUG_JS.findall(code)) if is_js else 0)
-    )
-    if debug_count > threshold_debug and not is_cli_tool:
-        stmt = "print()" if is_python else "console.log()"
-        hints.append(
-            f"🐛 **Debug Statements**: {debug_count} {stmt} found. Remove before committing."
-        )
-        triggered_patterns.append(("quality_debug_statements", debug_count))
-
-    # N+1 query
-    if PATTERN_N_PLUS_ONE.search(code):
-        hints.append(
-            "⚡ **Potential N+1**: Database/API call inside loop. Consider bulk fetching."
-        )
-
-    # Nested loops - differentiate O(n²) vs O(n³)
-    if PATTERN_TRIPLE_LOOP.search(code):
-        hints.append(
-            "🔄 **Triple Nested Loops**: O(n³) complexity! Consider hash maps or restructuring."
-        )
-    elif PATTERN_NESTED_LOOPS.search(code):
-        hints.append("🔄 **Nested Loops**: O(n²) complexity.")
-
-    # String concatenation in loops (perf killer)
-    if PATTERN_STRING_CONCAT_LOOP.search(code):
-        hints.append(
-            "📝 **String Concat in Loop**: Use array.join() or list + ''.join() instead of +="
-        )
-
-    # Blocking I/O
-    if is_js and PATTERN_BLOCKING_IO_NODE.search(code):
-        hints.append(
-            "🐌 **Blocking I/O**: Use async fs methods instead of Sync variants."
-        )
-    elif is_python and PATTERN_BLOCKING_IO_PY.search(code):
-        hints.append(
-            "🐌 **Blocking Read**: Consider `with open() as f: f.read()` pattern."
-        )
-
-    # Deep nesting detection (uses adaptive threshold)
-    max_indent = 0
-    for line in code.split("\n"):
-        if line.strip():
-            indent = len(line) - len(line.lstrip())
-            max_indent = max(max_indent, indent)
-    nesting_levels = max_indent // 4  # Assuming 4-space indent
-    if nesting_levels > threshold_nesting:
-        hints.append(
-            f"🪆 **Deep Nesting**: {nesting_levels} levels. Extract to helper functions."
-        )
-        triggered_patterns.append(("quality_deep_nesting", nesting_levels))
-
-    # Too many magic numbers (uses adaptive threshold)
-    threshold_magic = get_adaptive_threshold(state, "quality_magic_numbers")
-    magic_count = len(PATTERN_MAGIC_NUMBERS.findall(code))
-    if magic_count > threshold_magic:
-        hints.append(
-            f"🔢 **Magic Numbers**: {magic_count} numeric literals. Use named constants."
-        )
-        triggered_patterns.append(("quality_magic_numbers", magic_count))
-
-    # Tech debt accumulation (uses adaptive threshold)
-    threshold_debt = get_adaptive_threshold(state, "quality_tech_debt_markers")
-    todo_count = len(PATTERN_TODO_FIXME.findall(code))
-    if todo_count > threshold_debt:
-        hints.append(
-            f"📝 **Tech Debt**: {todo_count} TODO/FIXME markers in this change."
-        )
-        triggered_patterns.append(("quality_tech_debt_markers", todo_count))
+    marker_hints, marker_triggered = _check_quality_markers(code, file_path, state)
+    hints.extend(marker_hints)
+    triggered_patterns.extend(marker_triggered)
 
     if hints:
-        # Record all triggered patterns for adaptive learning
         for pattern_name, value in triggered_patterns:
             record_threshold_trigger(state, pattern_name, value)
         return HookResult.with_context(
@@ -2613,79 +2596,89 @@ def check_auto_learn(data: dict, state: SessionState, runner_state: dict) -> Hoo
 # -----------------------------------------------------------------------------
 
 
+def _check_self_check_pattern(
+    tool_name: str, tool_input: dict, state: SessionState
+) -> str | None:
+    """Detect Edit-then-Read self-distrust pattern."""
+    if tool_name != "Read" or len(state.last_5_tools) < 2:
+        return None
+    current_file = tool_input.get("file_path", "")
+    if not current_file or state.last_5_tools[-1] not in ("Edit", "Write"):
+        return None
+    recent_edits = state.files_edited[-3:] if state.files_edited else []
+    if current_file in recent_edits:
+        name = current_file.split("/")[-1] if "/" in current_file else current_file
+        return (
+            f"🔄 SELF-CHECK: Edited then re-read `{name}`.\n"
+            f"💡 Trust your edit or verify with a test, not re-reading."
+        )
+    return None
+
+
+def _check_oscillation_pattern(last_5: list, state: SessionState) -> str | None:
+    """Detect Read→Edit→Read→Edit oscillation."""
+    pattern = "".join("R" if t == "Read" else "E" for t in last_5 if t in ("Read", "Edit", "Write"))
+    if "RERE" in pattern or "ERER" in pattern:
+        record_threshold_trigger(state, "velocity_oscillation", 1)
+        return (
+            "🔄 OSCILLATION: Read→Edit→Read→Edit pattern.\n"
+            "💡 Step back: progress or checking repeatedly?"
+        )
+    return None
+
+
+def _check_search_loop(last_5: list, state: SessionState) -> str | None:
+    """Detect low diversity search loops."""
+    threshold = get_adaptive_threshold(state, "iteration_same_tool")
+    if threshold == float("inf") or len(last_5) != 5:
+        return None
+    unique = len(set(last_5))
+    if unique <= 2 and all(t in ("Read", "Glob", "Grep") for t in last_5):
+        record_threshold_trigger(state, "iteration_same_tool", 5 - unique)
+        return "🔄 SEARCH LOOP: 5+ searches without action.\n💡 Enough info to act?"
+    return None
+
+
+def _check_reread_pattern(state: SessionState) -> str | None:
+    """Detect excessive re-reading of same file."""
+    threshold = get_adaptive_threshold(state, "batch_sequential_reads")
+    if threshold == float("inf"):
+        return None
+    recent = state.files_read[-10:] if len(state.files_read) >= 10 else state.files_read
+    counts = Counter(recent)
+    repeated = [(f, c) for f, c in counts.items() if c >= int(threshold)]
+    if repeated:
+        file, count = repeated[0]
+        name = file.split("/")[-1] if "/" in file else file
+        record_threshold_trigger(state, "batch_sequential_reads", count)
+        return f"🔄 RE-READ: `{name}` read {count}x.\n💡 What are you looking for?"
+    return None
+
+
 @register_hook("velocity_tracker", "Read|Edit|Write|Bash|Glob|Grep", priority=65)
 def check_velocity(data: dict, state: SessionState, runner_state: dict) -> HookResult:
     """Detect spinning vs actual progress with adaptive thresholds."""
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     last_5 = state.last_5_tools
+
     if len(last_5) < 3:
         return HookResult.none()
+    if get_adaptive_threshold(state, "velocity_oscillation") == float("inf"):
+        return HookResult.none()
 
-    # Check if velocity warnings are in cooldown (adaptive learning)
-    oscillation_threshold = get_adaptive_threshold(state, "velocity_oscillation")
-    if oscillation_threshold == float("inf"):
-        return HookResult.none()  # In cooldown, skip all velocity checks
+    if msg := _check_self_check_pattern(tool_name, tool_input, state):
+        return HookResult.with_context(msg)
 
-    # SELF-CHECK PATTERN: Edit then immediately re-read same file
-    # This indicates distrust of own work - should verify with tests instead
-    if tool_name == "Read" and len(last_5) >= 2:
-        current_file = tool_input.get("file_path", "")
-        if current_file and last_5[-1] in ("Edit", "Write"):
-            # Check if this file was recently edited (last 3 edits)
-            recent_edits = state.files_edited[-3:] if state.files_edited else []
-            if current_file in recent_edits:
-                name = (
-                    current_file.split("/")[-1] if "/" in current_file else current_file
-                )
-                return HookResult.with_context(
-                    f"🔄 SELF-CHECK: Edited then re-read `{name}`.\n"
-                    f"💡 Trust your edit or verify with a test, not re-reading."
-                )
-
-    # Need at least 4 tools for pattern detection
     if len(last_5) < 4:
         return HookResult.none()
 
-    # Read→Edit→Read→Edit oscillation
-    read_edit_pattern = []
-    for tool in last_5:
-        if tool in ("Read", "Edit", "Write"):
-            read_edit_pattern.append("R" if tool == "Read" else "E")
-    pattern_str = "".join(read_edit_pattern)
-    if "RERE" in pattern_str or "ERER" in pattern_str:
-        record_threshold_trigger(state, "velocity_oscillation", 1)
-        return HookResult.with_context(
-            "🔄 OSCILLATION: Read→Edit→Read→Edit pattern detected.\n💡 Step back: Are you making progress or checking the same thing repeatedly?"
-        )
-
-    # Low tool diversity (check adaptive threshold for iteration)
-    iteration_threshold = get_adaptive_threshold(state, "iteration_same_tool")
-    if iteration_threshold != float("inf") and len(last_5) == 5:
-        unique_tools = len(set(last_5))
-        if unique_tools <= 2 and all(t in ("Read", "Glob", "Grep") for t in last_5):
-            record_threshold_trigger(state, "iteration_same_tool", 5 - unique_tools)
-            return HookResult.with_context(
-                "🔄 SEARCH LOOP: 5+ searches without action.\n💡 Do you have enough info to act, or are you avoiding a decision?"
-            )
-
-    # Re-reading same file (uses batch_sequential_reads threshold)
-    reread_threshold = get_adaptive_threshold(state, "batch_sequential_reads")
-    if reread_threshold != float("inf"):
-        recent_reads = (
-            state.files_read[-10:] if len(state.files_read) >= 10 else state.files_read
-        )
-        read_counts = Counter(recent_reads)
-        repeated = [
-            (f, c) for f, c in read_counts.items() if c >= int(reread_threshold)
-        ]
-        if repeated:
-            file, count = repeated[0]
-            name = file.split("/")[-1] if "/" in file else file
-            record_threshold_trigger(state, "batch_sequential_reads", count)
-            return HookResult.with_context(
-                f"🔄 RE-READ: `{name}` read {count}x recently.\n💡 What are you looking for that you haven't found?"
-            )
+    if msg := _check_oscillation_pattern(last_5, state):
+        return HookResult.with_context(msg)
+    if msg := _check_search_loop(last_5, state):
+        return HookResult.with_context(msg)
+    if msg := _check_reread_pattern(state):
+        return HookResult.with_context(msg)
 
     return HookResult.none()
 
