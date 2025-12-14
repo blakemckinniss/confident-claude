@@ -1307,6 +1307,51 @@ def check_confidence_reducer(
     if len(result_str) > 5000:
         context["huge_output_dump"] = True
 
+    # =========================================================================
+    # INCOMPLETE REFACTOR DETECTION (v4.4)
+    # =========================================================================
+    # Track renames and detect if old symbol still exists elsewhere
+
+    # Step 1: On Edit, detect potential renames and store for verification
+    if tool_name == "Edit":
+        old_str = tool_input.get("old_string", "")
+        new_str = tool_input.get("new_string", "")
+        replace_all = tool_input.get("replace_all", False)
+
+        # Look for identifier-like changes (word boundary changes)
+        if old_str and new_str and not replace_all:
+            # Extract potential symbol names (identifiers)
+            old_ids = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]{2,})\b", old_str))
+            new_ids = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]{2,})\b", new_str))
+            # Find identifiers that were removed (potential renames)
+            removed_ids = old_ids - new_ids
+            if removed_ids:
+                # Store for later verification
+                pending = getattr(state, "pending_rename_check", [])
+                for rid in removed_ids:
+                    if len(rid) >= 4:  # Only track meaningful names
+                        pending.append(
+                            {"name": rid, "turn": state.turn_count, "file": file_path}
+                        )
+                # Keep only recent (last 3 turns)
+                state.pending_rename_check = [
+                    p for p in pending if state.turn_count - p["turn"] <= 3
+                ][-5:]
+
+    # Step 2: On Grep results, check if pending renames were found elsewhere
+    if tool_name == "Grep":
+        pattern = tool_input.get("pattern", "")
+        result_str = str(tool_result)[:2000].lower()
+        pending = getattr(state, "pending_rename_check", [])
+
+        for p in pending:
+            # If grep pattern matches pending rename and found results
+            if p["name"].lower() in pattern.lower():
+                if "no matches" not in result_str and "0 results" not in result_str:
+                    # Found remaining instances of renamed symbol
+                    context["incomplete_refactor"] = True
+                    break
+
     # Apply reducers
     triggered = apply_reducers(state, context)
 
@@ -1558,6 +1603,31 @@ def check_confidence_increaser(
             result_str = str(tool_result)[:500].lower()
             if "no matches" not in result_str and "0 results" not in result_str:
                 context["efficient_search"] = True
+
+    # =========================================================================
+    # COMPLETION QUALITY DETECTION (v4.4)
+    # =========================================================================
+
+    # First attempt success (+3) - no failures during task
+    # Detect when bead closes with zero consecutive failures
+    if tool_name == "Bash":
+        command = tool_input.get("command", "").lower()
+        if "bd close" in command:
+            # Check if we had no failures during this task
+            if getattr(state, "consecutive_failures", 0) == 0:
+                context["first_attempt_success"] = True
+
+    # Scoped change (+2) - edits stayed within original goal scope
+    # Check if edited file relates to goal keywords
+    if tool_name in {"Edit", "Write"}:
+        file_path = tool_input.get("file_path", "")
+        goal_keywords = getattr(state, "goal_keywords", [])
+        if file_path and goal_keywords:
+            file_lower = file_path.lower()
+            # Check if file path contains any goal keywords
+            matches = sum(1 for kw in goal_keywords if kw.lower() in file_lower)
+            if matches > 0:
+                context["scoped_change"] = True
 
     # Apply increasers
     triggered = apply_increasers(state, context)
