@@ -2242,72 +2242,58 @@ FOLDER_HINTS = {
 }
 
 
+_EXPERT_PROBES = [
+    (
+        re.compile(r"\b(fix|improve|better|faster|clean|help|make it)\b"),
+        re.compile(r"\b(because|since|error|exception|line \d|specific)\b"),
+        '❓ **VAGUENESS**: Ask "What specific behavior/output is wrong?"',
+    ),
+    (
+        re.compile(r"\b(broken|doesn't work|not working|wrong|bug|issue|problem)\b"),
+        re.compile(r"\b(error|traceback|expected|actual|instead|got)\b"),
+        '🔍 **CLAIM CHECK**: Ask "Expected vs actual? Any error message?"',
+    ),
+    (
+        re.compile(r"\b(update|change|modify|refactor|rewrite)\b"),
+        re.compile(r"\b(file|function|class|line|method|in \w+\.)\b"),
+        '📍 **SCOPE**: Ask "Which specific files/functions?"',
+    ),
+]
+
+_RE_TRIVIAL_PROMPT = re.compile(r"^(yes|no|ok|hi|thanks|commit|push|/\w+)\b")
+_RE_UNCERTAIN = re.compile(r"\b(i think|probably|maybe|might be|could be|seems like)\b")
+_RE_NEW_FEATURE = re.compile(r"\b(add|create|implement|build|new feature)\b")
+
+
+def _collect_expert_probes(prompt_lower: str, turn_count: int) -> list[str]:
+    """Collect applicable expert probes for prompt."""
+    probes = []
+    for trigger, exclude, message in _EXPERT_PROBES:
+        if trigger.search(prompt_lower) and not exclude.search(prompt_lower):
+            probes.append(message)
+    if _RE_NEW_FEATURE.search(prompt_lower) and turn_count <= 3:
+        probes.append("🚧 **CONSTRAINTS**: Ask about edge cases, error handling, existing patterns")
+    if _RE_UNCERTAIN.search(prompt_lower):
+        probes.append("🎓 **EXPERT MODE**: User uncertain - investigate first, don't assume they're right")
+    return probes
+
+
 @register_hook("expert_probe", priority=89)
 def check_expert_probe(data: dict, state: SessionState) -> HookResult:
     """Force AI to ask probing questions - assume user needs guidance."""
     prompt = data.get("prompt", "")
-    if not prompt or len(prompt) < 15:
+    if not prompt or len(prompt) < 15 or "?" in prompt or len(prompt) > 300:
         return HookResult.allow()
 
     prompt_lower = prompt.lower()
-
-    # Skip if already asking a question or giving explicit details
-    if "?" in prompt or len(prompt) > 300:
+    if _RE_TRIVIAL_PROMPT.match(prompt_lower):
         return HookResult.allow()
 
-    # Skip trivial
-    if re.match(r"^(yes|no|ok|hi|thanks|commit|push|/\w+)\b", prompt_lower):
-        return HookResult.allow()
-
-    probes = []
-
-    # Vagueness Probe - vague improvement requests
-    if re.search(r"\b(fix|improve|better|faster|clean|help|make it)\b", prompt_lower):
-        if not re.search(
-            r"\b(because|since|error|exception|line \d|specific)\b", prompt_lower
-        ):
-            probes.append(
-                '❓ **VAGUENESS**: Ask "What specific behavior/output is wrong?"'
-            )
-
-    # Claim Challenge - unsubstantiated problem claims
-    if re.search(
-        r"\b(broken|doesn't work|not working|wrong|bug|issue|problem)\b", prompt_lower
-    ):
-        if not re.search(
-            r"\b(error|traceback|expected|actual|instead|got)\b", prompt_lower
-        ):
-            probes.append(
-                '🔍 **CLAIM CHECK**: Ask "Expected vs actual? Any error message?"'
-            )
-
-    # Scope Lock - ambiguous scope
-    if re.search(r"\b(update|change|modify|refactor|rewrite)\b", prompt_lower):
-        if not re.search(
-            r"\b(file|function|class|line|method|in \w+\.)\b", prompt_lower
-        ):
-            probes.append('📍 **SCOPE**: Ask "Which specific files/functions?"')
-
-    # Hidden Constraint Probe - new feature requests
-    if re.search(r"\b(add|create|implement|build|new feature)\b", prompt_lower):
-        if state.turn_count <= 3:  # Early in conversation
-            probes.append(
-                "🚧 **CONSTRAINTS**: Ask about edge cases, error handling, existing patterns"
-            )
-
-    # Expertise Assert - when user makes technical claims
-    if re.search(
-        r"\b(i think|probably|maybe|might be|could be|seems like)\b", prompt_lower
-    ):
-        probes.append(
-            "🎓 **EXPERT MODE**: User uncertain - investigate first, don't assume they're right"
-        )
-
+    probes = _collect_expert_probes(prompt_lower, state.turn_count)
     if not probes:
         return HookResult.allow()
 
-    header = "🧠 **PROBE BEFORE ACTING** (assume user needs guidance):\n"
-    return HookResult.allow(header + "\n".join(probes))
+    return HookResult.allow("🧠 **PROBE BEFORE ACTING** (assume user needs guidance):\n" + "\n".join(probes))
 
 
 @register_hook("intent_classifier", priority=88)

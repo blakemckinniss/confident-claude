@@ -1203,70 +1203,58 @@ def check_error_suppression(data: dict, state: SessionState) -> HookResult:
     )
 
 
+_CRITICAL_PATTERNS = [
+    (re.compile(r"\b(eval|exec)\s*\(", re.I), "Code injection (eval/exec)"),
+    (re.compile(r'f["\']SELECT\s+', re.I), "SQL injection risk"),
+]
+_BLOCK_PATTERNS = [
+    (re.compile(r"subprocess\.[^(]+\([^)]*shell\s*=\s*True", re.M), "shell=True risk"),
+    (re.compile(r"except\s*:\s*$", re.M), "Bare except"),
+    (re.compile(r"from\s+\w+\s+import\s+\*", re.M), "Wildcard import"),
+]
+
+
+def _is_content_exempt_path(file_path: str) -> bool:
+    """Check if path is exempt from content checks."""
+    return any(p in file_path for p in (".claude/lib/", ".claude/hooks/", ".claude/tmp/"))
+
+
+def _check_python_ast(content: str) -> HookResult | None:
+    """Check Python content with AST analysis. Returns deny result or None."""
+    try:
+        from ast_analysis import has_critical_violations
+        is_critical, violations = has_critical_violations(content)
+        if is_critical:
+            msgs = [f"- {v.message} (line {v.line})" for v in violations[:3]]
+            return HookResult.deny("**CONTENT BLOCKED** (AST analysis):\n" + "\n".join(msgs) + "\nFix the vulnerabilities.")
+    except Exception:
+        pass
+    return None
+
+
 @register_hook("content_gate", "Edit|Write", priority=45)
 def check_content_gate(data: dict, state: SessionState) -> HookResult:
     """Block dangerous code patterns (eval, SQL injection, etc.)."""
-
     tool_input = data.get("tool_input", {})
     content = tool_input.get("content", "") or tool_input.get("new_string", "")
     file_path = tool_input.get("file_path", "")
 
-    if not content or not file_path:
+    if not content or not file_path or _is_content_exempt_path(file_path):
         return HookResult.approve()
 
-    # Framework escape hatch
-    if ".claude/lib/" in file_path or ".claude/hooks/" in file_path:
-        return HookResult.approve()
-
-    # Tmp files are allowed
-    if ".claude/tmp/" in file_path:
-        return HookResult.approve()
-
-    has_sudo = data.get("_sudo_bypass")
-
-    # For Python files: Use AST analysis (more accurate, ignores strings/comments)
     if file_path.endswith(".py"):
-        try:
-            from ast_analysis import has_critical_violations
+        if result := _check_python_ast(content):
+            return result
 
-            is_critical, violations = has_critical_violations(content)
-            if is_critical:
-                # Format violations for error message
-                msgs = [f"- {v.message} (line {v.line})" for v in violations[:3]]
-                return HookResult.deny(
-                    "**CONTENT BLOCKED** (AST analysis):\n"
-                    + "\n".join(msgs)
-                    + "\nFix the vulnerabilities."
-                )
-        except Exception:
-            pass  # Fall through to regex if AST fails
+    for pattern, message in _CRITICAL_PATTERNS:
+        if pattern.search(content):
+            return HookResult.deny(f"**CONTENT BLOCKED**: {message}\nFix the vulnerability.")
 
-    # Fallback: Regex patterns for non-Python or if AST failed
-    CRITICAL_PATTERNS = [
-        (r"\b(eval|exec)\s*\(", "Code injection (eval/exec)"),
-        (r'f["\']SELECT\s+', "SQL injection risk"),
-    ]
+    if not data.get("_sudo_bypass") and "__init__.py" not in file_path:
+        for pattern, message in _BLOCK_PATTERNS:
+            if pattern.search(content):
+                return HookResult.deny(f"**CONTENT BLOCKED**: {message}\nSay SUDO to bypass.")
 
-    for pattern, message in CRITICAL_PATTERNS:
-        if re.search(pattern, content, re.IGNORECASE):
-            return HookResult.deny(
-                f"**CONTENT BLOCKED**: {message}\nFix the vulnerability."
-            )
-
-    # Block patterns (SUDO bypass allowed)
-    if not has_sudo:
-        BLOCK_PATTERNS = [
-            (r"subprocess\.[^(]+\([^)]*shell\s*=\s*True", "shell=True risk"),
-            (r"except\s*:\s*$", "Bare except"),
-            (r"from\s+\w+\s+import\s+\*", "Wildcard import"),
-        ]
-
-        for pattern, message in BLOCK_PATTERNS:
-            if re.search(pattern, content, re.MULTILINE):
-                if "__init__.py" not in file_path:
-                    return HookResult.deny(
-                        f"**CONTENT BLOCKED**: {message}\nSay SUDO to bypass."
-                    )
     return HookResult.approve()
 
 
