@@ -2755,3 +2755,366 @@ class TestThresholdConstants:
     def test_rate_limit_is_positive(self):
         assert MAX_CONFIDENCE_DELTA_PER_TURN > 0
         assert MAX_CONFIDENCE_DELTA_PER_TURN <= 20
+
+
+# =============================================================================
+# V4.6 FEATURE TESTS - Streak, Trajectory, Diminishing Returns
+# =============================================================================
+
+
+from confidence import (
+    get_streak_multiplier,
+    get_diminishing_multiplier,
+    predict_trajectory,
+    format_trajectory_warning,
+    log_confidence_change,
+    FARMABLE_INCREASERS,
+    DIMINISHING_CAP,
+    SequentialWhenParallelReducer,
+    TargetedReadIncreaser,
+    SubagentDelegationIncreaser,
+)
+
+
+class TestGetStreakMultiplier:
+    """Tests for get_streak_multiplier function."""
+
+    def test_returns_1_for_streak_0(self):
+        assert get_streak_multiplier(0) == 1.0
+
+    def test_returns_1_for_streak_1(self):
+        assert get_streak_multiplier(1) == 1.0
+
+    def test_returns_1_25_for_streak_2(self):
+        assert get_streak_multiplier(2) == 1.25
+
+    def test_returns_1_5_for_streak_3(self):
+        assert get_streak_multiplier(3) == 1.5
+
+    def test_returns_1_5_for_streak_4(self):
+        # 4 is between 3 and 5 thresholds
+        assert get_streak_multiplier(4) == 1.5
+
+    def test_returns_2_for_streak_5(self):
+        assert get_streak_multiplier(5) == 2.0
+
+    def test_returns_2_for_streak_above_5(self):
+        assert get_streak_multiplier(10) == 2.0
+        assert get_streak_multiplier(100) == 2.0
+
+
+class TestGetDiminishingMultiplier:
+    """Tests for get_diminishing_multiplier function."""
+
+    def test_non_farmable_always_returns_1(self):
+        state = MockSessionState()
+        # test_pass is not farmable
+        assert get_diminishing_multiplier(state, "test_pass") == 1.0
+        # Multiple calls still return 1.0
+        assert get_diminishing_multiplier(state, "test_pass") == 1.0
+
+    def test_farmable_first_trigger_returns_1(self):
+        state = MockSessionState()
+        assert get_diminishing_multiplier(state, "file_read") == 1.0
+
+    def test_farmable_second_trigger_returns_half(self):
+        state = MockSessionState()
+        get_diminishing_multiplier(state, "file_read")  # First
+        assert get_diminishing_multiplier(state, "file_read") == 0.5
+
+    def test_farmable_third_trigger_returns_quarter(self):
+        state = MockSessionState()
+        get_diminishing_multiplier(state, "file_read")  # First
+        get_diminishing_multiplier(state, "file_read")  # Second
+        assert get_diminishing_multiplier(state, "file_read") == 0.25
+
+    def test_farmable_beyond_cap_returns_zero(self):
+        state = MockSessionState()
+        for _ in range(DIMINISHING_CAP):
+            get_diminishing_multiplier(state, "file_read")
+        # Beyond cap
+        assert get_diminishing_multiplier(state, "file_read") == 0.0
+
+    def test_different_increasers_tracked_separately(self):
+        state = MockSessionState()
+        get_diminishing_multiplier(state, "file_read")  # file_read first
+        get_diminishing_multiplier(state, "file_read")  # file_read second
+        # productive_bash should still be at first trigger
+        assert get_diminishing_multiplier(state, "productive_bash") == 1.0
+
+    def test_resets_on_new_turn(self):
+        state = MockSessionState()
+        state.turn_count = 10
+        get_diminishing_multiplier(state, "file_read")  # First at turn 10
+        get_diminishing_multiplier(state, "file_read")  # Second at turn 10
+        # New turn
+        state.turn_count = 11
+        assert get_diminishing_multiplier(state, "file_read") == 1.0
+
+
+class TestPredictTrajectory:
+    """Tests for predict_trajectory function."""
+
+    def test_basic_decay_projection(self):
+        state = MockSessionState()
+        state.confidence = 85
+
+        result = predict_trajectory(state, planned_edits=0, planned_bash=0, turns_ahead=3)
+
+        assert result["current"] == 85
+        assert result["projected"] == 82  # 85 - 3 decay
+        assert result["delta"] == -3
+        assert result["turns_ahead"] == 3
+
+    def test_includes_edit_penalty(self):
+        state = MockSessionState()
+        state.confidence = 85
+
+        result = predict_trajectory(state, planned_edits=2, planned_bash=0, turns_ahead=3)
+
+        # 85 - 3 (decay) - 2 (edits) = 80
+        assert result["projected"] == 80
+
+    def test_includes_bash_penalty(self):
+        state = MockSessionState()
+        state.confidence = 85
+
+        result = predict_trajectory(state, planned_edits=0, planned_bash=2, turns_ahead=3)
+
+        # 85 - 3 (decay) - 2 (bash) = 80
+        assert result["projected"] == 80
+
+    def test_warns_when_crossing_stasis_floor(self):
+        state = MockSessionState()
+        state.confidence = 82  # Just above STASIS_FLOOR (80)
+
+        result = predict_trajectory(state, planned_edits=0, planned_bash=0, turns_ahead=3)
+
+        # 82 - 3 = 79, crosses STASIS_FLOOR
+        assert result["will_gate"] is True
+        assert any("stasis floor" in w.lower() for w in result["warnings"])
+
+    def test_no_warning_when_staying_above_stasis(self):
+        state = MockSessionState()
+        state.confidence = 95
+
+        result = predict_trajectory(state, planned_edits=0, planned_bash=0, turns_ahead=3)
+
+        # 95 - 3 = 92, still above STASIS_FLOOR
+        assert result["will_gate"] is False
+        assert not any("stasis floor" in w.lower() for w in result["warnings"])
+
+    def test_recovery_suggestions_when_below_stasis(self):
+        state = MockSessionState()
+        state.confidence = 78  # Already below stasis
+
+        result = predict_trajectory(state, planned_edits=0, planned_bash=0, turns_ahead=3)
+
+        assert len(result["recovery_suggestions"]) > 0
+
+
+class TestFormatTrajectoryWarning:
+    """Tests for format_trajectory_warning function."""
+
+    def test_returns_empty_when_no_warnings(self):
+        trajectory = {
+            "current": 90,
+            "projected": 87,
+            "turns_ahead": 3,
+            "warnings": [],
+            "recovery_suggestions": [],
+        }
+
+        result = format_trajectory_warning(trajectory)
+
+        assert result == ""
+
+    def test_formats_warning_with_trajectory(self):
+        trajectory = {
+            "current": 82,
+            "projected": 79,
+            "turns_ahead": 3,
+            "warnings": ["Will drop below stasis floor (80%)"],
+            "recovery_suggestions": ["Run tests (+5 each)"],
+        }
+
+        result = format_trajectory_warning(trajectory)
+
+        assert "82%" in result
+        assert "79%" in result
+        assert "3 turns" in result
+        assert "stasis floor" in result
+
+
+class TestLogConfidenceChange:
+    """Tests for log_confidence_change function."""
+
+    def test_skips_small_changes(self, tmp_path):
+        state = MockSessionState()
+        journal = tmp_path / "test_journal.log"
+
+        log_confidence_change(state, 70, 71, "small_change", str(journal))
+
+        # File should not exist or be empty for delta < 3
+        assert not journal.exists() or journal.read_text() == ""
+
+    def test_logs_significant_changes(self, tmp_path):
+        state = MockSessionState()
+        journal = tmp_path / "test_journal.log"
+
+        log_confidence_change(state, 70, 75, "test_pass", str(journal))
+
+        content = journal.read_text()
+        assert "70→75" in content
+        assert "+5" in content
+        assert "test_pass" in content
+
+    def test_logs_negative_changes(self, tmp_path):
+        state = MockSessionState()
+        journal = tmp_path / "test_journal.log"
+
+        log_confidence_change(state, 80, 75, "tool_failure", str(journal))
+
+        content = journal.read_text()
+        assert "80→75" in content
+        assert "-5" in content
+
+
+# =============================================================================
+# V4.6 REDUCER/INCREASER TESTS
+# =============================================================================
+
+
+class TestSequentialWhenParallelReducer:
+    """Tests for SequentialWhenParallelReducer."""
+
+    def test_triggers_when_consecutive_single_reads_ge_3(self):
+        reducer = SequentialWhenParallelReducer()
+        state = MockSessionState()
+        state.consecutive_single_reads = 3
+        state.turn_count = 10
+
+        result = reducer.should_trigger({}, state, 0)
+
+        assert result is True
+
+    def test_does_not_trigger_when_consecutive_single_reads_lt_3(self):
+        reducer = SequentialWhenParallelReducer()
+        state = MockSessionState()
+        state.consecutive_single_reads = 2
+        state.turn_count = 10
+
+        result = reducer.should_trigger({}, state, 0)
+
+        assert result is False
+
+    def test_respects_cooldown(self):
+        reducer = SequentialWhenParallelReducer()
+        state = MockSessionState()
+        state.consecutive_single_reads = 5
+        state.turn_count = 10
+
+        # Triggered 2 turns ago, cooldown is 3
+        result = reducer.should_trigger({}, state, 8)
+
+        assert result is False
+
+    def test_triggers_after_cooldown(self):
+        reducer = SequentialWhenParallelReducer()
+        state = MockSessionState()
+        state.consecutive_single_reads = 5
+        state.turn_count = 10
+
+        # Triggered 5 turns ago, cooldown is 3
+        result = reducer.should_trigger({}, state, 5)
+
+        assert result is True
+
+
+class TestTargetedReadIncreaser:
+    """Tests for TargetedReadIncreaser."""
+
+    def test_triggers_when_targeted_read_flag_set(self):
+        increaser = TargetedReadIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+
+        result = increaser.should_trigger({"targeted_read": True}, state, 0)
+
+        assert result is True
+
+    def test_does_not_trigger_without_flag(self):
+        increaser = TargetedReadIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+
+        result = increaser.should_trigger({}, state, 0)
+
+        assert result is False
+
+    def test_respects_cooldown(self):
+        increaser = TargetedReadIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+
+        # Triggered same turn, cooldown is 1 (10 - 10 = 0 < 1)
+        result = increaser.should_trigger({"targeted_read": True}, state, 10)
+
+        assert result is False
+
+
+class TestSubagentDelegationIncreaser:
+    """Tests for SubagentDelegationIncreaser."""
+
+    def test_triggers_when_delegation_flag_set(self):
+        increaser = SubagentDelegationIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+
+        result = increaser.should_trigger({"subagent_delegation": True}, state, 0)
+
+        assert result is True
+
+    def test_does_not_trigger_without_flag(self):
+        increaser = SubagentDelegationIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+
+        result = increaser.should_trigger({}, state, 0)
+
+        assert result is False
+
+    def test_respects_cooldown(self):
+        increaser = SubagentDelegationIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+
+        # Triggered 1 turn ago, cooldown is 2
+        result = increaser.should_trigger({"subagent_delegation": True}, state, 9)
+
+        assert result is False
+
+
+# =============================================================================
+# FARMABLE INCREASERS CONSTANT TESTS
+# =============================================================================
+
+
+class TestFarmableIncreasersConstant:
+    """Tests to verify FARMABLE_INCREASERS is configured correctly."""
+
+    def test_file_read_is_farmable(self):
+        assert "file_read" in FARMABLE_INCREASERS
+
+    def test_productive_bash_is_farmable(self):
+        assert "productive_bash" in FARMABLE_INCREASERS
+
+    def test_search_tool_is_farmable(self):
+        assert "search_tool" in FARMABLE_INCREASERS
+
+    def test_test_pass_is_not_farmable(self):
+        # High-value signals should not be farmable
+        assert "test_pass" not in FARMABLE_INCREASERS
+
+    def test_build_success_is_not_farmable(self):
+        assert "build_success" not in FARMABLE_INCREASERS

@@ -59,6 +59,79 @@ TIER_EMOJI = {
 DEFAULT_CONFIDENCE = 70  # Start at WORKING level - must prove up or down
 
 # =============================================================================
+# CONTEXT FLAG REGISTRY
+# =============================================================================
+# Documents which hook sets which context flag for reducers/increasers.
+# All flags are set in post_tool_use_runner.py unless otherwise noted.
+#
+# Format: "flag_name": "description | set when | used by"
+
+CONTEXT_FLAGS = {
+    # Format: "flag": ("set_by", "used_by")
+    # All set by post_tool_use_runner.py unless noted
+    #
+    # === TOOL METADATA ===
+    "tool_name": ("always", "Multiple"),
+    "tool_input": ("always", "PRCreatedIncreaser"),
+    "tool_result": ("always", "PRCreatedIncreaser"),
+    "file_path": ("Edit/Write", "BackupFileReducer"),
+    "new_string": ("Edit", "PlaceholderImplReducer"),
+    "content": ("Write", "PlaceholderImplReducer"),
+    "bash_command": ("Bash", "DebtBashReducer"),
+    "prompt": ("user_prompt_submit_runner", "UserCorrectionReducer"),
+    "assistant_output": ("stop_runner", "OverconfidentCompletionReducer"),
+    "current_activity": ("session_tracking", "GoalDriftReducer"),
+    # === REDUCER FLAGS ===
+    "large_diff": ("git_diff>400", "LargeDiffReducer"),
+    "hook_blocked": ("pre_tool_use", "HookBlockReducer"),
+    "sequential_repetition_3plus": ("tool_tracking", "SequentialRepetitionReducer"),
+    "unbacked_verification": ("output_analysis", "UnbackedVerificationClaimReducer"),
+    "fixed_without_chain": ("output_analysis", "FixedWithoutChainReducer"),
+    "git_spam": ("command_tracking", "GitSpamReducer"),
+    "incomplete_refactor": ("grep_after_edit", "IncompleteRefactorReducer"),
+    "reread_unchanged": ("file_hash_tracking", "RereadUnchangedReducer"),
+    "huge_output_dump": ("output_size_check", "HugeOutputDumpReducer"),
+    "trivial_question": ("question_analysis", "TrivialQuestionReducer"),
+    "test_ignored": ("test_file_tracking", "TestIgnoredReducer"),
+    "change_without_test": ("coverage_tracking", "ChangeWithoutTestReducer"),
+    "contradiction_detected": ("claim_tracking", "ContradictionReducer"),
+    # === INCREASER FLAGS ===
+    "files_read_count": ("Read_tool", "FileReadIncreaser"),
+    "memory_consulted": ("Read_path_check", "MemoryConsultIncreaser"),
+    "targeted_read": ("Read_params", "TargetedReadIncreaser"),
+    "research_performed": ("WebSearch/WebFetch", "ResearchIncreaser"),
+    "search_performed": ("Grep/Glob/Task", "SearchToolIncreaser"),
+    "subagent_delegation": ("Task_subagent_type", "SubagentDelegationIncreaser"),
+    "asked_user": ("AskUserQuestion", "AskUserIncreaser"),
+    "rules_updated": ("Edit_path_check", "RulesUpdateIncreaser"),
+    "custom_script_ran": ("Bash_path_check", "CustomScriptIncreaser"),
+    "bead_created": ("Bash_output", "BeadCreateIncreaser"),
+    "git_explored": ("Bash_command", "GitExploreIncreaser"),
+    "git_committed": ("Bash_command", "GitCommitIncreaser"),
+    "productive_bash": ("Bash_command", "ProductiveBashIncreaser"),
+    "small_diff": ("git_diff<400", "SmallDiffIncreaser"),
+    "tests_passed": ("Bash_output", "PassedTestsIncreaser"),
+    "build_succeeded": ("Bash_output", "BuildSuccessIncreaser"),
+    "lint_passed": ("Bash_output", "LintPassIncreaser"),
+    "chained_commands": ("Bash_command", "ChainedCommandsIncreaser"),
+    "batch_fix": ("Edit_analysis", "BatchFixIncreaser"),
+    "parallel_tools": ("tool_count", "ParallelToolsIncreaser"),
+    "efficient_search": ("search_result", "EfficientSearchIncreaser"),
+    "first_attempt_success": ("task_tracking", "FirstAttemptSuccessIncreaser"),
+    "scoped_change": ("goal_tracking", "ScopedChangeIncreaser"),
+    "dead_code_removal": ("output_analysis", "DeadCodeRemovalIncreaser"),
+    "external_validation": ("tool_name", "ExternalValidationIncreaser"),
+    "pr_created": ("Bash_output", "PRCreatedIncreaser"),
+    "issue_closed": ("Bash_output", "IssueClosedIncreaser"),
+    "review_addressed": ("Bash_output", "ReviewAddressedIncreaser"),
+    "ci_pass": ("Bash_output", "CIPassIncreaser"),
+    "merge_complete": ("Bash_output", "MergeCompleteIncreaser"),
+    "bead_close": ("Bash_output", "BeadCloseIncreaser"),
+    "premise_challenge": ("output_analysis", "PremiseChallengeIncreaser"),
+    "direct_action": ("output_analysis", "DirectActionIncreaser"),
+}
+
+# =============================================================================
 # REDUCER REGISTRY (MECHANICAL - NO JUDGMENT)
 # =============================================================================
 
@@ -1458,6 +1531,28 @@ STREAK_MULTIPLIERS = {
     5: 2.0,  # 5+ consecutive → 100% bonus (capped)
 }
 STREAK_DECAY_ON_FAILURE = 0  # Reset to 0 on any reducer firing
+
+# =============================================================================
+# DIMINISHING RETURNS SYSTEM (v4.7)
+# =============================================================================
+# Prevents farming of low-cooldown increasers by reducing value on repeat use.
+# Resets each turn to allow legitimate repeated actions across turns.
+
+# Increasers subject to diminishing returns within same turn
+FARMABLE_INCREASERS = {
+    "file_read",  # cooldown=0, can spam reads
+    "productive_bash",  # can spam ls/pwd/tree
+    "search_tool",  # can repeat searches
+}
+
+# Diminishing multipliers: nth trigger in same turn gets this multiplier
+DIMINISHING_MULTIPLIERS = {
+    1: 1.0,  # First trigger: full value
+    2: 0.5,  # Second: half value
+    3: 0.25,  # Third: quarter value
+    # 4+: 0 (no reward)
+}
+DIMINISHING_CAP = 3  # Max triggers per turn that give any reward
 
 
 # =============================================================================
@@ -2870,8 +2965,17 @@ def apply_increasers(
         if increaser.should_trigger(context, state, last_trigger):
             # Apply streak multiplier (v4.6)
             streak = get_current_streak(state)
-            multiplier = get_streak_multiplier(streak)
-            adjusted_delta = int(increaser.delta * multiplier)
+            streak_mult = get_streak_multiplier(streak)
+
+            # Apply diminishing returns for farmable increasers (v4.7)
+            diminish_mult = get_diminishing_multiplier(state, increaser.name)
+
+            # Combined multiplier
+            adjusted_delta = int(increaser.delta * streak_mult * diminish_mult)
+
+            # Skip if diminished to zero
+            if adjusted_delta <= 0:
+                continue
 
             triggered.append(
                 (
@@ -3230,6 +3334,43 @@ def get_streak_multiplier(streak_count: int) -> float:
         if streak_count >= threshold:
             multiplier = mult
     return multiplier
+
+
+def get_diminishing_multiplier(
+    state: "SessionState", increaser_name: str
+) -> float:
+    """Get diminishing returns multiplier for farmable increasers.
+
+    Tracks how many times this increaser fired this turn and returns
+    decreasing multiplier. Resets each turn.
+
+    Returns:
+        Multiplier (1.0 for first, 0.5 for second, 0.25 for third, 0 after)
+    """
+    if increaser_name not in FARMABLE_INCREASERS:
+        return 1.0  # Non-farmable increasers always get full value
+
+    # Track per-turn triggers
+    turn_key = f"_diminish_{increaser_name}_turn_{state.turn_count}"
+    trigger_count = state.nudge_history.get(turn_key, 0) + 1
+
+    # Update count
+    state.nudge_history[turn_key] = trigger_count
+
+    # Cleanup old turn keys (keep only current turn)
+    stale_keys = [
+        k
+        for k in state.nudge_history
+        if k.startswith(f"_diminish_{increaser_name}_turn_")
+        and k != turn_key
+    ]
+    for k in stale_keys:
+        del state.nudge_history[k]
+
+    # Return multiplier based on trigger count
+    if trigger_count > DIMINISHING_CAP:
+        return 0.0
+    return DIMINISHING_MULTIPLIERS.get(trigger_count, 0.0)
 
 
 def update_streak(state: "SessionState", is_success: bool) -> int:

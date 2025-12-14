@@ -311,10 +311,21 @@ def get_confidence_status():
         confidence = data.get("confidence", 70)
 
         # Import tier info (no caching issues here)
-        from confidence import get_tier_info
+        from confidence import get_tier_info, STASIS_FLOOR
 
         tier_name, emoji, _ = get_tier_info(confidence)
-        return f"{emoji}{confidence}% {tier_name}"
+
+        # Trajectory prediction (3 turns, decay only - can't predict edits/bash)
+        projected = confidence - 3  # -1 decay per turn
+        trajectory = ""
+        if projected < STASIS_FLOOR and confidence >= STASIS_FLOOR:
+            # Will drop below stasis floor - warn
+            trajectory = f" 📉{projected - confidence}"
+        elif projected < confidence:
+            # Simple decay indicator (compact)
+            trajectory = f" ⚡{projected - confidence}"
+
+        return f"{emoji}{confidence}% {tier_name}{trajectory}"
     except Exception:
         return ""
 
