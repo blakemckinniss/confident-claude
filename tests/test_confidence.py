@@ -46,6 +46,15 @@ from confidence import (
     MarkdownCreationReducer,
     HookBlockReducer,
     UnresolvedAntiPatternReducer,
+    SpottedIgnoredReducer,
+    SequentialRepetitionReducer,
+    UnbackedVerificationClaimReducer,
+    GitSpamReducer,
+    RereadUnchangedReducer,
+    VerbosePreambleReducer,
+    HugeOutputDumpReducer,
+    TrivialQuestionReducer,
+    ObviousNextStepsReducer,
     # Increaser classes
     PassedTestsIncreaser,
     BuildSuccessIncreaser,
@@ -1119,6 +1128,294 @@ class TestUnresolvedAntiPatternReducer:
         reducer = UnresolvedAntiPatternReducer()
         state = MockSessionState()
         context = {"assistant_output": "Here's the implementation."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestSpottedIgnoredReducer:
+    """Tests for SpottedIgnoredReducer - spotting issues without fixing."""
+
+    def test_triggers_when_spotted_without_resolution(self):
+        # Arrange
+        reducer = SpottedIgnoredReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "I noticed a bug in the authentication flow."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_with_resolution(self):
+        # Arrange
+        reducer = SpottedIgnoredReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "I spotted an issue, let me fix it now."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_spotted_signal(self):
+        # Arrange
+        reducer = SpottedIgnoredReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Here's the implementation."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestSequentialRepetitionReducer:
+    """Tests for SequentialRepetitionReducer - same tool 3+ times."""
+
+    def test_triggers_when_flag_set(self):
+        # Arrange
+        reducer = SequentialRepetitionReducer()
+        state = MockSessionState()
+        context = {"sequential_repetition_3plus": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = SequentialRepetitionReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestUnbackedVerificationClaimReducer:
+    """Tests for UnbackedVerificationClaimReducer - claims without evidence."""
+
+    def test_triggers_when_flag_set(self):
+        # Arrange
+        reducer = UnbackedVerificationClaimReducer()
+        state = MockSessionState()
+        context = {"unbacked_verification": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = UnbackedVerificationClaimReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestGitSpamReducer:
+    """Tests for GitSpamReducer - git command spam."""
+
+    def test_triggers_when_flag_set(self):
+        # Arrange
+        reducer = GitSpamReducer()
+        state = MockSessionState()
+        context = {"git_spam": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = GitSpamReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestRereadUnchangedReducer:
+    """Tests for RereadUnchangedReducer - re-reading unchanged files."""
+
+    def test_triggers_when_flag_set(self):
+        # Arrange
+        reducer = RereadUnchangedReducer()
+        state = MockSessionState()
+        context = {"reread_unchanged": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = RereadUnchangedReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestVerbosePreambleReducer:
+    """Tests for VerbosePreambleReducer - fluff before action."""
+
+    def test_triggers_on_verbose_preamble(self):
+        # Arrange
+        reducer = VerbosePreambleReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "I'll go ahead and start by reading the file."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_direct_action(self):
+        # Arrange
+        reducer = VerbosePreambleReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Reading the configuration file now."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_output(self):
+        # Arrange
+        reducer = VerbosePreambleReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestHugeOutputDumpReducer:
+    """Tests for HugeOutputDumpReducer - dumping without summarizing."""
+
+    def test_triggers_when_flag_set(self):
+        # Arrange
+        reducer = HugeOutputDumpReducer()
+        state = MockSessionState()
+        context = {"huge_output_dump": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = HugeOutputDumpReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestTrivialQuestionReducer:
+    """Tests for TrivialQuestionReducer - asking instead of reading."""
+
+    def test_triggers_when_flag_set(self):
+        # Arrange
+        reducer = TrivialQuestionReducer()
+        state = MockSessionState()
+        context = {"trivial_question": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = TrivialQuestionReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestObviousNextStepsReducer:
+    """Tests for ObviousNextStepsReducer - useless suggestions."""
+
+    def test_triggers_on_test_in_real_usage(self):
+        # Arrange
+        reducer = ObviousNextStepsReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Next steps: test in real usage to see how it performs."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_monitor_for_issues(self):
+        # Arrange
+        reducer = ObviousNextStepsReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "You should monitor for issues in production."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_actionable_steps(self):
+        # Arrange
+        reducer = ObviousNextStepsReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Next: Add error handling for the auth flow."}
 
         # Act
         should_trigger = reducer.should_trigger(context, state, 0)
