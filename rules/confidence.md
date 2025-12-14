@@ -134,6 +134,8 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | Increaser | Delta | Trigger |
 |-----------|-------|---------|
 | `pr_created` | +5 | `gh pr create` succeeds (PR ready for review) |
+| `issue_closed` | +3 | `gh issue close` succeeds (task completion) |
+| `review_addressed` | +5 | PR review comments resolved/addressed |
 
 **Per-turn cap:** Maximum ±15 total change per turn normally. **When below 80% (stasis floor), positive cap raised to +30** to enable faster legitimate recovery.
 

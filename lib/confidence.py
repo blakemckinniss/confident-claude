@@ -2174,6 +2174,68 @@ class PRCreatedIncreaser(ConfidenceIncreaser):
         return context.get("pr_created", False)
 
 
+@dataclass
+class IssueClosedIncreaser(ConfidenceIncreaser):
+    """Triggers when a GitHub issue is closed.
+
+    Closing issues indicates task completion and progress tracking.
+    """
+
+    name: str = "issue_closed"
+    delta: int = 3
+    description: str = "GitHub issue closed"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+        command = context.get("tool_input", {}).get("command", "")
+        output = context.get("tool_result", "")
+        # gh issue close or gh issue edit --state closed
+        if "gh issue close" in command or "gh issue edit" in command:
+            if "closed" in output.lower() or "✓" in output:
+                return True
+        return context.get("issue_closed", False)
+
+
+@dataclass
+class ReviewAddressedIncreaser(ConfidenceIncreaser):
+    """Triggers when PR review comments are addressed.
+
+    Resolving review feedback indicates responsiveness and quality work.
+    """
+
+    name: str = "review_addressed"
+    delta: int = 5
+    description: str = "PR review comments addressed"
+    requires_approval: bool = False
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+        command = context.get("tool_input", {}).get("command", "")
+        output = context.get("tool_result", "")
+        # gh pr review --approve or resolving threads
+        if "gh pr review" in command and "approved" in output.lower():
+            return True
+        # Pushing after review comments
+        if "git push" in command and context.get("review_addressed", False):
+            return True
+        return context.get("review_addressed", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -2213,6 +2275,8 @@ INCREASERS: list[ConfidenceIncreaser] = [
     ExternalValidationIncreaser(),  # Used PAL/oracle (+5)
     # Workflow signals (v4.5)
     PRCreatedIncreaser(),  # PR created successfully (+5)
+    IssueClosedIncreaser(),  # GitHub issue closed (+3)
+    ReviewAddressedIncreaser(),  # PR review addressed (+5)
 ]
 
 

@@ -1402,41 +1402,14 @@ def check_confidence_reducer(
 # -----------------------------------------------------------------------------
 
 
-@register_hook("confidence_increaser", None, priority=14)
-def check_confidence_increaser(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """Apply confidence increases based on success signals.
-
-    Auto-increases (+5, no approval):
-    - test_pass: Tests passed successfully
-    - build_success: Build completed successfully
-
-    Large increases (+15, requires approval):
-    - trust_regained: User explicitly restored trust
-    """
-    tool_name = data.get("tool_name", "")
-    tool_result = data.get("tool_result", {})
-    tool_input = data.get("tool_input", {})
-
-    # Build context for increasers
-    context = {
-        "tool_name": tool_name,
-        "tool_result": tool_result,
-        "assistant_output": data.get(
-            "assistant_output", ""
-        ),  # For DeadCodeRemovalIncreaser
-    }
-
-    # =========================================================================
-    # NATURAL INCREASER SIGNALS - balance the decay with due diligence rewards
-    # =========================================================================
-
+def _build_natural_signals(
+    tool_name: str, tool_input: dict, data: dict, state: SessionState, context: dict
+) -> None:
+    """Build context for natural increaser signals (file reads, research, etc.)."""
     # File reads = gathering evidence (+1)
     if tool_name == "Read":
         file_path = tool_input.get("file_path", "")
         context["files_read_count"] = 1
-        # Memory consultation = leveraging knowledge (+10)
         if "/.claude/memory" in file_path or "/memory/" in file_path:
             context["memory_consulted"] = True
 
@@ -1448,7 +1421,6 @@ def check_confidence_increaser(
         "mcp__crawl4ai__search",
     }:
         context["research_performed"] = True
-        # Track researched libraries to unlock research_gate
         _track_researched_libraries(tool_name, tool_input, state)
 
     # Search tools = gathering understanding (+2)
@@ -1469,196 +1441,170 @@ def check_confidence_increaser(
         ):
             context["rules_updated"] = True
 
-    # Bash commands with special signals
+
+def _build_bash_signals(tool_input: dict, data: dict, context: dict) -> None:
+    """Build context for bash command signals."""
+    command = tool_input.get("command", "")
+    context["bash_command"] = command
+
+    # Custom ops scripts = using tools (+5)
+    if "/.claude/ops/" in command or "/ops/" in command:
+        context["custom_script_ran"] = True
+
+    # Bead creation = planning work (+10)
+    if re.match(r"^bd\s+(create|update)\b", command.strip()):
+        context["bead_created"] = True
+
+    # Git exploration = understanding context (+10)
+    git_explore_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
+    if any(g in command for g in git_explore_cmds):
+        context["git_explored"] = True
+
+    # Git commit with message = saving work (+3)
+    if re.match(r"^git\s+(commit|add\s+.*&&\s*git\s+commit)", command.strip()):
+        if "-m" in command or "--message" in command:
+            context["git_committed"] = True
+
+    # Productive bash = non-risky inspection commands (+1)
+    productive_patterns = [
+        r"^ls\b",
+        r"^pwd$",
+        r"^which\b",
+        r"^type\b",
+        r"^file\b",
+        r"^wc\b",
+        r"^du\b",
+        r"^df\b",
+        r"^env\b",
+        r"^tree\b",
+        r"^stat\b",
+    ]
+    if any(re.match(p, command.strip()) for p in productive_patterns):
+        context["productive_bash"] = True
+
+    # Diff size detection
+    tool_response = data.get("tool_response", {})
+    if isinstance(tool_response, dict):
+        stdout = tool_response.get("stdout", "")
+        diff_match = re.search(
+            r"(\d+)\s+files?\s+changed.*?(\d+)\s+insertion.*?(\d+)\s+deletion",
+            stdout,
+            re.IGNORECASE,
+        )
+        if diff_match:
+            total_loc = int(diff_match.group(2)) + int(diff_match.group(3))
+            if total_loc < 400:
+                context["small_diff"] = True
+            elif total_loc > 400:
+                context["large_diff"] = True
+
+
+def _build_objective_signals(
+    tool_name: str, tool_input: dict, data: dict, context: dict
+) -> None:
+    """Build context for objective signals (tests, builds, lints)."""
+    if tool_name != "Bash":
+        return
+
+    tool_response = data.get("tool_response", {})
+    if isinstance(tool_response, dict):
+        stdout = tool_response.get("stdout", "").lower()
+        stderr = tool_response.get("stderr", "")
+        success = not tool_response.get("interrupted", False) and not stderr
+    else:
+        stdout = str(tool_response).lower() if tool_response else ""
+        success = True
+
+    if success and stdout:
+        if any(p in stdout for p in ["passed", "tests passed", "ok", "success", "✓"]):
+            context["tests_passed"] = True
+        if any(p in stdout for p in ["built", "compiled", "build successful"]):
+            context["build_succeeded"] = True
+        command = tool_input.get("command", "").lower()
+        if any(t in command for t in ["ruff check", "eslint", "clippy", "pylint"]):
+            if "error" not in stdout and "warning" not in stdout:
+                context["lint_passed"] = True
+
+
+def _build_time_saver_signals(
+    tool_name: str,
+    tool_input: dict,
+    tool_result: dict,
+    runner_state: dict,
+    state: SessionState,
+    context: dict,
+) -> None:
+    """Build context for time saver signals (v4.2)."""
+    # Chained commands (+1)
     if tool_name == "Bash":
         command = tool_input.get("command", "")
-        context["bash_command"] = command  # For DebtBashReducer
-
-        # Custom ops scripts = using tools (+5)
-        if "/.claude/ops/" in command or "/ops/" in command:
-            context["custom_script_ran"] = True
-        # Bead creation = planning work (+10)
-        # Match actual bd commands at start, not mentions in commit messages/strings
-        if re.match(r"^bd\s+(create|update)\b", command.strip()):
-            context["bead_created"] = True
-        # Git exploration = understanding context (+10)
-        git_explore_cmds = [
-            "git log",
-            "git diff",
-            "git status",
-            "git show",
-            "git blame",
-        ]
-        if any(g in command for g in git_explore_cmds):
-            context["git_explored"] = True
-
-        # Git commit with message = saving work (+3)
-        if re.match(r"^git\s+(commit|add\s+.*&&\s*git\s+commit)", command.strip()):
-            if "-m" in command or "--message" in command:
-                context["git_committed"] = True
-
-        # Productive bash = non-risky inspection commands (+1)
-        productive_patterns = [
-            r"^ls\b",
-            r"^pwd$",
-            r"^which\b",
-            r"^type\b",
-            r"^file\b",
-            r"^wc\b",
-            r"^du\b",
-            r"^df\b",
-            r"^env\b",
-            r"^tree\b",
-            r"^stat\b",
-        ]
-        if any(re.match(p, command.strip()) for p in productive_patterns):
-            context["productive_bash"] = True
-
-        # Diff size detection from git diff --stat output
-        tool_response = data.get("tool_response", {})
-        if isinstance(tool_response, dict):
-            stdout = tool_response.get("stdout", "")
-            # Look for diff stat summary line: "X files changed, Y insertions(+), Z deletions(-)"
-            diff_match = re.search(
-                r"(\d+)\s+files?\s+changed.*?(\d+)\s+insertion.*?(\d+)\s+deletion",
-                stdout,
-                re.IGNORECASE,
-            )
-            if diff_match:
-                insertions = int(diff_match.group(2))
-                deletions = int(diff_match.group(3))
-                total_loc = insertions + deletions
-                if total_loc < 400:
-                    context["small_diff"] = True
-                elif total_loc > 400:
-                    context["large_diff"] = True
-
-    # =========================================================================
-    # OBJECTIVE SIGNAL DETECTION (tests, builds, lints)
-    # =========================================================================
-
-    if tool_name == "Bash":
-        # Get output from tool_response (Claude Code's actual field), not tool_result
-        tool_response = data.get("tool_response", {})
-        if isinstance(tool_response, dict):
-            stdout = tool_response.get("stdout", "").lower()
-            stderr = tool_response.get("stderr", "")
-            # No exit code in tool_response, infer from stderr/interrupted
-            success = not tool_response.get("interrupted", False) and not stderr
-        else:
-            stdout = str(tool_response).lower() if tool_response else ""
-            success = True
-
-        if success and stdout:
-            # Check for test success patterns
-            if any(
-                p in stdout for p in ["passed", "tests passed", "ok", "success", "✓"]
-            ):
-                context["tests_passed"] = True
-            # Check for build success
-            if any(p in stdout for p in ["built", "compiled", "build successful"]):
-                context["build_succeeded"] = True
-            # Check for lint success
-            command = tool_input.get("command", "").lower()
-            if any(t in command for t in ["ruff check", "eslint", "clippy", "pylint"]):
-                if "error" not in stdout and "warning" not in stdout:
-                    context["lint_passed"] = True
-
-    # =========================================================================
-    # TIME SAVER DETECTION (v4.2)
-    # =========================================================================
-
-    # Chained commands (+1) - detect && or ; in bash commands
-    if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        # Look for meaningful command chaining (not just in strings)
         if " && " in command or re.search(r";\s*\w+", command):
-            # Exclude trivial chains like "cd x && ls"
             parts = re.split(r"\s*&&\s*|\s*;\s*", command)
-            # Only reward if chaining 2+ meaningful commands
             meaningful = [p for p in parts if len(p.strip()) > 5]
             if len(meaningful) >= 2:
                 context["chained_commands"] = True
 
-    # Batch fix (+3) - detect multiple changes in single edit
+    # Batch fix (+3)
     if tool_name == "Edit":
         old_string = tool_input.get("old_string", "")
         new_string = tool_input.get("new_string", "")
         if old_string and new_string:
-            # Count line changes
-            old_lines = old_string.count("\n")
-            new_lines = new_string.count("\n")
-            # If changing multiple lines in one edit, it's a batch fix
-            if old_lines >= 3 or new_lines >= 3:
+            if old_string.count("\n") >= 3 or new_string.count("\n") >= 3:
                 context["batch_fix"] = True
 
-    # Parallel tools (+3) - detect multiple tools in same turn
-    # Check runner_state for parallel tool execution tracking
-    tools_this_turn = runner_state.get("tools_this_turn", 1)
-    if tools_this_turn >= 2:
+    # Parallel tools (+3)
+    if runner_state.get("tools_this_turn", 1) >= 2:
         context["parallel_tools"] = True
 
-    # Efficient search (+2) - search finds target without repeated attempts
+    # Efficient search (+2)
     if tool_name in {"Grep", "Glob"}:
-        # Check if this is first search for this pattern (not a retry)
         pattern = tool_input.get("pattern", "")
         recent_searches = getattr(state, "recent_searches", [])
         if pattern and pattern not in recent_searches:
-            # First attempt - track it
             if not hasattr(state, "recent_searches"):
                 state.recent_searches = []
             state.recent_searches.append(pattern)
-            state.recent_searches = state.recent_searches[-20:]  # Keep last 20
-            # Check if search returned results (efficient)
+            state.recent_searches = state.recent_searches[-20:]
             result_str = str(tool_result)[:500].lower()
             if "no matches" not in result_str and "0 results" not in result_str:
                 context["efficient_search"] = True
 
-    # =========================================================================
-    # COMPLETION QUALITY DETECTION (v4.4)
-    # =========================================================================
 
-    # First attempt success (+3) - no failures during task
-    # Detect when bead closes with zero consecutive failures
+def _build_completion_signals(
+    tool_name: str, tool_input: dict, state: SessionState, context: dict
+) -> None:
+    """Build context for completion quality signals (v4.4/v4.5)."""
+    # First attempt success (+3)
     if tool_name == "Bash":
         command = tool_input.get("command", "").lower()
         if "bd close" in command:
-            # Check if we had no failures during this task
             if getattr(state, "consecutive_failures", 0) == 0:
                 context["first_attempt_success"] = True
 
-    # Scoped change (+2) - edits stayed within original goal scope
-    # Check if edited file relates to goal keywords
+    # Scoped change (+2)
     if tool_name in {"Edit", "Write"}:
         file_path = tool_input.get("file_path", "")
         goal_keywords = getattr(state, "goal_keywords", [])
         if file_path and goal_keywords:
             file_lower = file_path.lower()
-            # Check if file path contains any goal keywords
-            matches = sum(1 for kw in goal_keywords if kw.lower() in file_lower)
-            if matches > 0:
+            if any(kw.lower() in file_lower for kw in goal_keywords):
                 context["scoped_change"] = True
 
     # Test coverage tracking (v4.5)
-    # Track when test files are edited without running tests
     if tool_name in {"Edit", "Write"}:
         file_path = tool_input.get("file_path", "")
         if file_path:
-            # Detect test file patterns
             is_test_file = any(
                 p in file_path.lower()
                 for p in ["test_", "_test.", ".test.", "/tests/", "spec."]
             )
             if is_test_file:
-                # Mark that we edited a test file
                 state._test_file_edited_turn = state.turn_count
             else:
-                # Production file edited - check if we have pending test edits
                 last_test_edit = getattr(state, "_test_file_edited_turn", 0)
                 last_test_run = getattr(state, "_tests_run_turn", 0)
-                turns_since_test_edit = state.turn_count - last_test_edit
-                if last_test_edit > last_test_run and turns_since_test_edit <= 5:
-                    # Edited test file without running tests before editing prod code
+                turns_since = state.turn_count - last_test_edit
+                if last_test_edit > last_test_run and turns_since <= 5:
                     context["test_ignored"] = True
 
     # Track when tests are run
@@ -1667,6 +1613,38 @@ def check_confidence_increaser(
         test_cmds = ["pytest", "jest", "npm test", "cargo test", "go test"]
         if any(t in command for t in test_cmds):
             state._tests_run_turn = state.turn_count
+
+
+@register_hook("confidence_increaser", None, priority=14)
+def check_confidence_increaser(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Apply confidence increases based on success signals.
+
+    Delegates to helper functions for each signal category to reduce complexity.
+    """
+    tool_name = data.get("tool_name", "")
+    tool_result = data.get("tool_result", {})
+    tool_input = data.get("tool_input", {})
+
+    # Build context for increasers
+    context = {
+        "tool_name": tool_name,
+        "tool_result": tool_result,
+        "assistant_output": data.get("assistant_output", ""),
+    }
+
+    # Build signals from each category
+    _build_natural_signals(tool_name, tool_input, data, state, context)
+
+    if tool_name == "Bash":
+        _build_bash_signals(tool_input, data, context)
+
+    _build_objective_signals(tool_name, tool_input, data, context)
+    _build_time_saver_signals(
+        tool_name, tool_input, tool_result, runner_state, state, context
+    )
+    _build_completion_signals(tool_name, tool_input, state, context)
 
     # Apply increasers
     triggered = apply_increasers(state, context)
