@@ -8,27 +8,35 @@
     "sessions": 0
   },
   "audit": {
+    "total_uses": 8,
+    "successes": 8,
+    "failures": 0,
+    "first_used": "2025-12-13",
+    "last_used": "2025-12-14 15:01",
+    "sessions": 0
+  },
+  "void": {
     "total_uses": 7,
     "successes": 7,
     "failures": 0,
     "first_used": "2025-12-13",
-    "last_used": "2025-12-14 00:04",
-    "sessions": 0
-  },
-  "void": {
-    "total_uses": 6,
-    "successes": 6,
-    "failures": 0,
-    "first_used": "2025-12-13",
-    "last_used": "2025-12-14 00:04",
+    "last_used": "2025-12-14 15:01",
     "sessions": 0
   },
   "fp": {
-    "total_uses": 25,
-    "successes": 25,
+    "total_uses": 26,
+    "successes": 26,
     "failures": 0,
     "first_used": "2025-12-13",
-    "last_used": "2025-12-14 14:30",
+    "last_used": "2025-12-14 15:07",
+    "sessions": 0
+  },
+  "housekeeping": {
+    "total_uses": 1,
+    "successes": 1,
+    "failures": 0,
+    "first_used": "2025-12-14",
+    "last_used": "2025-12-14 15:01",
     "sessions": 0
   }
 }

@@ -40,12 +40,9 @@ ARCHITECTURE:
 import _lib_path  # noqa: F401
 import sys
 import json
-import os
 import re
 import time
-from typing import Optional, Callable
 from pathlib import Path
-from collections import Counter
 
 # Performance: centralized configuration
 from _cooldown import (
@@ -55,9 +52,9 @@ from _cooldown import (
     large_file_keyed,
     tool_awareness_keyed,
     crawl4ai_promo_keyed,
-    beads_sync_cooldown,
 )
 from _patterns import is_scratch_path
+from _config import get_magic_number
 
 from session_state import (
     load_state,
@@ -182,35 +179,15 @@ _JS_MUTATION_PATTERNS = [
 _SPREAD_CHECK = re.compile(r"\[\.\.\.\w+\]\s*$")
 
 # =============================================================================
-# HOOK REGISTRY
+# HOOK REGISTRY (shared across modules)
 # =============================================================================
 
-# Format: (name, matcher_pattern, check_function, priority)
-# Lower priority = runs first
-# matcher_pattern: None = all tools, str = regex pattern
-HOOKS: list[tuple[str, Optional[str], Callable, int]] = []
+from _hook_registry import HOOKS, register_hook, matches_tool
 
-
-def register_hook(name: str, matcher: Optional[str], priority: int = 50):
-    """Decorator to register a hook check function.
-
-    Hooks can be disabled via environment variable:
-        CLAUDE_HOOK_DISABLE_<NAME>=1
-
-    Example:
-        CLAUDE_HOOK_DISABLE_ASSUMPTION_CHECK=1 claude
-    """
-
-    def decorator(func: Callable[[dict, SessionState, dict], HookResult]):
-        # Check if hook is disabled via environment variable
-        env_key = f"CLAUDE_HOOK_DISABLE_{name.upper()}"
-        if os.environ.get(env_key, "0") == "1":
-            return func  # Skip registration
-        HOOKS.append((name, matcher, func, priority))
-        return func
-
-    return decorator
-
+# Import hook modules (triggers registration via decorators)
+import _hooks_cache  # noqa: F401 - Cache hooks (priority 5-6)
+import _hooks_tracking  # noqa: F401 - Tracking hooks (priority 55-72)
+from _hooks_tracking import SCRATCH_STATE_FILE, INFO_GAIN_STATE_FILE
 
 # =============================================================================
 # HOOK IMPLEMENTATIONS
@@ -373,144 +350,8 @@ def detect_stubs_in_content(content: str) -> list[str]:
     return list(set(found))[:3]
 
 
-# =============================================================================
-# EXPLORATION CACHE (Priority 5) - Cache Explore agent results
-# =============================================================================
-
-
-@register_hook("exploration_cacher", "Task", priority=5)
-def check_exploration_cacher(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """
-    Cache exploration results after Task(Explore) completes.
-
-    This stores the agent's output so future similar queries can be served
-    from cache instead of re-running the agent.
-    """
-    tool_input = data.get("tool_input", {})
-    subagent_type = tool_input.get("subagent_type", "")
-
-    # Only cache Explore agents
-    if subagent_type.lower() != "explore":
-        return HookResult.allow()
-
-    prompt = tool_input.get("prompt", "")
-    result = data.get("tool_result", {})
-
-    # Get the agent's response
-    agent_output = ""
-    if isinstance(result, dict):
-        agent_output = (
-            result.get("content", "") or result.get("output", "") or str(result)
-        )
-    elif isinstance(result, str):
-        agent_output = result
-
-    # Don't cache empty or error results
-    if not agent_output or len(agent_output) < 50:
-        return HookResult.allow()
-    if "error" in agent_output.lower()[:100]:
-        return HookResult.allow()
-
-    # Detect project path
-    try:
-        from project_detector import detect_project
-
-        project_info = detect_project()
-        if not project_info or not project_info.get("path"):
-            return HookResult.allow()
-        project_path = project_info["path"]
-    except Exception:
-        return HookResult.allow()
-
-    # Cache the result
-    try:
-        from cache.exploration_cache import cache_exploration
-
-        cache_exploration(
-            project_path=Path(project_path),
-            query=prompt,
-            result=agent_output[:5000],  # Limit size
-            directory_path="",  # Could be extracted from prompt
-            touched_files=[],  # Would need instrumentation to track
-        )
-    except Exception:
-        pass
-
-    return HookResult.allow()
-
-
-# =============================================================================
-# READ CACHE (Priority 6) - Cache Read results, Invalidate on Write/Edit
-# =============================================================================
-
-
-@register_hook("read_cacher", "Read", priority=6)
-def check_read_cacher(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """
-    Cache successful Read results for memoization.
-
-    Only caches full file reads (no offset/limit).
-    """
-    tool_input = data.get("tool_input", {})
-    file_path = tool_input.get("file_path", "")
-
-    if not file_path:
-        return HookResult.allow()
-
-    # Don't cache partial reads
-    if tool_input.get("offset") or tool_input.get("limit"):
-        return HookResult.allow()
-
-    result = data.get("tool_result", {})
-
-    # Get the file content from result
-    content = ""
-    if isinstance(result, dict):
-        content = result.get("content", "") or result.get("output", "") or ""
-    elif isinstance(result, str):
-        content = result
-
-    # Don't cache errors or empty results
-    if not content or "error" in content.lower()[:50]:
-        return HookResult.allow()
-
-    try:
-        from cache.read_cache import cache_read_result
-
-        cache_read_result(file_path, content)
-    except Exception:
-        pass
-
-    return HookResult.allow()
-
-
-@register_hook("read_cache_invalidator", "Write|Edit", priority=6)
-def check_read_cache_invalidator(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """
-    Invalidate read cache when files are written or edited.
-
-    Ensures cache consistency after modifications.
-    """
-    tool_input = data.get("tool_input", {})
-    file_path = tool_input.get("file_path", "")
-
-    if not file_path:
-        return HookResult.allow()
-
-    try:
-        from cache.read_cache import invalidate_read_cache
-
-        invalidate_read_cache(file_path)
-    except Exception:
-        pass
-
-    return HookResult.allow()
+# NOTE: Cache hooks (exploration_cacher, read_cacher, read_cache_invalidator)
+# moved to _hooks_cache.py
 
 
 def _handle_read_tool(tool_input: dict, result: dict, state: SessionState) -> None:
@@ -851,7 +692,7 @@ def _get_boost_multiplier(confidence: int) -> float:
 
 
 # Default context window for Claude models (used when model info unavailable)
-_DEFAULT_CONTEXT_WINDOW = 200000
+_DEFAULT_CONTEXT_WINDOW = get_magic_number("default_context_window", 200000)
 
 
 def _get_context_percentage(transcript_path: str) -> float:
@@ -2278,7 +2119,7 @@ def check_dev_toolchain(
 # LARGE FILE HELPER (priority 45) - Line range guidance for big files
 # -----------------------------------------------------------------------------
 
-LARGE_FILE_THRESHOLD = 500
+LARGE_FILE_THRESHOLD = get_magic_number("large_file_threshold", 500)
 
 
 @register_hook("large_file_helper", "Read", priority=45)
@@ -2412,411 +2253,9 @@ def check_tool_awareness(
     return HookResult.none()
 
 
-# -----------------------------------------------------------------------------
-# SCRATCH ENFORCER (priority 55)
-# -----------------------------------------------------------------------------
-
-SCRATCH_STATE_FILE = (
-    Path(__file__).parent.parent / "memory" / "scratch_enforcer_state.json"
-)
-REPETITION_WINDOW = 300
-
-REPETITIVE_PATTERNS = {
-    "multi_file_edit": {
-        "tools": ["Edit", "Write"],
-        "threshold": 4,
-        "suggestion": "Consider writing a .claude/tmp/ script to batch these edits",
-    },
-    "multi_file_read": {
-        "tools": ["Read"],
-        "threshold": 5,
-        "suggestion": "Use Glob/Grep or write a .claude/tmp/ analysis script",
-    },
-    "multi_bash": {
-        "tools": ["Bash"],
-        "threshold": 4,
-        "suggestion": "Chain commands with && or write a .claude/tmp/ script",
-    },
-    "multi_grep": {
-        "tools": ["Grep"],
-        "threshold": 4,
-        "suggestion": "Write a .claude/tmp/ script for complex multi-pattern search",
-    },
-}
-
-
-@register_hook("scratch_enforcer", None, priority=55)
-def check_scratch_enforcer(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """Detect repetitive manual work, suggest scripts."""
-    tool_name = data.get("tool_name", "")
-    if not tool_name:
-        return HookResult.none()
-
-    # Load scratch state with safe key access
-    scratch_state = runner_state.get("scratch_state", {})
-    # Ensure all required keys exist (handles partial data from old versions)
-    scratch_state.setdefault("tool_counts", {})
-    scratch_state.setdefault("last_reset", time.time())
-    scratch_state.setdefault("suggestions_given", [])
-
-    # Reset if window expired
-    if time.time() - scratch_state.get("last_reset", 0) > REPETITION_WINDOW:
-        scratch_state = {
-            "tool_counts": {},
-            "last_reset": time.time(),
-            "suggestions_given": [],
-        }
-
-    # Increment counter
-    scratch_state["tool_counts"][tool_name] = (
-        scratch_state["tool_counts"].get(tool_name, 0) + 1
-    )
-
-    # Check patterns
-    suggestion = None
-    for pattern_name, config in REPETITIVE_PATTERNS.items():
-        if pattern_name in scratch_state.get("suggestions_given", []):
-            continue
-        total = sum(scratch_state["tool_counts"].get(t, 0) for t in config["tools"])
-        if total >= config["threshold"]:
-            scratch_state["suggestions_given"].append(pattern_name)
-            suggestion = config["suggestion"]
-            break
-
-    runner_state["scratch_state"] = scratch_state
-
-    if suggestion:
-        return HookResult.with_context(
-            f"🔄 REPETITIVE PATTERN DETECTED:\n   {suggestion}\n   (.claude/tmp/ scripts are faster than manual iteration)"
-        )
-
-    return HookResult.none()
-
-
-# -----------------------------------------------------------------------------
-# AUTO LEARN (priority 60)
-# -----------------------------------------------------------------------------
-
-MEMORY_DIR = Path(__file__).parent.parent / "memory"
-LESSONS_FILE = MEMORY_DIR / "__lessons.md"
-
-LEARNABLE_PATTERNS = [
-    (r"ModuleNotFoundError: No module named '([^']+)'", "Missing module: {0}"),
-    (r"ImportError: cannot import name '([^']+)'", "Import error: {0}"),
-    (
-        r"AttributeError: '(\w+)' object has no attribute '(\w+)'",
-        "{0} has no attribute {1}",
-    ),
-    (
-        r"TypeError: ([^(]+)\(\) got an unexpected keyword argument '(\w+)'",
-        "{0} doesn't accept '{1}' argument",
-    ),
-    (r"FileNotFoundError: \[Errno 2\].*'([^']+)'", "File not found: {0}"),
-    (r"🛑 GAP: (.+)", "Gap detected: {0}"),
-    (r"BLOCKED: (.+)", "Blocked: {0}"),
-    (r"command not found: (\w+)", "Command not found: {0}"),
-    (r"Permission denied", "Permission denied"),
-    (r"fatal: (.+)", "Git error: {0}"),
-]
-
-IGNORE_PATTERNS = [
-    r"^\s*$",
-    r"warning:",
-    r"^\d+ passed",
-    r"ModuleNotFoundError.*No module named 'test_'",
-]
-
-
-def _learn_from_bash_error(tool_output: str) -> str | None:
-    """Extract lesson from bash error output."""
-    if not tool_output or not any(k in tool_output.lower() for k in ("error", "failed")):
-        return None
-    if any(re.search(p, tool_output, re.IGNORECASE) for p in IGNORE_PATTERNS):
-        return None
-    for pattern, template in LEARNABLE_PATTERNS:
-        if match := re.search(pattern, tool_output):
-            try:
-                return template.format(*match.groups())[:60]
-            except (IndexError, KeyError):
-                pass
-    return None
-
-
-def _get_quality_hint(tool_name: str, tool_input: dict, runner_state: dict) -> str | None:
-    """Get quality hint for tool usage."""
-    hints_shown = runner_state.setdefault("hints_shown", [])
-    if tool_name in ("Write", "Edit") and tool_input.get("file_path", "").endswith(".py"):
-        if "py_ruff" not in hints_shown:
-            hints_shown.append("py_ruff")
-            return "💡 Run `ruff check --fix && ruff format` after editing Python"
-    elif tool_name == "Bash":
-        cmd = tool_input.get("command", "")
-        if re.search(r"\bgrep\s+-r", cmd) and "rg " not in cmd and "use_rg" not in hints_shown:
-            hints_shown.append("use_rg")
-            return "💡 Use `rg` (ripgrep) instead of `grep -r` for 10-100x speed"
-    return None
-
-
-@register_hook("auto_learn", None, priority=60)
-def check_auto_learn(data: dict, state: SessionState, runner_state: dict) -> HookResult:
-    """Capture lessons from errors and provide quality hints."""
-    messages = []
-
-    if data.get("tool_name") == "Bash":
-        if lesson := _learn_from_bash_error(data.get("tool_output", "")):
-            messages.append(f"🐘 Auto-learned: {lesson}...")
-
-    if hint := _get_quality_hint(data.get("tool_name", ""), data.get("tool_input", {}), runner_state):
-        messages.append(hint)
-
-    return HookResult.with_context("\n".join(messages[:2])) if messages else HookResult.none()
-
-
-# -----------------------------------------------------------------------------
-# VELOCITY TRACKER (priority 65)
-# Uses adaptive thresholds to prevent false positives from annoying users
-# -----------------------------------------------------------------------------
-
-
-def _check_self_check_pattern(
-    tool_name: str, tool_input: dict, state: SessionState
-) -> str | None:
-    """Detect Edit-then-Read self-distrust pattern."""
-    if tool_name != "Read" or len(state.last_5_tools) < 2:
-        return None
-    current_file = tool_input.get("file_path", "")
-    if not current_file or state.last_5_tools[-1] not in ("Edit", "Write"):
-        return None
-    recent_edits = state.files_edited[-3:] if state.files_edited else []
-    if current_file in recent_edits:
-        name = current_file.split("/")[-1] if "/" in current_file else current_file
-        return (
-            f"🔄 SELF-CHECK: Edited then re-read `{name}`.\n"
-            f"💡 Trust your edit or verify with a test, not re-reading."
-        )
-    return None
-
-
-def _check_oscillation_pattern(last_5: list, state: SessionState) -> str | None:
-    """Detect Read→Edit→Read→Edit oscillation."""
-    pattern = "".join(
-        "R" if t == "Read" else "E" for t in last_5 if t in ("Read", "Edit", "Write")
-    )
-    if "RERE" in pattern or "ERER" in pattern:
-        record_threshold_trigger(state, "velocity_oscillation", 1)
-        return (
-            "🔄 OSCILLATION: Read→Edit→Read→Edit pattern.\n"
-            "💡 Step back: progress or checking repeatedly?"
-        )
-    return None
-
-
-def _check_search_loop(last_5: list, state: SessionState) -> str | None:
-    """Detect low diversity search loops."""
-    threshold = get_adaptive_threshold(state, "iteration_same_tool")
-    if threshold == float("inf") or len(last_5) != 5:
-        return None
-    unique = len(set(last_5))
-    if unique <= 2 and all(t in ("Read", "Glob", "Grep") for t in last_5):
-        record_threshold_trigger(state, "iteration_same_tool", 5 - unique)
-        return "🔄 SEARCH LOOP: 5+ searches without action.\n💡 Enough info to act?"
-    return None
-
-
-def _check_reread_pattern(state: SessionState) -> str | None:
-    """Detect excessive re-reading of same file."""
-    threshold = get_adaptive_threshold(state, "batch_sequential_reads")
-    if threshold == float("inf"):
-        return None
-    recent = state.files_read[-10:] if len(state.files_read) >= 10 else state.files_read
-    counts = Counter(recent)
-    repeated = [(f, c) for f, c in counts.items() if c >= int(threshold)]
-    if repeated:
-        file, count = repeated[0]
-        name = file.split("/")[-1] if "/" in file else file
-        record_threshold_trigger(state, "batch_sequential_reads", count)
-        return f"🔄 RE-READ: `{name}` read {count}x.\n💡 What are you looking for?"
-    return None
-
-
-@register_hook("velocity_tracker", "Read|Edit|Write|Bash|Glob|Grep", priority=65)
-def check_velocity(data: dict, state: SessionState, runner_state: dict) -> HookResult:
-    """Detect spinning vs actual progress with adaptive thresholds."""
-    tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", {})
-    last_5 = state.last_5_tools
-
-    if len(last_5) < 3:
-        return HookResult.none()
-    if get_adaptive_threshold(state, "velocity_oscillation") == float("inf"):
-        return HookResult.none()
-
-    if msg := _check_self_check_pattern(tool_name, tool_input, state):
-        return HookResult.with_context(msg)
-
-    if len(last_5) < 4:
-        return HookResult.none()
-
-    if msg := _check_oscillation_pattern(last_5, state):
-        return HookResult.with_context(msg)
-    if msg := _check_search_loop(last_5, state):
-        return HookResult.with_context(msg)
-    if msg := _check_reread_pattern(state):
-        return HookResult.with_context(msg)
-
-    return HookResult.none()
-
-
-# -----------------------------------------------------------------------------
-# INFO GAIN TRACKER (priority 70)
-# -----------------------------------------------------------------------------
-
-INFO_GAIN_STATE_FILE = MEMORY_DIR / "info_gain_state.json"
-READS_BEFORE_WARN = 5  # Warn earlier (old system used 4)
-READS_BEFORE_CRYSTALLIZE = 8  # Suggest crystallizing knowledge
-
-READ_TOOLS = {"Read", "Grep", "Glob"}
-PROGRESS_TOOLS = {"Edit", "Write"}
-PROGRESS_BASH_PATTERNS = [
-    "pytest",
-    "npm test",
-    "npm run",
-    "cargo test",
-    "cargo build",
-    "python3 .claude/ops/verify",
-    "python3 .claude/ops/audit",
-    "git commit",
-    "git add",
-    "pip install",
-    "npm install",
-]
-
-
-@register_hook("info_gain_tracker", None, priority=70)
-def check_info_gain(data: dict, state: SessionState, runner_state: dict) -> HookResult:
-    """Detect reads without progress."""
-    tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", {})
-
-    # Get or init info gain state with safe key access
-    ig_state = runner_state.get("info_gain_state", {})
-    # Ensure all required keys exist (handles partial data from old versions)
-    ig_state.setdefault("reads_since_progress", 0)
-    ig_state.setdefault("files_read_this_burst", [])
-    ig_state.setdefault("last_stall_warn", 0)
-
-    if tool_name in READ_TOOLS:
-        ig_state["reads_since_progress"] = ig_state.get("reads_since_progress", 0) + 1
-        filepath = tool_input.get("file_path", "") or tool_input.get("pattern", "")
-        if filepath:
-            ig_state.setdefault("files_read_this_burst", []).append(filepath)
-            ig_state["files_read_this_burst"] = ig_state["files_read_this_burst"][-10:]
-
-        reads = ig_state["reads_since_progress"]
-        time_since_warn = time.time() - ig_state.get("last_stall_warn", 0)
-
-        if reads >= READS_BEFORE_WARN and time_since_warn > 60:
-            ig_state["last_stall_warn"] = time.time()
-            files = ig_state.get("files_read_this_burst", [])[-5:]
-            file_names = [Path(f).name if f else "?" for f in files]
-            file_list = ", ".join(file_names) if file_names else "multiple files"
-            runner_state["info_gain_state"] = ig_state
-
-            # Escalate message if many reads without action
-            severity = "⚠️" if reads < READS_BEFORE_CRYSTALLIZE else "🛑"
-            hint = " → crystallize to .claude/tmp/" if reads >= READS_BEFORE_CRYSTALLIZE else ""
-            return HookResult.with_context(
-                f"{severity} INFO GAIN: {reads} reads ({file_list}) - act or need more?{hint}"
-            )
-
-    elif tool_name in PROGRESS_TOOLS:
-        ig_state["reads_since_progress"] = 0
-        ig_state["files_read_this_burst"] = []
-
-    elif tool_name == "Bash":
-        command = tool_input.get("command", "")
-        if any(p in command.lower() for p in PROGRESS_BASH_PATTERNS):
-            ig_state["reads_since_progress"] = 0
-            ig_state["files_read_this_burst"] = []
-
-    runner_state["info_gain_state"] = ig_state
-    return HookResult.none()
-
-
-# -----------------------------------------------------------------------------
-# BEADS AUTO-SYNC (priority 72) - Sync beads after git operations
-# -----------------------------------------------------------------------------
-
-
-@register_hook("beads_auto_sync", "Bash", priority=72)
-def check_beads_auto_sync(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """Automatically sync beads after git commit/push operations."""
-    import subprocess
-    import shutil
-
-    tool_input = data.get("tool_input", {})
-    tool_result = data.get("tool_result", {})
-    command = tool_input.get("command", "")
-
-    # Only trigger on git commit or git push
-    if not re.search(r"\bgit\s+(commit|push)\b", command, re.IGNORECASE):
-        return HookResult.none()
-
-    # Check if command succeeded
-    success = True
-    if isinstance(tool_result, dict):
-        stderr = tool_result.get("stderr", "")
-        exit_code = tool_result.get("exit_code", 0)
-        success = exit_code == 0 and "error" not in stderr.lower()
-
-    if not success:
-        return HookResult.none()
-
-    # Check cooldown - don't sync too frequently
-    if beads_sync_cooldown.is_active():
-        return HookResult.none()
-
-    # Check if bd command exists
-    bd_path = shutil.which("bd")
-    if not bd_path:
-        return HookResult.none()
-
-    # Check if .beads directory exists (beads is active for this project)
-    beads_dir = Path.cwd() / ".beads"
-    if not beads_dir.exists():
-        # Also check home directory
-        beads_dir = Path.home() / ".claude" / ".beads"
-        if not beads_dir.exists():
-            return HookResult.none()
-
-    # Run bd sync in background (non-blocking)
-    try:
-        subprocess.Popen(
-            [bd_path, "sync"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,  # Detach from parent process
-        )
-        beads_sync_cooldown.reset()
-        return HookResult.with_context("🔄 Beads auto-synced in background")
-    except (OSError, IOError):
-        return HookResult.none()
-
-
 # =============================================================================
 # MAIN RUNNER
 # =============================================================================
-
-
-def matches_tool(matcher: Optional[str], tool_name: str) -> bool:
-    """Check if tool matches the hook's matcher pattern."""
-    if matcher is None:
-        return True
-    return bool(re.match(f"^({matcher})$", tool_name))
 
 
 def run_hooks(data: dict, state: SessionState) -> dict:
@@ -2826,8 +2265,22 @@ def run_hooks(data: dict, state: SessionState) -> dict:
     # Sort by priority
     # Hooks pre-sorted at module load
 
-    # Shared state for hooks in this run
+    # Shared state for hooks in this run - load persisted state from disk
     runner_state = {}
+
+    # Load scratch state from disk (fixes persistence bug - was write-only)
+    if SCRATCH_STATE_FILE.exists():
+        try:
+            runner_state["scratch_state"] = json.loads(SCRATCH_STATE_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Load info gain state from disk (fixes persistence bug - was never persisted)
+    if INFO_GAIN_STATE_FILE.exists():
+        try:
+            runner_state["info_gain_state"] = json.loads(INFO_GAIN_STATE_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
 
     # Collect contexts
     contexts = []
@@ -2848,7 +2301,15 @@ def run_hooks(data: dict, state: SessionState) -> dict:
         try:
             SCRATCH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
             SCRATCH_STATE_FILE.write_text(json.dumps(runner_state["scratch_state"]))
-        except IOError:
+        except (IOError, OSError):
+            pass
+
+    # Save info gain state to disk (was missing - only read/modified in memory)
+    if "info_gain_state" in runner_state:
+        try:
+            INFO_GAIN_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            INFO_GAIN_STATE_FILE.write_text(json.dumps(runner_state["info_gain_state"]))
+        except (IOError, OSError):
             pass
 
     # Build output

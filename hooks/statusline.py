@@ -17,6 +17,9 @@ from pathlib import Path
 
 # Add lib path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
+sys.path.insert(0, str(Path(__file__).parent))  # For _config
+
+from _config import get_magic_number
 
 # =============================================================================
 # CACHE LAYER - subprocess results don't change rapidly
@@ -418,7 +421,7 @@ def main():
 
     # Context
     transcript = input_data.get("transcript_path", "")
-    context_window = model.get("context_window", 200000)
+    context_window = model.get("context_window", get_magic_number("default_context_window", 200000))
     used, total = get_context_usage(transcript, context_window)
     if used > 0 and total > 0:
         pct = (used / total) * 100

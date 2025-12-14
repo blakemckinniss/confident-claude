@@ -21,6 +21,39 @@ HOOK_SETTINGS_FILE = CONFIG_DIR / "hook_settings.json"
 # DEFAULT VALUES (used when config file missing or key not found)
 # =============================================================================
 
+# =============================================================================
+# TOOL NAMES (avoid magic strings scattered across codebase)
+# =============================================================================
+
+TOOL_NAMES = {
+    "bash": "Bash",
+    "edit": "Edit",
+    "write": "Write",
+    "read": "Read",
+    "grep": "Grep",
+    "glob": "Glob",
+    "task": "Task",
+    "web_fetch": "WebFetch",
+    "web_search": "WebSearch",
+    "notebook_edit": "NotebookEdit",
+}
+
+# =============================================================================
+# MAGIC NUMBERS (centralized for easy tuning)
+# =============================================================================
+
+MAGIC_NUMBERS = {
+    "default_context_window": 200000,
+    "large_file_threshold": 500,
+    "repetition_window_seconds": 300,
+    "reads_before_warn": 5,
+    "reads_before_crystallize": 8,
+}
+
+# =============================================================================
+# DEFAULT VALUES (used when config file missing or key not found)
+# =============================================================================
+
 DEFAULTS = {
     "cooldowns": {
         "assumption": 120,
@@ -177,3 +210,13 @@ def is_protected_path(path: str) -> bool:
 
 # NOTE: is_scratch_path moved to _patterns.py (single source of truth)
 # Use: from _patterns import is_scratch_path
+
+
+def get_tool_name(key: str) -> str:
+    """Get canonical tool name (avoids magic strings)."""
+    return TOOL_NAMES.get(key, key.title())
+
+
+def get_magic_number(key: str, default: int = 0) -> int:
+    """Get magic number constant."""
+    return MAGIC_NUMBERS.get(key, default)

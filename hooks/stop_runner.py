@@ -43,29 +43,34 @@ from session_state import load_state, save_state, SessionState
 from _patterns import STUB_BYTE_PATTERNS, CODE_EXTENSIONS
 
 # =============================================================================
-# HOOK RESULT TYPE
+# STOP HOOK RESULT TYPE (distinct from _hook_result.HookResult)
 # =============================================================================
 
 
 @dataclass
-class HookResult:
-    """Result from a hook check."""
+class StopHookResult:
+    """Result from a Stop hook check.
+
+    Note: This is intentionally different from _hook_result.StopHookResult.
+    Stop hooks use "continue"/"block" semantics with stop_reason for warnings,
+    while pre/post hooks use "approve"/"deny" with context injection.
+    """
 
     decision: str = "continue"  # "continue" or "block"
     reason: str = ""  # Reason for block
     stop_reason: str = ""  # Warning message (non-blocking)
 
     @staticmethod
-    def ok() -> "HookResult":
-        return HookResult(decision="continue")
+    def ok() -> "StopHookResult":
+        return StopHookResult(decision="continue")
 
     @staticmethod
-    def warn(message: str) -> "HookResult":
-        return HookResult(decision="continue", stop_reason=message)
+    def warn(message: str) -> "StopHookResult":
+        return StopHookResult(decision="continue", stop_reason=message)
 
     @staticmethod
-    def block(reason: str) -> "HookResult":
-        return HookResult(decision="block", reason=reason)
+    def block(reason: str) -> "StopHookResult":
+        return StopHookResult(decision="block", reason=reason)
 
 
 # =============================================================================
@@ -86,7 +91,7 @@ def register_hook(name: str, priority: int = 50):
         CLAUDE_HOOK_DISABLE_SESSION_CLEANUP=1 claude
     """
 
-    def decorator(func: Callable[[dict, SessionState], HookResult]):
+    def decorator(func: Callable[[dict, SessionState], StopHookResult]):
         # Check if hook is disabled via environment variable
         env_key = f"CLAUDE_HOOK_DISABLE_{name.upper()}"
         if os.environ.get(env_key, "0") == "1":
@@ -333,42 +338,42 @@ def check_dismissals_in_transcript(transcript_path: str) -> list[str]:
 
 
 @register_hook("auto_commit", priority=10)
-def check_auto_commit(data: dict, state: SessionState) -> HookResult:
+def check_auto_commit(data: dict, state: SessionState) -> StopHookResult:
     """Commit all changes (semantic backup)."""
     cwd = data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 
     if not is_git_repo(cwd):
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     changes = get_changes(cwd)
     total = sum(len(v) for v in changes.values())
 
     if total == 0:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     message = generate_commit_message(changes)
     if not message:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     # Stage all changes
     code, _, stderr = run_git(["add", "-A"], cwd)
     if code != 0:
-        return HookResult.warn(f"⚠️ Auto-commit: git add failed: {stderr}")
+        return StopHookResult.warn(f"⚠️ Auto-commit: git add failed: {stderr}")
 
     # Commit
     code, _, stderr = run_git(["commit", "-m", message], cwd)
     if code != 0:
         if "nothing to commit" not in stderr.lower():
-            return HookResult.warn(f"⚠️ Auto-commit failed: {stderr}")
-        return HookResult.ok()
+            return StopHookResult.warn(f"⚠️ Auto-commit failed: {stderr}")
+        return StopHookResult.ok()
 
     # Report success in state (not blocking)
     summary = message.split("\n")[0]
-    return HookResult.warn(f"✅ Auto-committed: {summary} ({total} files)")
+    return StopHookResult.warn(f"✅ Auto-committed: {summary} ({total} files)")
 
 
 @register_hook("session_blocks", priority=30)
-def check_session_blocks(data: dict, state: SessionState) -> HookResult:
+def check_session_blocks(data: dict, state: SessionState) -> StopHookResult:
     """Require reflection on session blocks."""
     from synapse_core import get_session_blocks, clear_session_blocks
 
@@ -376,7 +381,7 @@ def check_session_blocks(data: dict, state: SessionState) -> HookResult:
     blocks = get_session_blocks()
 
     if not blocks:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     # Check for acknowledgments
     substantive_ack, any_ack, lessons = check_acknowledgments_in_transcript(
@@ -386,7 +391,7 @@ def check_session_blocks(data: dict, state: SessionState) -> HookResult:
     if substantive_ack:
         persist_lessons_to_memory(lessons, blocks)
         clear_session_blocks()
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     # Group by hook and function
     hook_details = {}
@@ -403,7 +408,7 @@ def check_session_blocks(data: dict, state: SessionState) -> HookResult:
             lines.append(f"  • `{detail}`: {count}x")
         lines.append("\n**TIP:** 'Block valid: [lesson]' captures why it happened.")
         clear_session_blocks()
-        return HookResult.warn("\n".join(lines))
+        return StopHookResult.warn("\n".join(lines))
 
     # No acknowledgment - require reflection
     lines = ["🚨 **SESSION BLOCKS DETECTED** - Reflection required:"]
@@ -418,17 +423,17 @@ def check_session_blocks(data: dict, state: SessionState) -> HookResult:
     lines.append("\n**REFLECT:** Why did these blocks fire? How to avoid next time?")
     clear_session_blocks()
 
-    return HookResult.block("\n".join(lines))
+    return StopHookResult.block("\n".join(lines))
 
 
 @register_hook("dismissal_check", priority=40)
-def check_dismissal(data: dict, state: SessionState) -> HookResult:
+def check_dismissal(data: dict, state: SessionState) -> StopHookResult:
     """Catch false positive claims without fix."""
     transcript_path = data.get("transcript_path", "")
     dismissals = check_dismissals_in_transcript(transcript_path)
 
     if not dismissals:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     lines = ["🔧 **FALSE POSITIVE CLAIMED** - Fix required:"]
     lines.extend(dismissals)
@@ -436,11 +441,11 @@ def check_dismissal(data: dict, state: SessionState) -> HookResult:
         "\n**REQUIRED:** Fix the hook that fired incorrectly. This block repeats until fixed."
     )
 
-    return HookResult.block("\n".join(lines))
+    return StopHookResult.block("\n".join(lines))
 
 
 @register_hook("completion_gate", priority=45)
-def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
+def check_completion_confidence(data: dict, state: SessionState) -> StopHookResult:
     """Block completion claims if confidence < 70%, or < 75% with negative trend.
 
     This prevents lazy completion and reward hacking - Claude must earn
@@ -463,12 +468,12 @@ def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
         if confidence < COMPLETION_TREND_THRESHOLD and is_declining:
             pass  # Fall through to block
         else:
-            return HookResult.ok()
+            return StopHookResult.ok()
 
     # Scan recent assistant output for completion claims
     transcript_path = data.get("transcript_path", "")
     if not transcript_path or not Path(transcript_path).exists():
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     try:
         with open(transcript_path, "rb") as f:
@@ -477,7 +482,7 @@ def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
             f.seek(max(0, size - 15000))  # Last 15KB
             content = f.read().decode("utf-8", errors="ignore").lower()
     except (OSError, PermissionError):
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     # Check for completion patterns
     for pattern in COMPLETION_PATTERNS:
@@ -498,7 +503,7 @@ def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
             else:
                 reason = f"declining in danger zone (<{COMPLETION_TREND_THRESHOLD}%)"
 
-            return HookResult.block(
+            return StopHookResult.block(
                 f"🚫 **COMPLETION BLOCKED** - Confidence {reason}\n\n"
                 f"Current: {emoji} {confidence}% ({tier_name})"
                 + (f" ↓ (was {prev_confidence}%)" if is_declining else "")
@@ -507,7 +512,7 @@ def check_completion_confidence(data: dict, state: SessionState) -> HookResult:
                 + "\n\nOr: 'CONFIDENCE_BOOST_APPROVED'"
             )
 
-    return HookResult.ok()
+    return StopHookResult.ok()
 
 
 # Language patterns for bad behavior detection
@@ -737,7 +742,7 @@ def _get_violation_multiplier(num_violations: int) -> float:
 
 
 @register_hook("bad_language_detector", priority=46)
-def check_bad_language(data: dict, state: SessionState) -> HookResult:
+def check_bad_language(data: dict, state: SessionState) -> StopHookResult:
     """Detect and penalize bad language patterns in assistant output."""
     from confidence import (
         apply_rate_limit, format_confidence_change,
@@ -746,7 +751,7 @@ def check_bad_language(data: dict, state: SessionState) -> HookResult:
 
     transcript_path = data.get("transcript_path", "")
     if not transcript_path or not Path(transcript_path).exists():
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     try:
         with open(transcript_path, "rb") as f:
@@ -754,11 +759,11 @@ def check_bad_language(data: dict, state: SessionState) -> HookResult:
             f.seek(max(0, f.tell() - 20000))
             content = f.read().decode("utf-8", errors="ignore")
     except (OSError, PermissionError):
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     triggered = _collect_bad_language_triggers(content, state)
     if not triggered:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     old_confidence = state.confidence
     total_delta = int(sum(d for _, d in triggered) * _get_violation_multiplier(len(triggered)))
@@ -775,7 +780,7 @@ def check_bad_language(data: dict, state: SessionState) -> HookResult:
     _, emoji, desc = get_tier_info(new_confidence)
     dispute_hint = format_dispute_instructions([n for n, _ in triggered])
 
-    return HookResult.warn(
+    return StopHookResult.warn(
         f"📉 **Bad Language Detected**\n{change_msg}\n\n"
         f"Current: {emoji} {new_confidence}% - {desc}{dispute_hint}"
     )
@@ -862,7 +867,7 @@ GOOD_LANGUAGE_PATTERNS = {
 
 
 @register_hook("good_language_detector", priority=47)
-def check_good_language(data: dict, state: SessionState) -> HookResult:
+def check_good_language(data: dict, state: SessionState) -> StopHookResult:
     """Detect and reward verification language patterns in assistant output.
 
     Rewards: "let me check", "let me verify", evidence-gathering statements.
@@ -877,7 +882,7 @@ def check_good_language(data: dict, state: SessionState) -> HookResult:
     # Get recent transcript content
     transcript_path = data.get("transcript_path", "")
     if not transcript_path or not Path(transcript_path).exists():
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     try:
         with open(transcript_path, "rb") as f:
@@ -886,7 +891,7 @@ def check_good_language(data: dict, state: SessionState) -> HookResult:
             f.seek(max(0, size - 20000))  # Last 20KB
             content = f.read().decode("utf-8", errors="ignore")
     except (OSError, PermissionError):
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     # Track which patterns triggered
     triggered = []
@@ -905,7 +910,7 @@ def check_good_language(data: dict, state: SessionState) -> HookResult:
                 break  # Only trigger once per category
 
     if not triggered:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     # Apply rewards with rate limiting
     old_confidence = state.confidence
@@ -923,7 +928,7 @@ def check_good_language(data: dict, state: SessionState) -> HookResult:
 
     _, emoji, desc = get_tier_info(new_confidence)
 
-    return HookResult.ok(
+    return StopHookResult.ok(
         f"📈 **Verification Language**\n{change_msg}\n\n"
         f"Current: {emoji} {new_confidence}% - {desc}"
     )
@@ -983,13 +988,13 @@ def _has_evidence(state: SessionState, evidence_key: str) -> bool:
 
 
 @register_hook("verification_theater_detector", priority=48)
-def check_verification_theater(data: dict, state: SessionState) -> HookResult:
+def check_verification_theater(data: dict, state: SessionState) -> StopHookResult:
     """Detect verification claims without tool evidence."""
     from confidence import apply_rate_limit, get_tier_info, set_confidence
 
     content = _read_tail_content(data.get("transcript_path", ""))
     if not content:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     triggered = []
     for claim_type, config in VERIFICATION_CLAIMS.items():
@@ -1004,17 +1009,17 @@ def check_verification_theater(data: dict, state: SessionState) -> HookResult:
             state.nudge_history[cooldown_key] = state.turn_count
 
     if not triggered:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     total_delta = apply_rate_limit(sum(d for _, d in triggered), state)
     new_conf = max(0, min(100, state.confidence + total_delta))
     set_confidence(state, new_conf, "verification theater")
     _, emoji, desc = get_tier_info(new_conf)
-    return HookResult.warn(f"📉 VERIFICATION THEATER: {emoji} {new_conf}% | Claims without evidence")
+    return StopHookResult.warn(f"📉 VERIFICATION THEATER: {emoji} {new_conf}% | Claims without evidence")
 
 
 @register_hook("stub_detector", priority=50)
-def check_stubs(data: dict, state: SessionState) -> HookResult:
+def check_stubs(data: dict, state: SessionState) -> StopHookResult:
     """Check created files for stubs."""
     warnings = []
 
@@ -1032,34 +1037,34 @@ def check_stubs(data: dict, state: SessionState) -> HookResult:
             pass
 
     if not warnings:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     lines = ["⚠️ **ABANDONED WORK** - Files with stubs:"]
     lines.extend(warnings)
-    return HookResult.warn("\n".join(lines))
+    return StopHookResult.warn("\n".join(lines))
 
 
 @register_hook("pending_greps", priority=70)
-def check_pending_greps(data: dict, state: SessionState) -> HookResult:
+def check_pending_greps(data: dict, state: SessionState) -> StopHookResult:
     """Check for unverified function edits."""
     pending = state.pending_integration_greps
     if not pending:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     funcs = [p.get("function", "unknown") for p in pending[:3]]
-    return HookResult.warn(
+    return StopHookResult.warn(
         f"⚠️ **UNVERIFIED EDITS** - Functions need grep: {', '.join(funcs)}"
     )
 
 
 @register_hook("unresolved_errors", priority=80)
-def check_unresolved_errors(data: dict, state: SessionState) -> HookResult:
+def check_unresolved_errors(data: dict, state: SessionState) -> StopHookResult:
     """Check for lingering errors."""
     if not state.errors_unresolved:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     error = state.errors_unresolved[-1]
-    return HookResult.warn(
+    return StopHookResult.warn(
         f"⚠️ **UNRESOLVED ERROR**: {error.get('type', 'unknown')[:50]}"
     )
 
@@ -1091,7 +1096,7 @@ def _scan_file_for_debt(filepath: str, check_todos: bool = False) -> tuple[list[
 
 
 @register_hook("session_debt_penalty", priority=85)
-def check_session_debt(data: dict, state: SessionState) -> HookResult:
+def check_session_debt(data: dict, state: SessionState) -> StopHookResult:
     """Penalize ending session with technical/organizational debt."""
     from confidence import get_tier_info, set_confidence
 
@@ -1118,7 +1123,7 @@ def check_session_debt(data: dict, state: SessionState) -> HookResult:
         debt_score += 5 * len(state.pending_integration_greps)
 
     if not debt_items or debt_score < 5:
-        return HookResult.ok()
+        return StopHookResult.ok()
 
     penalty = min(debt_score, 20)
     new_confidence = max(0, state.confidence - penalty)
@@ -1127,8 +1132,8 @@ def check_session_debt(data: dict, state: SessionState) -> HookResult:
     debt_list = ", ".join(debt_items[:3])
 
     if debt_score >= 15 or new_confidence < 70:
-        return HookResult.block(f"🚫 SESSION DEBT: {debt_list} | Fix or SUDO")
-    return HookResult.warn(f"⚠️ SESSION DEBT: {emoji} {new_confidence}% | {debt_list}")
+        return StopHookResult.block(f"🚫 SESSION DEBT: {debt_list} | Fix or SUDO")
+    return StopHookResult.warn(f"⚠️ SESSION DEBT: {emoji} {new_confidence}% | {debt_list}")
 
 
 # =============================================================================
