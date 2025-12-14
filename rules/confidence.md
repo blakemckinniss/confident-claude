@@ -122,7 +122,7 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `scoped_change` | +2 | Changes stayed within requested scope |
 | `external_validation` | +5 | Using `mcp__pal__*` tools for validation |
 
-**Per-turn cap:** Maximum +15 or -15 total change per turn (prevents death spirals and gaming).
+**Per-turn cap:** Maximum ±15 total change per turn normally. **When below 80% (stasis floor), positive cap raised to +30** to enable faster legitimate recovery.
 
 ## False Positive Handling
 

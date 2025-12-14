@@ -1369,6 +1369,10 @@ REDUCERS: list[ConfidenceReducer] = [
 # Maximum confidence change per turn (prevents compound penalty death spirals)
 MAX_CONFIDENCE_DELTA_PER_TURN = 15
 
+# Higher cap when recovering below stasis floor (allows faster legitimate recovery)
+MAX_CONFIDENCE_RECOVERY_DELTA = 30
+STASIS_FLOOR = 80
+
 # Mean reversion target (confidence drifts toward this when no strong signals)
 MEAN_REVERSION_TARGET = 70
 MEAN_REVERSION_RATE = 0.1  # Pull 10% toward target per idle period
@@ -2463,20 +2467,30 @@ def apply_rate_limit(delta: int, state: "SessionState") -> int:
     Caps the maximum confidence change per turn and tracks cumulative
     changes to prevent compound penalties from destroying confidence.
 
+    When below STASIS_FLOOR (80%), allows higher positive gains to enable
+    faster legitimate recovery. Penalties always use standard cap.
+
     Returns the clamped delta.
     """
     # Track cumulative delta this turn
     turn_key = f"_confidence_delta_turn_{state.turn_count}"
     cumulative = state.nudge_history.get(turn_key, 0)
 
+    # Determine cap based on current confidence
+    # Allow faster recovery when below stasis floor
+    if delta > 0 and state.confidence < STASIS_FLOOR:
+        max_positive = MAX_CONFIDENCE_RECOVERY_DELTA
+    else:
+        max_positive = MAX_CONFIDENCE_DELTA_PER_TURN
+
     # Calculate remaining budget
     if delta < 0:
-        # For penalties, limit total negative change
+        # For penalties, always use standard cap
         remaining = -MAX_CONFIDENCE_DELTA_PER_TURN - cumulative
         clamped = max(delta, remaining)
     else:
-        # For boosts, limit total positive change
-        remaining = MAX_CONFIDENCE_DELTA_PER_TURN - cumulative
+        # For boosts, use appropriate cap based on recovery mode
+        remaining = max_positive - cumulative
         clamped = min(delta, remaining)
 
     # Update cumulative tracking
