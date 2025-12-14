@@ -60,12 +60,12 @@ Key lib files refactored for maintainability:
 
 | File | Functions Refactored | Before | After |
 |------|---------------------|--------|-------|
-| `context_builder.py` | 4 (`find_related_sessions`, `format_context`, `build_council_context`) | C (13-20) | A-B (5-9) |
+| `context_builder.py` | 7 (`find_related_sessions`, `format_context`, `build_council_context`, `search_memories`, `get_git_status`, `extract_mentioned_files`) | C (12-20) | A-B (3-9) |
 | `confidence.py` | 1 (`check_tool_permission`) | C (19) | B (8) |
 | `hook_registry.py` | 2 (`_infer_from_settings`, `validate_hook`) | C (11-15) | A-B (5-7) |
 | `ast_analysis.py` | 1 (`_check_attribute_call`) | C (13) | B (7) |
 | `project_detector.py` | 2 (`find_project_file`, `detect_project`) | C (12-13) | A-B (4-7) |
-| `session_rag.py` | 1 (`_build_index`) | C (16) | B (6) |
+| `session_rag.py` | 2 (`_build_index`, `search_sessions`) | C (12-16) | A-B (4-6) |
 | `synapse_core.py` | 1 (`extract_recent_text`) | C (11) | A (5) |
 
 **Patterns applied:**
@@ -74,7 +74,7 @@ Key lib files refactored for maintainability:
 - Data-driven tuples (`_JS_FRAMEWORKS`, `_PY_FRAMEWORKS`, `_PROJECT_FILES`)
 - Early returns to flatten nesting
 
-**Result:** Overall lib complexity A (4.41 avg), ~25 C901 violations remaining (down from ~50+)
+**Result:** Overall lib complexity A (4.35 avg), 21 C901 violations remaining (down from ~50+)
 
 ---
 

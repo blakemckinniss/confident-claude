@@ -167,6 +167,42 @@ def extract_keywords(text: str, min_length: int = None) -> List[str]:
     return unique
 
 
+# Pre-compiled patterns for file extraction
+_FILENAME_PATTERN = re.compile(
+    r"\b([A-Z_][A-Za-z0-9_\-]*\.(md|py|json|yaml|yml|txt|sh|js|ts))\b"
+)
+_PATH_PATTERN = re.compile(
+    r"(?:\.{0,2}/)?(?:[a-zA-Z0-9_\-]+/)+[a-zA-Z0-9_\-]+\.[a-z]{2,4}"
+)
+
+
+def _try_read_file_lines(path: Path) -> Optional[int]:
+    """Try to read file and return line count, or None on failure."""
+    try:
+        if path.exists() and path.is_file():
+            return len(path.read_text().split("\n"))
+    except Exception as e:
+        logger.warning(f"Could not read {path}: {e}")
+    return None
+
+
+def _find_file_in_search_paths(
+    filename: str, project_root: Path
+) -> Optional[Tuple[Path, int]]:
+    """Search for filename in common project directories."""
+    search_paths = [
+        project_root / filename,
+        project_root / ".claude" / filename,
+        project_root / ".claude" / "ops" / filename,
+        project_root / ".claude" / "lib" / filename,
+    ]
+    for path in search_paths:
+        line_count = _try_read_file_lines(path)
+        if line_count is not None:
+            return path, line_count
+    return None
+
+
 def extract_mentioned_files(
     proposal: str, project_root: Path
 ) -> List[Tuple[str, Path, int]]:
@@ -176,48 +212,28 @@ def extract_mentioned_files(
     Returns:
         List of (mention, resolved_path, line_count) tuples for files that exist
     """
-    found_files = []
+    found_files: List[Tuple[str, Path, int]] = []
+    seen_paths: set = set()
 
-    # Pattern 1: Common filename patterns (CLAUDE.md, README.md, config.json, etc.)
-    filename_pattern = (
-        r"\b([A-Z_][A-Za-z0-9_\-]*\.(md|py|json|yaml|yml|txt|sh|js|ts))\b"
-    )
-    for match in re.finditer(filename_pattern, proposal):
+    # Pattern 1: Common filename patterns (CLAUDE.md, README.md, etc.)
+    for match in _FILENAME_PATTERN.finditer(proposal):
         filename = match.group(1)
+        result = _find_file_in_search_paths(filename, project_root)
+        if result:
+            path, line_count = result
+            if str(path) not in seen_paths:
+                found_files.append((filename, path, line_count))
+                seen_paths.add(str(path))
 
-        # Try to find file in project root and common directories
-        search_paths = [
-            project_root / filename,
-            project_root / ".claude" / filename,
-            project_root / ".claude" / filename,
-            project_root / ".claude" / "ops" / filename,
-            project_root / ".claude" / "lib" / filename,
-        ]
-
-        for path in search_paths:
-            if path.exists() and path.is_file():
-                try:
-                    line_count = len(path.read_text().split("\n"))
-                    found_files.append((filename, path, line_count))
-                    break
-                except Exception as e:
-                    logger.warning(f"Could not read {path}: {e}")
-
-    # Pattern 2: Explicit file paths (.claude/ops/council.py, ./src/main.py, etc.)
-    # Match paths with directory separators
-    path_pattern = r"(?:\.{0,2}/)?(?:[a-zA-Z0-9_\-]+/)+[a-zA-Z0-9_\-]+\.[a-z]{2,4}"
-    for match in re.finditer(path_pattern, proposal):
+    # Pattern 2: Explicit file paths (.claude/ops/council.py, etc.)
+    for match in _PATH_PATTERN.finditer(proposal):
         path_str = match.group(0)
         path = project_root / path_str.lstrip("./")
-
-        if path.exists() and path.is_file():
-            try:
-                line_count = len(path.read_text().split("\n"))
-                # Avoid duplicates
-                if not any(str(p[1]) == str(path) for p in found_files):
-                    found_files.append((path_str, path, line_count))
-            except Exception as e:
-                logger.warning(f"Could not read {path}: {e}")
+        if str(path) not in seen_paths:
+            line_count = _try_read_file_lines(path)
+            if line_count is not None:
+                found_files.append((path_str, path, line_count))
+                seen_paths.add(str(path))
 
     return found_files
 
@@ -272,6 +288,50 @@ def read_file_with_truncation(file_path: Path, max_lines: int = None) -> Dict:
 _MEMORY_FILE_CACHE: Dict[str, tuple] = {}
 
 
+def _get_cached_sections(file_path: Path) -> Optional[List[str]]:
+    """Get sections from cache or parse file. Returns None on read error."""
+    cache_key = str(file_path)
+    try:
+        file_mtime = file_path.stat().st_mtime
+    except OSError:
+        file_mtime = 0
+
+    cached = _MEMORY_FILE_CACHE.get(cache_key)
+    if cached and cached[0] == file_mtime:
+        return cached[1]
+
+    try:
+        content = file_path.read_text()
+    except PermissionError as e:
+        raise PermissionError(f"Cannot read {file_path}: {e}")
+    except UnicodeDecodeError as e:
+        logger.error(f"Encoding error in {file_path}: {e}")
+        return None
+
+    # Parse and cache sections
+    raw_sections = re.split(r"\n\s*\n", content)
+    sections = [
+        s.strip()
+        for s in raw_sections
+        if len(s.strip()) >= ContextConfig.MIN_SECTION_LENGTH
+    ]
+    _MEMORY_FILE_CACHE[cache_key] = (file_mtime, sections)
+    return sections
+
+
+def _score_and_rank_sections(sections: List[str], keywords: List[str]) -> List[str]:
+    """Score sections by keyword matches and return top N."""
+    scored = []
+    for section in sections:
+        section_lower = section.lower()
+        matches = sum(1 for kw in keywords if kw in section_lower)
+        if matches > 0:
+            scored.append((matches, section))
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [s[1] for s in scored[: ContextConfig.TOP_MEMORIES]]
+
+
 def search_memories(keywords: List[str], project_root: Path) -> Dict[str, List[str]]:
     """
     Search lessons.md and decisions.md for keyword matches.
@@ -287,7 +347,7 @@ def search_memories(keywords: List[str], project_root: Path) -> Dict[str, List[s
     if not memory_dir.exists():
         raise FileNotFoundError(f"Memory directory not found: {memory_dir}")
 
-    results = {"lessons": [], "decisions": []}
+    results: Dict[str, List[str]] = {"lessons": [], "decisions": []}
 
     for memory_type in ["lessons", "decisions"]:
         file_path = memory_dir / f"{memory_type}.md"
@@ -296,47 +356,11 @@ def search_memories(keywords: List[str], project_root: Path) -> Dict[str, List[s
             logger.warning(f"Memory file not found: {file_path}")
             continue
 
-        # Check cache by file mtime
-        cache_key = str(file_path)
-        try:
-            file_mtime = file_path.stat().st_mtime
-        except OSError:
-            file_mtime = 0
+        sections = _get_cached_sections(file_path)
+        if sections is None:
+            continue
 
-        cached = _MEMORY_FILE_CACHE.get(cache_key)
-        if cached and cached[0] == file_mtime:
-            sections = cached[1]
-        else:
-            try:
-                content = file_path.read_text()
-            except PermissionError as e:
-                raise PermissionError(f"Cannot read {file_path}: {e}")
-            except UnicodeDecodeError as e:
-                logger.error(f"Encoding error in {file_path}: {e}")
-                continue
-
-            # Parse and cache sections
-            raw_sections = re.split(r"\n\s*\n", content)
-            sections = [
-                s.strip()
-                for s in raw_sections
-                if len(s.strip()) >= ContextConfig.MIN_SECTION_LENGTH
-            ]
-            _MEMORY_FILE_CACHE[cache_key] = (file_mtime, sections)
-
-        # Score sections by keyword density
-        scored_sections = []
-        for section in sections:
-            section_lower = section.lower()
-            matches = sum(1 for kw in keywords if kw in section_lower)
-            if matches > 0:
-                scored_sections.append((matches, section))
-
-        # Sort by score and take top N
-        scored_sections.sort(reverse=True, key=lambda x: x[0])
-        top_matches = [s[1] for s in scored_sections[: ContextConfig.TOP_MEMORIES]]
-
-        results[memory_type] = top_matches
+        results[memory_type] = _score_and_rank_sections(sections, keywords)
 
     return results
 
@@ -496,6 +520,36 @@ def get_session_state(session_id: str, project_root: Path) -> Dict:
     }
 
 
+def _run_git_command(args: List[str], cwd: Path) -> tuple[Optional[str], Optional[str]]:
+    """Run git command and return (stdout, error). Returns (None, error_msg) on failure."""
+    try:
+        result = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=ContextConfig.GIT_TIMEOUT,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip(), None
+        return None, result.stderr.strip()
+    except FileNotFoundError:
+        return None, "Git binary not found in PATH"
+    except subprocess.TimeoutExpired:
+        return None, f"Git command timed out after {ContextConfig.GIT_TIMEOUT}s"
+    except Exception as e:
+        return None, f"Git command failed: {e}"
+
+
+def _parse_git_status_changes(status_output: str) -> str:
+    """Parse git status --short output into summary string."""
+    lines = status_output.split("\n") if status_output else []
+    modified = sum(1 for line in lines if line.startswith((" M", "M ")))
+    added = sum(1 for line in lines if line.startswith(("A ", "??")))
+    deleted = sum(1 for line in lines if line.startswith((" D", "D ")))
+    return f"{modified} modified, {added} added, {deleted} deleted"
+
+
 def get_git_status(project_root: Path) -> Dict[str, str]:
     """
     Get current git branch and uncommitted changes summary.
@@ -504,78 +558,27 @@ def get_git_status(project_root: Path) -> Dict[str, str]:
         Dict with 'branch', 'changes', 'error' keys
         - If git unavailable/fails, 'error' key will be present
     """
-    result = {"branch": None, "changes": None, "error": None}
+    result: Dict[str, Optional[str]] = {"branch": None, "changes": None, "error": None}
 
-    try:
-        # Get current branch
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=ContextConfig.GIT_TIMEOUT,
-        )
+    # Get current branch
+    branch, error = _run_git_command(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], project_root
+    )
+    if error:
+        result["error"] = f"Git branch check failed: {error}"
+        logger.warning(result["error"])
+        return result
+    result["branch"] = branch
 
-        if branch_result.returncode == 0:
-            result["branch"] = branch_result.stdout.strip()
-        else:
-            # Not a git repo or git error
-            result["error"] = f"Git branch check failed: {branch_result.stderr.strip()}"
-            logger.warning(result["error"])
-            return result
-
-        # Get uncommitted changes summary
-        status_result = subprocess.run(
-            ["git", "status", "--short"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=ContextConfig.GIT_TIMEOUT,
-        )
-
-        if status_result.returncode == 0:
-            lines = status_result.stdout.strip().split("\n")
-            modified = len(
-                [
-                    line
-                    for line in lines
-                    if line.startswith(" M") or line.startswith("M ")
-                ]
-            )
-            added = len(
-                [
-                    line
-                    for line in lines
-                    if line.startswith("A ") or line.startswith("??")
-                ]
-            )
-            deleted = len(
-                [
-                    line
-                    for line in lines
-                    if line.startswith(" D") or line.startswith("D ")
-                ]
-            )
-
-            result["changes"] = f"{modified} modified, {added} added, {deleted} deleted"
-        else:
-            result["error"] = f"Git status check failed: {status_result.stderr.strip()}"
-            logger.warning(result["error"])
-
+    # Get uncommitted changes summary
+    status_output, error = _run_git_command(["git", "status", "--short"], project_root)
+    if error:
+        result["error"] = f"Git status check failed: {error}"
+        logger.warning(result["error"])
         return result
 
-    except FileNotFoundError:
-        result["error"] = "Git binary not found in PATH"
-        logger.error(result["error"])
-        return result
-    except subprocess.TimeoutExpired:
-        result["error"] = f"Git command timed out after {ContextConfig.GIT_TIMEOUT}s"
-        logger.error(result["error"])
-        return result
-    except Exception as e:
-        result["error"] = f"Git command failed: {e}"
-        logger.error(result["error"])
-        return result
+    result["changes"] = _parse_git_status_changes(status_output)
+    return result
 
 
 def save_context_audit(

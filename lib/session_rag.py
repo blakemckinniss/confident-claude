@@ -191,6 +191,28 @@ def _build_index(max_files: int = 20) -> dict:
     return index
 
 
+def _extract_query_keywords(query: str) -> list[str]:
+    """Extract searchable keywords from query (3+ chars)."""
+    cleaned = re.sub(r"[^\w\s]", " ", query.lower())
+    return [w for w in cleaned.split() if len(w) >= 3]
+
+
+def _score_excerpts(index: dict, query_keywords: list[str]) -> dict:
+    """Score excerpts by keyword matches (exact and prefix)."""
+    scored: dict = {}  # (session_id, timestamp) -> (score, excerpt)
+
+    for kw in query_keywords:
+        for idx_kw, excerpts in index.items():
+            if idx_kw != kw and not idx_kw.startswith(kw):
+                continue
+            for exc in excerpts:
+                key = (exc["session_id"], exc["timestamp"])
+                prev_score = scored.get(key, (0, exc))[0]
+                scored[key] = (prev_score + 1, exc)
+
+    return scored
+
+
 def search_sessions(query: str, max_results: int = 5) -> list[dict]:
     """
     Search past sessions for relevant excerpts.
@@ -206,30 +228,15 @@ def search_sessions(query: str, max_results: int = 5) -> list[dict]:
     if not index:
         return []
 
-    # Extract query keywords
-    query_lower = query.lower()
-    query_words = re.sub(r"[^\w\s]", " ", query_lower).split()
-    query_keywords = [w for w in query_words if len(w) >= 3]
-
+    query_keywords = _extract_query_keywords(query)
     if not query_keywords:
         return []
 
-    # Score excerpts by keyword matches
-    scored: dict = {}  # excerpt_key -> (score, excerpt)
+    scored = _score_excerpts(index, query_keywords)
 
-    for kw in query_keywords:
-        # Exact and prefix matches
-        for idx_kw, excerpts in index.items():
-            if idx_kw == kw or idx_kw.startswith(kw):
-                for exc in excerpts:
-                    key = (exc["session_id"], exc["timestamp"])
-                    if key not in scored:
-                        scored[key] = (0, exc)
-                    scored[key] = (scored[key][0] + 1, exc)
-
-    # Sort by score, return top results
+    # Sort by score descending, return top results
     results = sorted(scored.values(), key=lambda x: -x[0])
-    return [exc for score, exc in results[:max_results]]
+    return [exc for _, exc in results[:max_results]]
 
 
 def get_stats() -> dict:
