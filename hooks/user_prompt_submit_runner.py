@@ -1355,90 +1355,60 @@ VERSION_SENSITIVE_KEYWORDS = re.compile(
 )
 
 
+def _build_tech_warnings(prompt_lower: str, max_warnings: int = 2) -> list[str]:
+    """Build tech risk warnings from prompt against risk database."""
+    warnings = []
+    for pattern, release_date, risk_level, version_info in _TECH_RISK_DATABASE:
+        match = pattern.search(prompt_lower)
+        if match and VERSION_SENSITIVE_KEYWORDS.search(prompt_lower):
+            emoji = "🚨" if risk_level == "HIGH" else "⚠️" if risk_level == "MEDIUM" else "ℹ️"
+            warnings.append(f"{emoji} **{match.group(0).upper()}** ({risk_level}): {version_info} (~{release_date})")
+            if len(warnings) >= max_warnings:
+                break
+    return warnings
+
+
+def _check_version_mismatch(prompt_lower: str, deps: dict) -> str:
+    """Check for version mismatch between package.json and prompt mentions."""
+    checks = [
+        ("tailwind", "tailwindcss", [("4", "v3|version\\s*3"), ("3", "v4|version\\s*4")]),
+        ("react", "react", [("19", "v18|version\\s*18")]),
+    ]
+    for keyword, pkg_name, version_checks in checks:
+        if keyword in prompt_lower and pkg_name in deps:
+            installed = deps[pkg_name].lstrip("^~")
+            for prefix, pattern in version_checks:
+                if installed.startswith(prefix) and re.search(pattern, prompt_lower):
+                    return f"\n⚠️ **VERSION MISMATCH**: {pkg_name} v{installed} installed but prompt mentions different version"
+    return ""
+
+
 @register_hook("tech_version_risk", priority=32)
 def check_tech_version_risk(data: dict, state: SessionState) -> HookResult:
-    """Warn about potentially outdated AI knowledge for fast-moving technologies.
-
-    This catches prompts that mention technologies with recent major version changes,
-    suggesting the user verify current documentation before proceeding.
-    """
+    """Warn about potentially outdated AI knowledge for fast-moving technologies."""
     prompt = data.get("prompt", "")
     if not prompt or len(prompt) < 10:
         return HookResult.allow()
 
     prompt_lower = prompt.lower()
-
-    # Fast path: skip if no version-sensitive keywords
     if not VERSION_SENSITIVE_KEYWORDS.search(prompt_lower):
         return HookResult.allow()
 
-    # Check against tech risk database
-    warnings = []
-    for compiled_pattern, release_date, risk_level, version_info in _TECH_RISK_DATABASE:
-        match = compiled_pattern.search(prompt_lower)
-        if match:
-            # Additional check: is this about installation/config/setup?
-            if VERSION_SENSITIVE_KEYWORDS.search(prompt_lower):
-                emoji = (
-                    "🚨"
-                    if risk_level == "HIGH"
-                    else "⚠️"
-                    if risk_level == "MEDIUM"
-                    else "ℹ️"
-                )
-                tech_name = match.group(0).upper()
-                warnings.append(
-                    f"{emoji} **{tech_name}** ({risk_level} risk): {version_info}\n"
-                    f"   Released ~{release_date} - may be beyond knowledge cutoff"
-                )
-                # Limit to 2 warnings per prompt
-                if len(warnings) >= 2:
-                    break
-
+    warnings = _build_tech_warnings(prompt_lower)
     if not warnings:
         return HookResult.allow()
 
-    # Check for package.json version mismatch (if in a project) - uses cached read
+    # Check package.json version mismatch
     version_mismatch = ""
-    pkg_json_path = str(Path.cwd() / "package.json")
-    pkg_data = cached_json_read(pkg_json_path)
+    pkg_data = cached_json_read(str(Path.cwd() / "package.json"))
     if pkg_data:
-        try:
-            deps = {
-                **pkg_data.get("dependencies", {}),
-                **pkg_data.get("devDependencies", {}),
-            }
+        deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+        version_mismatch = _check_version_mismatch(prompt_lower, deps)
 
-            # Check Tailwind version mismatch
-            if "tailwind" in prompt_lower and "tailwindcss" in deps:
-                installed = deps["tailwindcss"].lstrip("^~")
-                if installed.startswith("4") and re.search(
-                    r"v3|version\s*3", prompt_lower
-                ):
-                    version_mismatch = f"\n⚠️ **VERSION MISMATCH**: package.json has Tailwind v{installed} but prompt mentions v3"
-                elif installed.startswith("3") and re.search(
-                    r"v4|version\s*4", prompt_lower
-                ):
-                    version_mismatch = f"\n⚠️ **VERSION MISMATCH**: package.json has Tailwind v{installed} but prompt mentions v4"
-
-            # Check React version mismatch
-            if "react" in prompt_lower and "react" in deps:
-                installed = deps["react"].lstrip("^~")
-                if installed.startswith("19") and re.search(
-                    r"v18|version\s*18", prompt_lower
-                ):
-                    version_mismatch = f"\n⚠️ **VERSION MISMATCH**: package.json has React v{installed} but prompt mentions v18"
-        except (json.JSONDecodeError, OSError, KeyError):
-            pass
-
-    result = (
-        "🔍 **OUTDATED KNOWLEDGE RISK**\n"
-        + "\n".join(warnings)
-        + version_mismatch
-        + "\n\n💡 **Action**: Use `/research <tech>` or WebSearch to verify current docs before proceeding."
+    return HookResult.allow(
+        f"🔍 **OUTDATED KNOWLEDGE RISK**\n{chr(10).join(warnings)}{version_mismatch}\n"
+        f"💡 Use `/research <tech>` to verify current docs"
     )
-
-    return HookResult.allow(result)
 
 
 KEY_FILES = {
@@ -1453,35 +1423,44 @@ KEY_FILES = {
 KEY_DIRS = ["src", "lib", ".claude", "tests", "docs", "projects"]
 
 
+def _parse_git_changes(status: str) -> str:
+    """Parse git status --porcelain output into summary string."""
+    if not status:
+        return ""
+    lines = [ln for ln in status.split("\n") if ln.strip()]
+    counts = {
+        "modified": len([ln for ln in lines if len(ln) > 1 and ln[1] == "M"]),
+        "untracked": len([ln for ln in lines if ln.startswith("??")]),
+        "staged": len([ln for ln in lines if len(ln) > 0 and ln[0] in "MADRC"]),
+    }
+    parts = [f"{v} {k}" for k, v in counts.items() if v]
+    return ", ".join(parts)
+
+
+def _get_context_label(cwd: Path, home: Path) -> str:
+    """Determine context label based on working directory."""
+    cwd_str = str(cwd)
+    if cwd_str.startswith(str(home / "projects")) and cwd != home / "projects":
+        return "PROJECT"
+    if cwd_str.startswith(str(home / "ai")) and cwd != home / "ai":
+        return "AI"
+    return "SYSTEM"
+
+
 @register_hook("project_context", priority=35)
 def check_project_context(data: dict, state: SessionState) -> HookResult:
     """Inject git state and project structure."""
-    cwd = Path.cwd()
-    home = Path.home()
+    cwd, home = Path.cwd(), Path.home()
     parts = []
 
-    # Git info (uses cached git commands - 5s TTL)
     branch = cached_git_branch()
     if branch:
-        git_parts = [f"branch: {branch}"]
-        status = cached_git_status()
-        if status:
-            lines = [ln for ln in status.split("\n") if ln.strip()]
-            modified = len([ln for ln in lines if len(ln) > 1 and ln[1] == "M"])
-            untracked = len([ln for ln in lines if ln.startswith("??")])
-            staged = len([ln for ln in lines if len(ln) > 0 and ln[0] in "MADRC"])
-            changes = []
-            if modified:
-                changes.append(f"{modified} modified")
-            if untracked:
-                changes.append(f"{untracked} untracked")
-            if staged:
-                changes.append(f"{staged} staged")
-            if changes:
-                git_parts.append(f"changes: {', '.join(changes)}")
-        parts.append(f"Git: {' | '.join(git_parts)}")
+        git_info = f"branch: {branch}"
+        changes = _parse_git_changes(cached_git_status())
+        if changes:
+            git_info += f" | changes: {changes}"
+        parts.append(f"Git: {git_info}")
 
-    # Directories
     found_dirs = [d for d in KEY_DIRS if (cwd / d).is_dir()]
     if found_dirs:
         parts.append(f"Dirs: {', '.join(found_dirs)}")
@@ -1489,14 +1468,7 @@ def check_project_context(data: dict, state: SessionState) -> HookResult:
     if not parts:
         return HookResult.allow()
 
-    # Context label
-    label = "SYSTEM"
-    if str(cwd).startswith(str(home / "projects")) and cwd != home / "projects":
-        label = "PROJECT"
-    elif str(cwd).startswith(str(home / "ai")) and cwd != home / "ai":
-        label = "AI"
-
-    return HookResult.allow(f"📁 {label}: {' | '.join(parts)}")
+    return HookResult.allow(f"📁 {_get_context_label(cwd, home)}: {' | '.join(parts)}")
 
 
 LESSONS_FILE = MEMORY_DIR / "__lessons.md"
