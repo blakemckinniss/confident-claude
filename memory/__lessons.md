@@ -268,3 +268,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-14 00:02
 - [abandoned_stubs] ⚠️ ABANDONED WORK: useVisualEventProcessor.ts, useRoomHandlers.ts contain stubs/TODOs
+
+### 2025-12-14 09:56
+- [abandoned_stubs] ⚠️ ABANDONED WORK: actions.test.ts, effects.test.ts, cards.test.ts, turns.test.ts contain stubs/TODOs

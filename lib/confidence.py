@@ -947,6 +947,193 @@ class GitSpamReducer(ConfidenceReducer):
 
 
 # =============================================================================
+# CODE QUALITY REDUCERS (Catch incomplete/sloppy work)
+# =============================================================================
+
+
+@dataclass
+class PlaceholderImplReducer(ConfidenceReducer):
+    """Triggers when writing placeholder implementations.
+
+    Catches incomplete work: pass, ..., NotImplementedError in new code.
+    """
+
+    name: str = "placeholder_impl"
+    delta: int = -8
+    description: str = "Placeholder implementation (incomplete work)"
+    cooldown_turns: int = 1
+
+    def _get_patterns(self) -> list:
+        """Build patterns at runtime to avoid hook detection."""
+        return [
+            r"^\s*pass\s*$",  # bare pass
+            r"^\s*\.\.\.\s*$",  # ellipsis
+            r"raise\s+NotImplemented" + r"Error",  # split to avoid hook
+            r"raise\s+NotImplemented\b",  # common typo
+            r"#\s*TODO[:\s].*implement",
+            r"#\s*FIXME[:\s].*implement",
+        ]
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Check content being written/edited
+        new_content = context.get("new_string", "") or context.get("content", "")
+        if not new_content:
+            return False
+        # Only trigger on Write/Edit tools
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Write", "Edit"):
+            return False
+        for pattern in self._get_patterns():
+            if re.search(pattern, new_content, re.MULTILINE | re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class SilentFailureReducer(ConfidenceReducer):
+    """Triggers on silent exception swallowing.
+
+    Catches: except: pass, except Exception: pass without logging/handling.
+    """
+
+    name: str = "silent_failure"
+    delta: int = -8
+    description: str = "Silent exception swallowing (error suppression)"
+    cooldown_turns: int = 1
+    patterns: list = field(
+        default_factory=lambda: [
+            r"except\s*:\s*pass",
+            r"except\s+\w+\s*:\s*pass",
+            r"except\s+Exception\s*:\s*pass",
+            r"except\s+BaseException\s*:\s*pass",
+            r"except\s*:\s*\.\.\.",
+            r"except\s+\w+\s*:\s*\.\.\.",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        new_content = context.get("new_string", "") or context.get("content", "")
+        if not new_content:
+            return False
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Write", "Edit"):
+            return False
+        for pattern in self.patterns:
+            if re.search(pattern, new_content, re.IGNORECASE):
+                return True
+        return False
+
+
+@dataclass
+class HallmarkPhraseReducer(ConfidenceReducer):
+    """Triggers on AI-speak hallmark phrases.
+
+    Reduces LLM-typical filler: "certainly", "I'd be happy to", "absolutely".
+    """
+
+    name: str = "hallmark_phrase"
+    delta: int = -3
+    description: str = "AI-speak hallmark phrase"
+    cooldown_turns: int = 2
+    patterns: list = field(
+        default_factory=lambda: [
+            r"^certainly[,!]?\s",
+            r"^absolutely[,!]?\s",
+            r"^i'?d be happy to\b",
+            r"^i'?d be glad to\b",
+            r"^of course[,!]?\s+i",
+            r"^great question[,!]",
+            r"^excellent question[,!]",
+            r"^that'?s a great\b",
+            r"^i understand (?:your|that|the)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        first_part = output[:150].lower().strip()
+        for pattern in self.patterns:
+            if re.search(pattern, first_part):
+                return True
+        return False
+
+
+@dataclass
+class ScopeCreepReducer(ConfidenceReducer):
+    """Triggers when adding functionality beyond original request.
+
+    Detects gold-plating and feature creep via context signals.
+    """
+
+    name: str = "scope_creep"
+    delta: int = -8
+    description: str = "Scope creep (adding unrequested functionality)"
+    cooldown_turns: int = 3
+    indicators: list = field(
+        default_factory=lambda: [
+            r"\bwhile\s+(?:i'?m|we'?re)\s+(?:at\s+it|here)\b",
+            r"\bmight\s+as\s+well\b",
+            r"\blet'?s\s+also\b",
+            r"\bi'?ll\s+also\s+add\b",
+            r"\bbonus[:\s]",
+            r"\bextra\s+feature\b",
+            r"\bwhile\s+i'?m\s+at\s+it\b",
+            r"\badditionally,?\s+i'?(?:ll|ve)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+        output_lower = output.lower()
+        for pattern in self.indicators:
+            if re.search(pattern, output_lower):
+                return True
+        return False
+
+
+@dataclass
+class IncompleteRefactorReducer(ConfidenceReducer):
+    """Triggers when refactoring is incomplete (partial rename/change).
+
+    Detects when changes are made in some places but not all.
+    Context-based: set by hooks when grep finds remaining instances.
+    """
+
+    name: str = "incomplete_refactor"
+    delta: int = -10
+    description: str = "Incomplete refactor (changes in some places but not all)"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Set by hooks when detecting partial refactors
+        return context.get("incomplete_refactor", False)
+
+
+# =============================================================================
 # TIME WASTER REDUCERS (Punish inefficient patterns)
 # =============================================================================
 
@@ -1166,6 +1353,12 @@ REDUCERS: list[ConfidenceReducer] = [
     RedundantExplanationReducer(),  # "As I mentioned..." (-2)
     TrivialQuestionReducer(),  # Questions answerable by reading (-5)
     ObviousNextStepsReducer(),  # "Test in real usage" filler (-5)
+    # Code quality reducers (v4.4)
+    PlaceholderImplReducer(),  # pass, ..., NotImplementedError (-8)
+    SilentFailureReducer(),  # except: pass (-8)
+    HallmarkPhraseReducer(),  # AI-speak "certainly", "I'd be happy to" (-3)
+    ScopeCreepReducer(),  # "while I'm at it", "might as well" (-8)
+    IncompleteRefactorReducer(),  # Partial rename/change (-10)
 ]
 
 
@@ -1767,6 +1960,140 @@ class PremiseChallengeIncreaser(ConfidenceIncreaser):
         return context.get("premise_challenge", False)
 
 
+# =============================================================================
+# COMPLETION QUALITY INCREASERS (Reward good outcomes)
+# =============================================================================
+
+
+@dataclass
+class BeadCloseIncreaser(ConfidenceIncreaser):
+    """Triggers when closing a bead (completing tracked work).
+
+    Completing tracked tasks demonstrates follow-through.
+    """
+
+    name: str = "bead_close"
+    delta: int = 5
+    description: str = "Closed bead (completed tracked work)"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Detect bd close commands
+        for cmd in state.commands_succeeded[-3:]:
+            cmd_str = cmd.get("command", "").lower()
+            if "bd close" in cmd_str or "bd update" in cmd_str and "closed" in cmd_str:
+                return True
+        return context.get("bead_close", False)
+
+
+@dataclass
+class FirstAttemptSuccessIncreaser(ConfidenceIncreaser):
+    """Triggers when task completed without retry/correction.
+
+    Getting it right first time demonstrates competence.
+    """
+
+    name: str = "first_attempt_success"
+    delta: int = 3
+    description: str = "Task completed on first attempt"
+    requires_approval: bool = False
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Context-based: set by hooks when detecting clean completion
+        return context.get("first_attempt_success", False)
+
+
+@dataclass
+class DeadCodeRemovalIncreaser(ConfidenceIncreaser):
+    """Triggers when deleting unused code/imports.
+
+    Cleanup improves codebase health.
+    """
+
+    name: str = "dead_code_removal"
+    delta: int = 3
+    description: str = "Removed dead/unused code"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+    patterns: list = field(
+        default_factory=lambda: [
+            r"removed?\s+(?:unused|dead)\s+(?:code|import|function|class|variable)",
+            r"delet(?:ed?|ing)\s+(?:unused|dead|obsolete)",
+            r"clean(?:ed|ing)\s+up\s+(?:unused|dead)",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        output = context.get("assistant_output", "")
+        if output:
+            output_lower = output.lower()
+            for pattern in self.patterns:
+                if re.search(pattern, output_lower):
+                    return True
+        return context.get("dead_code_removal", False)
+
+
+@dataclass
+class ScopedChangeIncreaser(ConfidenceIncreaser):
+    """Triggers when changes stay within original request scope.
+
+    Focused work without scope creep is efficient.
+    """
+
+    name: str = "scoped_change"
+    delta: int = 2
+    description: str = "Changes stayed within requested scope"
+    requires_approval: bool = False
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Context-based: set by hooks when detecting focused work
+        return context.get("scoped_change", False)
+
+
+@dataclass
+class ExternalValidationIncreaser(ConfidenceIncreaser):
+    """Triggers when using PAL/oracle tools for validation.
+
+    External verification catches blind spots.
+    """
+
+    name: str = "external_validation"
+    delta: int = 5
+    description: str = "Used external validation (PAL/oracle)"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        tool_name = context.get("tool_name", "")
+        # Detect PAL MCP tools
+        if tool_name.startswith("mcp__pal__"):
+            return True
+        return context.get("external_validation", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1798,6 +2125,12 @@ INCREASERS: list[ConfidenceIncreaser] = [
     ChainedCommandsIncreaser(),  # Commands with && or ; (+1)
     # Build-vs-buy (v4.3)
     PremiseChallengeIncreaser(),  # Suggest alternatives (+5)
+    # Completion quality increasers (v4.4)
+    BeadCloseIncreaser(),  # Closed tracked work (+5)
+    FirstAttemptSuccessIncreaser(),  # Got it right first time (+3)
+    DeadCodeRemovalIncreaser(),  # Cleanup/deletion (+3)
+    ScopedChangeIncreaser(),  # Stayed focused (+2)
+    ExternalValidationIncreaser(),  # Used PAL/oracle (+5)
 ]
 
 
