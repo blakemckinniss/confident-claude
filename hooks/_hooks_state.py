@@ -75,6 +75,20 @@ _TODO_PATTERNS = [
 ]
 
 
+def _extract_result_string(tool_result) -> str:
+    """Extract string from tool_result (can be dict, list, str, or None)."""
+    if isinstance(tool_result, dict):
+        return (
+            tool_result.get("output", "")
+            or tool_result.get("content", "")
+            or str(tool_result)
+        )
+    elif isinstance(tool_result, str):
+        return tool_result
+    else:
+        return str(tool_result) if tool_result else ""
+
+
 def extract_test_failures(output: str) -> list[dict]:
     """Extract test failure information from pytest/jest output."""
     failures = []
@@ -896,18 +910,7 @@ def _build_reducer_context(
         if command:
             activity_parts.append(command[:200])
 
-    # Extract output string from tool_result for confidence increasers
-    # (they expect a string, not dict/list)
-    if isinstance(tool_result, dict):
-        result_str = (
-            tool_result.get("output", "")
-            or tool_result.get("content", "")
-            or str(tool_result)
-        )
-    elif isinstance(tool_result, str):
-        result_str = tool_result
-    else:
-        result_str = str(tool_result) if tool_result else ""
+    result_str = _extract_result_string(tool_result)
 
     context = {
         "tool_name": tool_name,
@@ -1377,15 +1380,7 @@ def check_confidence_increaser(
     tool_result = data.get("tool_result", {})
     tool_input = data.get("tool_input", {})
 
-    # Extract output string from tool_result (confidence increasers expect string)
-    if isinstance(tool_result, dict):
-        result_str = (
-            tool_result.get("output", "") or tool_result.get("content", "") or ""
-        )
-    elif isinstance(tool_result, str):
-        result_str = tool_result
-    else:
-        result_str = str(tool_result) if tool_result else ""
+    result_str = _extract_result_string(tool_result)
 
     # Build context for increasers
     context = {
