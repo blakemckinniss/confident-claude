@@ -186,72 +186,53 @@ def get_changes(cwd: str) -> dict:
     return changes
 
 
+def _categorize_files(files: list[str]) -> dict[str, list[str]]:
+    """Categorize files by directory type."""
+    categories = {
+        "hooks": [f for f in files if "hooks/" in f],
+        "ops": [f for f in files if "ops/" in f],
+        "commands": [f for f in files if "commands/" in f],
+        "lib": [f for f in files if "lib/" in f],
+        "config": [f for f in files if any(c in f for c in ["settings.json", "config/", ".json", ".yaml", ".yml"])],
+        "memory": [f for f in files if "memory/" in f],
+        "projects": [f for f in files if "projects/" in f],
+    }
+    categorized = set().union(*categories.values())
+    categories["other"] = [f for f in files if f not in categorized]
+    return categories
+
+
+def _build_summary_parts(categories: dict[str, list[str]]) -> list[str]:
+    """Build summary parts from file categories."""
+    parts = []
+    for name in ["hooks", "ops", "commands", "lib", "config", "memory"]:
+        if categories[name]:
+            parts.append(f"{name} ({len(categories[name])})")
+    if categories["projects"]:
+        parts.append("projects")
+    if categories["other"]:
+        other_dirs = {Path(f).parts[0] for f in categories["other"][:5] if len(Path(f).parts) > 1}
+        parts.append(", ".join(list(other_dirs)[:3]) if other_dirs else f"{len(categories['other'])} files")
+    return parts
+
+
+def _build_stats_line(changes: dict) -> str:
+    """Build stats line from changes dict."""
+    stats = []
+    for key, label in [("modified", "modified"), ("added", "added"), ("deleted", "deleted"), ("renamed", "renamed")]:
+        if changes[key]:
+            stats.append(f"{len(changes[key])} {label}")
+    return ", ".join(stats) if stats else "no changes"
+
+
 def generate_commit_message(changes: dict) -> str:
     """Generate semantic commit message from changes."""
-    all_files = (
-        changes["modified"] + changes["added"] + changes["deleted"] + changes["renamed"]
-    )
-
+    all_files = changes["modified"] + changes["added"] + changes["deleted"] + changes["renamed"]
     if not all_files:
         return ""
-
-    hooks = [f for f in all_files if "hooks/" in f]
-    ops = [f for f in all_files if "ops/" in f]
-    commands = [f for f in all_files if "commands/" in f]
-    lib = [f for f in all_files if "lib/" in f]
-    config = [
-        f
-        for f in all_files
-        if any(c in f for c in ["settings.json", "config/", ".json", ".yaml", ".yml"])
-    ]
-    memory = [f for f in all_files if "memory/" in f]
-    projects = [f for f in all_files if "projects/" in f]
-    other = [
-        f
-        for f in all_files
-        if f not in hooks + ops + commands + lib + config + memory + projects
-    ]
-
-    parts = []
-    if hooks:
-        parts.append(f"hooks ({len(hooks)})")
-    if ops:
-        parts.append(f"ops ({len(ops)})")
-    if commands:
-        parts.append(f"commands ({len(commands)})")
-    if lib:
-        parts.append(f"lib ({len(lib)})")
-    if config:
-        parts.append(f"config ({len(config)})")
-    if memory:
-        parts.append(f"memory ({len(memory)})")
-    if projects:
-        parts.append("projects")
-    if other:
-        other_dirs = set()
-        for f in other[:5]:
-            parts_path = Path(f).parts
-            if len(parts_path) > 1:
-                other_dirs.add(parts_path[0])
-        if other_dirs:
-            parts.append(", ".join(list(other_dirs)[:3]))
-        else:
-            parts.append(f"{len(other)} files")
-
-    summary = ", ".join(parts)
-
-    stats = []
-    if changes["modified"]:
-        stats.append(f"{len(changes['modified'])} modified")
-    if changes["added"]:
-        stats.append(f"{len(changes['added'])} added")
-    if changes["deleted"]:
-        stats.append(f"{len(changes['deleted'])} deleted")
-    if changes["renamed"]:
-        stats.append(f"{len(changes['renamed'])} renamed")
-
-    stats_line = ", ".join(stats) if stats else "no changes"
-    return f"[auto] {summary}\n\nFiles: {stats_line}"
+    categories = _categorize_files(all_files)
+    summary = ", ".join(_build_summary_parts(categories))
+    return f"[auto] {summary}\n\nFiles: {_build_stats_line(changes)}"
 
 
 def check_acknowledgments_in_transcript(
@@ -999,102 +980,58 @@ VERIFICATION_CLAIMS = {
 }
 
 
+def _read_tail_content(path: str, tail_bytes: int = 10000) -> str | None:
+    """Read last N bytes of file as string, or None on error."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - tail_bytes))
+            return f.read().decode("utf-8", errors="ignore").lower()
+    except (OSError, PermissionError):
+        return None
+
+
+def _has_evidence(state: SessionState, evidence_key: str) -> bool:
+    """Check if evidence exists for a verification claim."""
+    if evidence_key == "tests_run":
+        recent = state.commands_succeeded[-5:] + state.commands_failed[-5:]
+        return any(t in cmd for cmd in recent for t in ["pytest", "npm test", "jest", "cargo test", "go test"])
+    elif evidence_key == "lint_run":
+        return any(lc in cmd for cmd in state.commands_succeeded[-5:] for lc in ["ruff check", "eslint", "clippy", "pylint"])
+    elif evidence_key == "recent_write":
+        return len(state.files_edited) > 0
+    return False
+
+
 @register_hook("verification_theater_detector", priority=48)
 def check_verification_theater(data: dict, state: SessionState) -> HookResult:
-    """Detect verification claims without tool evidence.
+    """Detect verification claims without tool evidence."""
+    from confidence import apply_rate_limit, get_tier_info, set_confidence
 
-    Checks for claims like 'tests passed' or 'fixed it' and verifies
-    they're backed by actual tool execution in recent history.
-    """
-    from confidence import (
-        apply_rate_limit,
-        format_confidence_change,
-        format_dispute_instructions,
-        get_tier_info,
-        set_confidence,
-    )
-
-    transcript_path = data.get("transcript_path")
-    if not transcript_path or not Path(transcript_path).exists():
-        return HookResult.ok()
-
-    try:
-        with open(transcript_path, "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - 10000))  # Last 10KB (recent output)
-            content = f.read().decode("utf-8", errors="ignore").lower()
-    except (OSError, PermissionError):
+    content = _read_tail_content(data.get("transcript_path", ""))
+    if not content:
         return HookResult.ok()
 
     triggered = []
-
     for claim_type, config in VERIFICATION_CLAIMS.items():
-        # Check cooldown
         cooldown_key = f"verify_theater_{claim_type}_turn"
-        last_turn = state.nudge_history.get(cooldown_key, 0)
-        if state.turn_count - last_turn < 3:
+        if state.turn_count - state.nudge_history.get(cooldown_key, 0) < 3:
             continue
-
-        # Check if claim pattern exists
-        claim_found = any(re.search(p, content) for p in config["patterns"])
-        if not claim_found:
+        if not any(re.search(p, content) for p in config["patterns"]):
             continue
-
-        # Check for evidence
-        has_evidence = False
-        evidence_key = config["evidence_key"]
-
-        if evidence_key == "tests_run":
-            # Check if tests were run recently (in commands)
-            recent_cmds = state.commands_succeeded[-5:] + state.commands_failed[-5:]
-            test_cmds = ["pytest", "npm test", "jest", "cargo test", "go test"]
-            has_evidence = any(
-                any(tc in cmd for tc in test_cmds) for cmd in recent_cmds
-            )
-        elif evidence_key == "lint_run":
-            recent_cmds = state.commands_succeeded[-5:]
-            lint_cmds = ["ruff check", "eslint", "clippy", "pylint", "flake8"]
-            has_evidence = any(
-                any(lc in cmd for lc in lint_cmds) for cmd in recent_cmds
-            )
-        elif evidence_key == "recent_write":
-            # Need a file edit in last 3 turns (approximate via edit count)
-            has_evidence = len(state.files_edited) > 0
-
-        if not has_evidence:
-            if claim_type == "fixed_claim":
-                triggered.append(("fixed_without_chain", -8))
-            else:
-                triggered.append(("unbacked_verification", -15))
+        if not _has_evidence(state, config["evidence_key"]):
+            delta = -8 if claim_type == "fixed_claim" else -15
+            triggered.append((claim_type, delta))
             state.nudge_history[cooldown_key] = state.turn_count
 
     if not triggered:
         return HookResult.ok()
 
-    # Apply penalties
-    old_confidence = state.confidence
-    total_delta = sum(delta for _, delta in triggered)
-    total_delta = apply_rate_limit(total_delta, state)
-    new_confidence = max(0, min(100, old_confidence + total_delta))
-
-    set_confidence(state, new_confidence, "verification theater detected")
-
-    reasons = [f"{name}: {delta}" for name, delta in triggered]
-    change_msg = format_confidence_change(
-        old_confidence, new_confidence, ", ".join(reasons)
-    )
-
-    _, emoji, desc = get_tier_info(new_confidence)
-    reducer_names = [name for name, _ in triggered]
-    dispute_hint = format_dispute_instructions(reducer_names)
-
-    return HookResult.warn(
-        f"📉 **Verification Theater Detected**\n{change_msg}\n\n"
-        f"Claims made without tool evidence.\n"
-        f"Current: {emoji} {new_confidence}% - {desc}"
-        f"{dispute_hint}"
-    )
+    total_delta = apply_rate_limit(sum(d for _, d in triggered), state)
+    new_conf = max(0, min(100, state.confidence + total_delta))
+    set_confidence(state, new_conf, "verification theater")
+    _, emoji, desc = get_tier_info(new_conf)
+    return HookResult.warn(f"📉 VERIFICATION THEATER: {emoji} {new_conf}% | Claims without evidence")
 
 
 @register_hook("stub_detector", priority=50)
@@ -1148,60 +1085,55 @@ def check_unresolved_errors(data: dict, state: SessionState) -> HookResult:
     )
 
 
+_TODO_PATTERNS = [b"TODO", b"FIXME", b"HACK", b"XXX"]
+
+
+def _scan_file_for_debt(filepath: str, check_todos: bool = False) -> tuple[list[str], int]:
+    """Scan a file for stubs and optionally TODOs. Returns (items, score)."""
+    path = Path(filepath)
+    if not path.exists() or path.suffix not in CODE_EXTENSIONS:
+        return [], 0
+    try:
+        content = path.read_bytes()
+    except (OSError, PermissionError):
+        return [], 0
+
+    items, score = [], 0
+    if any(p in content for p in STUB_BYTE_PATTERNS):
+        items.append(f"stub in {path.name}")
+        score += 5
+    if check_todos:
+        for pattern in _TODO_PATTERNS:
+            if pattern in content:
+                items.append(f"{pattern.decode()} in {path.name}")
+                score += 2
+                break
+    return items, score
+
+
 @register_hook("session_debt_penalty", priority=85)
 def check_session_debt(data: dict, state: SessionState) -> HookResult:
-    """HEAVILY penalize ending session with technical/organizational debt.
-
-    Checks for:
-    - Stubs in created/edited files
-    - Unresolved errors
-    - Pending integration greps
-    - TODO/FIXME left behind in edited files
-    """
+    """Penalize ending session with technical/organizational debt."""
     from confidence import get_tier_info, set_confidence
 
-    debt_items = []
-    debt_score = 0
+    debt_items, debt_score = [], 0
 
-    # Check for stubs in created files
-    for filepath in state.files_created[-20:]:
-        path = Path(filepath)
-        if not path.exists() or path.suffix not in CODE_EXTENSIONS:
-            continue
-        try:
-            content = path.read_bytes()
-            if any(p in content for p in STUB_BYTE_PATTERNS):
-                debt_items.append(f"stub in {path.name}")
-                debt_score += 5
-        except (OSError, PermissionError):
-            pass
+    # Scan created files for stubs
+    for fp in state.files_created[-20:]:
+        items, score = _scan_file_for_debt(fp, check_todos=False)
+        debt_items.extend(items)
+        debt_score += score
 
-    # Check for stubs/TODOs in edited files
-    todo_patterns = [b"TODO", b"FIXME", b"HACK", b"XXX"]
-    for filepath in state.files_edited[-20:]:
-        path = Path(filepath)
-        if not path.exists() or path.suffix not in CODE_EXTENSIONS:
-            continue
-        try:
-            content = path.read_bytes()
-            if any(p in content for p in STUB_BYTE_PATTERNS):
-                debt_items.append(f"stub in edited {path.name}")
-                debt_score += 5
-            # Check for TODOs we may have left
-            for pattern in todo_patterns:
-                if pattern in content:
-                    debt_items.append(f"{pattern.decode()} in {path.name}")
-                    debt_score += 2
-                    break
-        except (OSError, PermissionError):
-            pass
+    # Scan edited files for stubs and TODOs
+    for fp in state.files_edited[-20:]:
+        items, score = _scan_file_for_debt(fp, check_todos=True)
+        debt_items.extend(items)
+        debt_score += score
 
-    # Check for unresolved errors
+    # Unresolved errors and pending greps
     if state.errors_unresolved:
         debt_items.append(f"{len(state.errors_unresolved)} unresolved error(s)")
         debt_score += 10 * len(state.errors_unresolved)
-
-    # Check for pending integration greps
     if state.pending_integration_greps:
         debt_items.append(f"{len(state.pending_integration_greps)} unverified edit(s)")
         debt_score += 5 * len(state.pending_integration_greps)
@@ -1209,25 +1141,15 @@ def check_session_debt(data: dict, state: SessionState) -> HookResult:
     if not debt_items or debt_score < 5:
         return HookResult.ok()
 
-    # Calculate penalty (capped at -20 per session end)
     penalty = min(debt_score, 20)
-    old_confidence = state.confidence
-    new_confidence = max(0, old_confidence - penalty)
-
+    new_confidence = max(0, state.confidence - penalty)
     set_confidence(state, new_confidence, "session debt penalty")
-
     _, emoji, _ = get_tier_info(new_confidence)
-    debt_list = "\n".join(f"  • {item}" for item in debt_items[:5])
+    debt_list = ", ".join(debt_items[:3])
 
-    # Block if debt is severe (score >= 15) or confidence drops too low
     if debt_score >= 15 or new_confidence < 70:
-        return HookResult.block(
-            f"🚫 **SESSION DEBT BLOCKED**: {debt_list[:100]}... | Fix debt or SUDO"
-        )
-
-    return HookResult.warn(
-        f"⚠️ **SESSION DEBT**: {emoji} {new_confidence}% | {debt_list[:80]}"
-    )
+        return HookResult.block(f"🚫 SESSION DEBT: {debt_list} | Fix or SUDO")
+    return HookResult.warn(f"⚠️ SESSION DEBT: {emoji} {new_confidence}% | {debt_list}")
 
 
 # =============================================================================
