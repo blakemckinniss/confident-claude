@@ -64,8 +64,10 @@ ALLOWLIST_PATTERNS = [
 ]
 
 # Explicit marker to allow large files
-# Usage: # LARGE_FILE_OK: This is a constants file with many entries
-ALLOWLIST_MARKER = r"#\s*LARGE_FILE_OK:\s*(.+)"
+# Matches: # LARGE_FILE_OK: reason (Python/shell)
+#          // LARGE_FILE_OK: reason (JS/TS/C)
+#          /* LARGE_FILE_OK: reason */ (CSS/C)
+ALLOWLIST_MARKER = r"(?:#|//|/\*)\s*LARGE_FILE_OK:\s*([^*]+)"
 
 
 @dataclass

@@ -177,7 +177,7 @@ class UserCorrectionReducer(ConfidenceReducer):
             return False
         prompt = context.get("prompt", "").lower()
         for pattern in self.patterns:
-            if re.search(pattern, prompt, re.IGNORECASE):
+            if re.search(pattern, prompt):
                 return True
         return False
 
@@ -367,7 +367,7 @@ class ContradictionReducer(ConfidenceReducer):
         """Check if user is reporting a contradiction via patterns."""
         prompt_lower = prompt.lower()
         for pattern in self.contradiction_patterns:
-            if re.search(pattern, prompt_lower, re.IGNORECASE):
+            if re.search(pattern, prompt_lower):
                 return True
         return False
 
@@ -1001,7 +1001,7 @@ class VerbosePreambleReducer(ConfidenceReducer):
         # Check first 200 chars for preamble patterns
         first_part = output[:200].lower().strip()
         for pattern in self.patterns:
-            if re.search(pattern, first_part, re.IGNORECASE):
+            if re.search(pattern, first_part):
                 return True
         return False
 
@@ -1055,7 +1055,7 @@ class RedundantExplanationReducer(ConfidenceReducer):
         if not output:
             return False
         for pattern in self.patterns:
-            if re.search(pattern, output.lower(), re.IGNORECASE):
+            if re.search(pattern, output.lower()):
                 return True
         return False
 

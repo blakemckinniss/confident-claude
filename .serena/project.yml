@@ -1,0 +1,26 @@
+languages:
+- python
+- bash
+
+encoding: "utf-8"
+
+ignore_all_files_in_gitignore: true
+
+ignored_paths:
+- tmp
+- .venv
+- __pycache__
+- "*.pyc"
+- logs
+- projects
+- plugins
+
+read_only: false
+
+excluded_tools: []
+
+initial_prompt: "Claude Code hooks and ops infrastructure. Python scripts for workflow automation."
+
+project_name: "claude-infrastructure"
+
+included_optional_tools: []
