@@ -43,6 +43,9 @@ from confidence import (
     OverconfidentCompletionReducer,
     DebtBashReducer,
     LargeDiffReducer,
+    MarkdownCreationReducer,
+    HookBlockReducer,
+    UnresolvedAntiPatternReducer,
     # Increaser classes
     PassedTestsIncreaser,
     BuildSuccessIncreaser,
@@ -51,6 +54,9 @@ from confidence import (
     MemoryConsultIncreaser,
     FileReadIncreaser,
     GitExploreIncreaser,
+    AskUserIncreaser,
+    BeadCreateIncreaser,
+    RulesUpdateIncreaser,
 )
 
 
@@ -989,6 +995,138 @@ class TestLargeDiffReducer:
         assert should_trigger is False
 
 
+class TestMarkdownCreationReducer:
+    """Tests for MarkdownCreationReducer - documentation theater."""
+
+    def test_triggers_on_markdown_write(self):
+        # Arrange
+        reducer = MarkdownCreationReducer()
+        state = MockSessionState()
+        context = {"file_path": "/home/user/project/notes.md", "tool_name": "Write"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_on_edit(self):
+        # Arrange
+        reducer = MarkdownCreationReducer()
+        state = MockSessionState()
+        context = {"file_path": "/home/user/project/notes.md", "tool_name": "Edit"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_on_memory_path(self):
+        # Arrange
+        reducer = MarkdownCreationReducer()
+        state = MockSessionState()
+        context = {"file_path": "/home/user/.claude/memory/lessons.md", "tool_name": "Write"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_on_non_markdown(self):
+        # Arrange
+        reducer = MarkdownCreationReducer()
+        state = MockSessionState()
+        context = {"file_path": "/home/user/project/script.py", "tool_name": "Write"}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestHookBlockReducer:
+    """Tests for HookBlockReducer - hook blocking actions."""
+
+    def test_triggers_when_hook_blocked_flag_set(self):
+        # Arrange
+        reducer = HookBlockReducer()
+        state = MockSessionState()
+        context = {"hook_blocked": True}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_when_flag_false(self):
+        # Arrange
+        reducer = HookBlockReducer()
+        state = MockSessionState()
+        context = {"hook_blocked": False}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        reducer = HookBlockReducer()
+        state = MockSessionState()
+        context = {}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestUnresolvedAntiPatternReducer:
+    """Tests for UnresolvedAntiPatternReducer - mentioning without fixing."""
+
+    def test_triggers_on_antipattern_without_resolution(self):
+        # Arrange
+        reducer = UnresolvedAntiPatternReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "This code has technical debt that needs attention."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_with_resolution(self):
+        # Arrange
+        reducer = UnresolvedAntiPatternReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "This is a code smell, let me fix it now."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_without_antipattern(self):
+        # Arrange
+        reducer = UnresolvedAntiPatternReducer()
+        state = MockSessionState()
+        context = {"assistant_output": "Here's the implementation."}
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
 # =============================================================================
 # INCREASER TESTS
 # =============================================================================
@@ -1276,6 +1414,135 @@ class TestGitExploreIncreaser:
 
         # Act - last trigger was recent
         should_trigger = increaser.should_trigger(context, state, 4)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestAskUserIncreaser:
+    """Tests for AskUserIncreaser - epistemic humility."""
+
+    def test_triggers_when_asked_user_flag_set(self):
+        # Arrange
+        increaser = AskUserIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"asked_user": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = AskUserIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = AskUserIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"asked_user": True}
+
+        # Act - cooldown is 8, last triggered 5 turns ago
+        should_trigger = increaser.should_trigger(context, state, 5)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestBeadCreateIncreaser:
+    """Tests for BeadCreateIncreaser - task tracking."""
+
+    def test_triggers_when_bead_created_flag_set(self):
+        # Arrange
+        increaser = BeadCreateIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"bead_created": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = BeadCreateIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_does_not_trigger_when_flag_false(self):
+        # Arrange
+        increaser = BeadCreateIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"bead_created": False}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+
+class TestRulesUpdateIncreaser:
+    """Tests for RulesUpdateIncreaser - system improvement."""
+
+    def test_triggers_when_rules_updated_flag_set(self):
+        # Arrange
+        increaser = RulesUpdateIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"rules_updated": True}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_flag(self):
+        # Arrange
+        increaser = RulesUpdateIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {}
+
+        # Act
+        should_trigger = increaser.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_respects_cooldown(self):
+        # Arrange
+        increaser = RulesUpdateIncreaser()
+        state = MockSessionState()
+        state.turn_count = 3
+        context = {"rules_updated": True}
+
+        # Act - cooldown is 2, last triggered 1 turn ago
+        should_trigger = increaser.should_trigger(context, state, 2)
 
         # Assert
         assert should_trigger is False
