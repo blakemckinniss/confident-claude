@@ -87,6 +87,7 @@ class MockSessionState:
 
     def __init__(self):
         self.turn_count = 10
+        self.confidence = 70  # Default confidence for rate limit tests
         self.nudge_history = {}
         self.reducer_triggers = {}
         self.increaser_triggers = {}
@@ -230,6 +231,7 @@ class TestApplyRateLimit:
     def test_caps_positive_delta_at_max(self):
         # Arrange
         state = MockSessionState()
+        state.confidence = 85  # Above STASIS_FLOOR so normal cap applies
         state.rate_limit_used = 0
         large_delta = 50
 
