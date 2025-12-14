@@ -1156,22 +1156,10 @@ def check_confidence_decay(
     return HookResult.none()
 
 
-@register_hook("confidence_reducer", None, priority=12)
-def check_confidence_reducer(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """Apply deterministic confidence reductions based on failure signals.
-
-    Reducers fire MECHANICALLY without judgment:
-    - tool_failure: -5 (Bash exit != 0)
-    - cascade_block: -15 (same hook blocks 3+ times)
-    - sunk_cost: -20 (3+ consecutive failures)
-    - edit_oscillation: -12 (same file edited 3+ times)
-    """
-    tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", {})
-    tool_result = data.get("tool_result", {})
-
+def _build_reducer_context(
+    tool_name: str, tool_input: dict, tool_result: dict, data: dict, state: SessionState
+) -> dict:
+    """Build base context for reducer evaluation."""
     # Build current_activity string for GoalDriftReducer
     activity_parts = [tool_name]
     if tool_name in ("Read", "Edit", "Write", "Glob", "Grep"):
@@ -1184,70 +1172,72 @@ def check_confidence_reducer(
     elif tool_name == "Bash":
         command = tool_input.get("command", "")
         if command:
-            activity_parts.append(command[:200])  # Limit length
-    current_activity = " ".join(activity_parts)
+            activity_parts.append(command[:200])
 
-    # Build context for reducers
     context = {
         "tool_name": tool_name,
         "tool_result": tool_result,
-        "current_activity": current_activity,
-        "prompt": getattr(state, "last_user_prompt", ""),  # For ContradictionReducer
+        "current_activity": " ".join(activity_parts),
+        "prompt": getattr(state, "last_user_prompt", ""),
+        "assistant_output": data.get("assistant_output", ""),
     }
 
-    # Add file_path for file-based reducers (BackupFile, VersionFile, MarkdownCreation)
+    # Add file_path for file-based reducers
     if tool_name in ("Edit", "Write", "Read"):
         file_path = tool_input.get("file_path", "")
         if file_path:
             context["file_path"] = file_path
 
-    # Add content for code quality reducers (PlaceholderImpl, SilentFailure)
+    # Add content for code quality reducers
     if tool_name == "Edit":
         context["new_string"] = tool_input.get("new_string", "")
     elif tool_name == "Write":
         context["content"] = tool_input.get("content", "")
 
-    # Add assistant_output for behavioral reducers (HallmarkPhrase, ScopeCreep)
-    # This comes from the last assistant message in conversation
-    context["assistant_output"] = data.get("assistant_output", "")
+    return context
 
-    # Check for tool failure (Bash exit code != 0)
-    if tool_name == "Bash":
-        if isinstance(tool_result, dict):
-            exit_code = tool_result.get("exit_code", 0)
-            if exit_code != 0:
-                context["tool_failed"] = True
 
-    # Check for Edit/Write tool errors
+def _detect_tool_failures(
+    tool_name: str, tool_input: dict, tool_result: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect tool failures and hook blocks."""
+    # Bash exit code != 0
+    if tool_name == "Bash" and isinstance(tool_result, dict):
+        if tool_result.get("exit_code", 0) != 0:
+            ctx["tool_failed"] = True
+
+    # Edit/Write errors
     if tool_name in {"Edit", "Write", "MultiEdit"}:
         result_str = str(tool_result).lower() if tool_result else ""
-        error_patterns = [
+        errors = [
             "file has not been read yet",
             "error:",
             "failed to",
             "permission denied",
             "no such file",
-            "is not unique",  # Edit old_string not unique
+            "is not unique",
         ]
-        if any(p in result_str for p in error_patterns):
-            context["tool_failed"] = True
+        if any(p in result_str for p in errors):
+            ctx["tool_failed"] = True
 
-    # Check for recent hook blocks (HookBlockReducer)
+    # Recent hook blocks
     if hasattr(state, "consecutive_blocks") and state.consecutive_blocks:
-        # Any recent block in last 2 turns triggers
         for hook_name, entry in state.consecutive_blocks.items():
-            last_turn = entry.get("last_turn", 0)
-            if state.turn_count - last_turn <= 2:
-                context["hook_blocked"] = True
+            if state.turn_count - entry.get("last_turn", 0) <= 2:
+                ctx["hook_blocked"] = True
                 break
 
-    # Check for sequential repetition (same tool used 3+ consecutive turns)
+
+def _detect_repetition_patterns(
+    tool_name: str, tool_input: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect sequential repetition and git spam."""
+    # Sequential repetition (same tool 3+ consecutive turns)
     last_info = getattr(state, "last_tool_info", {})
     if last_info:
         last_tool = last_info.get("tool_name", "")
         last_turn = last_info.get("turn", 0)
         consecutive = last_info.get("consecutive", 1)
-        # Sequential = same tool in different turn (parallel = same turn, which is fine)
         if last_tool == tool_name and last_turn < state.turn_count:
             is_similar = True
             if tool_name == "Bash":
@@ -1257,110 +1247,113 @@ def check_confidence_reducer(
             if is_similar:
                 new_consecutive = consecutive + 1
                 state.last_tool_info["consecutive"] = new_consecutive
-                # Only trigger on 3+ consecutive
                 if new_consecutive >= 3:
-                    context["sequential_repetition_3plus"] = True
+                    ctx["sequential_repetition_3plus"] = True
         else:
-            # Reset consecutive count on tool change
             if hasattr(state, "last_tool_info"):
                 state.last_tool_info["consecutive"] = 1
 
-    # Check for git spam (>3 git commands in 5 turns without writes)
-    git_explore_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
+    # Git spam (>3 git commands in 5 turns without writes)
+    git_cmds = ["git log", "git diff", "git status", "git show", "git blame"]
     if tool_name == "Bash" and any(
-        g in tool_input.get("command", "") for g in git_explore_cmds
+        g in tool_input.get("command", "") for g in git_cmds
     ):
         git_turns = getattr(state, "git_explore_turns", [])
         git_turns.append(state.turn_count)
-        # Keep only last 5 turns
         git_turns = [t for t in git_turns if state.turn_count - t <= 5]
         state.git_explore_turns = git_turns
-        # Check for spam: >3 in window AND no write in that window
-        if len(git_turns) > 3:
-            recent_writes = [f for f in state.files_edited[-5:]]
-            if not recent_writes:
-                context["git_spam"] = True
+        if len(git_turns) > 3 and not state.files_edited[-5:]:
+            ctx["git_spam"] = True
 
-    # =========================================================================
-    # TIME WASTER DETECTION (v4.2)
-    # =========================================================================
 
-    # Re-read unchanged file (-3) - already read and not edited since
+def _detect_time_wasters(
+    tool_name: str, tool_input: dict, tool_result: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect time waster patterns (v4.2)."""
+    # Re-read unchanged file
     if tool_name == "Read":
         file_path = tool_input.get("file_path", "")
         if file_path:
-            # Check if file was already read
             files_read = getattr(state, "files_read", {})
             files_edited = getattr(state, "files_edited", [])
             if file_path in files_read:
-                # Check if file was edited since last read
                 last_read_turn = files_read.get(file_path, {}).get("turn", 0)
-                # Find if edited after last read
                 edited_after = False
-                for edit_entry in files_edited:
-                    if isinstance(edit_entry, dict):
-                        if edit_entry.get("path") == file_path:
-                            edit_turn = edit_entry.get("turn", 0)
-                            if edit_turn > last_read_turn:
+                for entry in files_edited:
+                    if isinstance(entry, dict):
+                        if entry.get("path") == file_path:
+                            if entry.get("turn", 0) > last_read_turn:
                                 edited_after = True
                                 break
-                    elif isinstance(edit_entry, str) and edit_entry == file_path:
-                        # Simple string entry - can't determine turn
+                    elif isinstance(entry, str) and entry == file_path:
                         edited_after = True
                         break
-                # If not edited since last read, it's a wasted re-read
                 if not edited_after:
-                    context["reread_unchanged"] = True
+                    ctx["reread_unchanged"] = True
 
-    # Huge output dump (-2) - tool output > 5000 chars without summarizing
-    result_str = str(tool_result) if tool_result else ""
-    if len(result_str) > 5000:
-        context["huge_output_dump"] = True
+    # Huge output dump
+    if len(str(tool_result) if tool_result else "") > 5000:
+        ctx["huge_output_dump"] = True
 
-    # =========================================================================
-    # INCOMPLETE REFACTOR DETECTION (v4.4)
-    # =========================================================================
-    # Track renames and detect if old symbol still exists elsewhere
 
-    # Step 1: On Edit, detect potential renames and store for verification
+def _detect_incomplete_refactor(
+    tool_name: str, tool_input: dict, tool_result: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect incomplete refactors (v4.4)."""
+    file_path = tool_input.get("file_path", "")
+
+    # Step 1: On Edit, track potential renames
     if tool_name == "Edit":
         old_str = tool_input.get("old_string", "")
         new_str = tool_input.get("new_string", "")
         replace_all = tool_input.get("replace_all", False)
 
-        # Look for identifier-like changes (word boundary changes)
         if old_str and new_str and not replace_all:
-            # Extract potential symbol names (identifiers)
             old_ids = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]{2,})\b", old_str))
             new_ids = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]{2,})\b", new_str))
-            # Find identifiers that were removed (potential renames)
             removed_ids = old_ids - new_ids
             if removed_ids:
-                # Store for later verification
                 pending = getattr(state, "pending_rename_check", [])
                 for rid in removed_ids:
-                    if len(rid) >= 4:  # Only track meaningful names
+                    if len(rid) >= 4:
                         pending.append(
                             {"name": rid, "turn": state.turn_count, "file": file_path}
                         )
-                # Keep only recent (last 3 turns)
                 state.pending_rename_check = [
                     p for p in pending if state.turn_count - p["turn"] <= 3
                 ][-5:]
 
-    # Step 2: On Grep results, check if pending renames were found elsewhere
+    # Step 2: On Grep, check if pending renames found elsewhere
     if tool_name == "Grep":
         pattern = tool_input.get("pattern", "")
         result_str = str(tool_result)[:2000].lower()
         pending = getattr(state, "pending_rename_check", [])
 
         for p in pending:
-            # If grep pattern matches pending rename and found results
             if p["name"].lower() in pattern.lower():
                 if "no matches" not in result_str and "0 results" not in result_str:
-                    # Found remaining instances of renamed symbol
-                    context["incomplete_refactor"] = True
+                    ctx["incomplete_refactor"] = True
                     break
+
+
+@register_hook("confidence_reducer", None, priority=12)
+def check_confidence_reducer(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Apply deterministic confidence reductions based on failure signals.
+
+    Delegates to helper functions for each detection category.
+    """
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+    tool_result = data.get("tool_result", {})
+
+    # Build context and detect patterns
+    context = _build_reducer_context(tool_name, tool_input, tool_result, data, state)
+    _detect_tool_failures(tool_name, tool_input, tool_result, state, context)
+    _detect_repetition_patterns(tool_name, tool_input, state, context)
+    _detect_time_wasters(tool_name, tool_input, tool_result, state, context)
+    _detect_incomplete_refactor(tool_name, tool_input, tool_result, state, context)
 
     # Apply reducers
     triggered = apply_reducers(state, context)

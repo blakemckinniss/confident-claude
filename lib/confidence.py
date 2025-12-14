@@ -2236,6 +2236,68 @@ class ReviewAddressedIncreaser(ConfidenceIncreaser):
         return context.get("review_addressed", False)
 
 
+@dataclass
+class CIPassIncreaser(ConfidenceIncreaser):
+    """Triggers when CI/GitHub Actions passes.
+
+    Successful CI indicates code meets quality gates.
+    """
+
+    name: str = "ci_pass"
+    delta: int = 5
+    description: str = "CI/GitHub Actions passed"
+    requires_approval: bool = False
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+        command = context.get("tool_input", {}).get("command", "")
+        output = context.get("tool_result", "")
+        # gh run view or gh pr checks
+        if "gh run" in command or "gh pr checks" in command:
+            output_lower = output.lower() if isinstance(output, str) else ""
+            if "pass" in output_lower or "success" in output_lower or "✓" in output:
+                return True
+        return context.get("ci_pass", False)
+
+
+@dataclass
+class MergeCompleteIncreaser(ConfidenceIncreaser):
+    """Triggers when a PR is merged.
+
+    Merging indicates work is complete and accepted.
+    """
+
+    name: str = "merge_complete"
+    delta: int = 5
+    description: str = "Pull request merged"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+        command = context.get("tool_input", {}).get("command", "")
+        output = context.get("tool_result", "")
+        # gh pr merge
+        if "gh pr merge" in command:
+            output_lower = output.lower() if isinstance(output, str) else ""
+            if "merged" in output_lower or "✓" in output:
+                return True
+        return context.get("merge_complete", False)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -2277,6 +2339,8 @@ INCREASERS: list[ConfidenceIncreaser] = [
     PRCreatedIncreaser(),  # PR created successfully (+5)
     IssueClosedIncreaser(),  # GitHub issue closed (+3)
     ReviewAddressedIncreaser(),  # PR review addressed (+5)
+    CIPassIncreaser(),  # CI/GitHub Actions passed (+5)
+    MergeCompleteIncreaser(),  # PR merged (+5)
 ]
 
 
