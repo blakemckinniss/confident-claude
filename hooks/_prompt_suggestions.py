@@ -1010,39 +1010,492 @@ _SKILL_TRIGGERS = {
 }
 
 
+# Task-type routing matrix: maps task categories to skills, agents, MCPs, ops, and CLI
+_TASK_ROUTING = {
+    "debug_fix": {
+        "triggers": [
+            r"debug|fix\s+(this|the|an?)\s+(error|bug)",
+            r"stack\s*trace",
+            r"(exception|crash|broken|not\s+work)",
+        ],
+        "skills": ["debugging", "error-handling", "verification"],
+        "agents": ["error-tracer"],
+        "mcps": ["mcp__pal__debug"],
+        "ops": ["think"],
+        "cli": [],
+        "desc": "Bug investigation",
+    },
+    "implement_feature": {
+        "triggers": [
+            r"(implement|build|create|add)\s+(a\s+)?(new\s+)?(feature|function|component)",
+            r"(how\s+should|best\s+way)\s+implement",
+        ],
+        "skills": ["implementation-planning", "code-quality"],
+        "agents": [],
+        "mcps": ["mcp__pal__thinkdeep"],
+        "ops": ["think"],
+        "cli": [],
+        "desc": "Feature implementation",
+    },
+    "code_review": {
+        "triggers": [
+            r"(review|audit)\s+(this|the|my)?\s*code",
+            r"before\s+(commit|deploy|merge)",
+            r"(pr|pull\s+request)\s+review",
+        ],
+        "skills": ["code-quality", "completeness-checking"],
+        "agents": ["dead-code-hunter"],
+        "mcps": ["mcp__pal__codereview"],
+        "ops": ["audit", "void", "gaps"],
+        "cli": [],
+        "desc": "Code review",
+    },
+    "security_audit": {
+        "triggers": [
+            r"security\s+(audit|review|check)",
+            r"(vulnerabilit|owasp|injection|xss)",
+            r"(auth|authentication)\s+(flow|check)",
+        ],
+        "skills": ["security-audit", "code-quality"],
+        "agents": ["deep-security"],
+        "mcps": [],
+        "ops": ["audit"],
+        "cli": [],
+        "desc": "Security audit",
+    },
+    "performance": {
+        "triggers": [
+            r"(performance|perf)\s+(issue|problem|slow)",
+            r"(optimize|speed\s+up)",
+            r"(n\+1|memory\s+leak|bundle\s+size)",
+        ],
+        "skills": ["performance"],
+        "agents": ["perf-profiler", "bundle-analyzer"],
+        "mcps": [],
+        "ops": [],
+        "cli": [],
+        "desc": "Performance analysis",
+    },
+    "git_operations": {
+        "triggers": [
+            r"(commit|push|merge|rebase)",
+            r"(create|open)\s+(a\s+)?(pr|pull\s+request)",
+            r"(resolve|fix)\s+conflict",
+        ],
+        "skills": ["git-workflow"],
+        "agents": ["git-archeologist"],
+        "mcps": [],
+        "ops": ["upkeep"],
+        "cli": ["git log --oneline -20", "git diff --stat"],
+        "desc": "Git operations",
+    },
+    "testing": {
+        "triggers": [
+            r"(run|write|add)\s+tests?",
+            r"(pytest|jest|vitest)",
+            r"test\s+(coverage|driven|flaky)",
+        ],
+        "skills": ["testing", "verification"],
+        "agents": ["test-analyzer"],
+        "mcps": [],
+        "ops": ["verify"],
+        "cli": [],
+        "desc": "Testing",
+    },
+    "frontend_ui": {
+        "triggers": [
+            r"(build|create|design)\s+(a\s+)?(ui|interface|page|component)",
+            r"(react|vue|nextjs|tailwind)",
+        ],
+        "skills": ["frontend-design", "browser-automation"],
+        "agents": ["a11y-auditor"],
+        "mcps": [],
+        "ops": [],
+        "cli": [],
+        "desc": "Frontend/UI work",
+    },
+    "research_docs": {
+        "triggers": [
+            r"(how\s+do\s+I|what.s\s+the)\s+(use|api)",
+            r"(latest|current)\s+(docs|documentation)",
+            r"(look\s*up|search)",
+        ],
+        "skills": ["research-docs"],
+        "agents": ["deep-research"],
+        "mcps": ["mcp__pal__apilookup", "mcp__crawl4ai__scrape"],
+        "ops": ["research", "docs"],
+        "cli": [],
+        "desc": "Documentation/research",
+    },
+    "refactoring": {
+        "triggers": [
+            r"refactor\s+(this|the|my)",
+            r"(restructure|reorganize|clean\s*up)\s+code",
+            r"(extract|inline|rename)\s+(method|function|class)",
+        ],
+        "skills": ["refactoring", "code-quality"],
+        "agents": ["refactor-planner", "dependency-mapper"],
+        "mcps": [],
+        "ops": ["xray"],
+        "cli": [],
+        "desc": "Refactoring",
+    },
+    "migration": {
+        "triggers": [
+            r"(migrate|upgrade|update)\s+(to|from)",
+            r"(breaking\s+change|deprecat)",
+            r"(version|major)\s+upgrade",
+        ],
+        "skills": ["migration"],
+        "agents": ["migration-planner", "upgrade-scout"],
+        "mcps": [],
+        "ops": [],
+        "cli": [],
+        "desc": "Migration/upgrade",
+    },
+    "codebase_explore": {
+        "triggers": [
+            r"(where\s+is|find)\s+(the|this)",
+            r"(understand|explore)\s+(the\s+)?(codebase|code)",
+            r"(how\s+does|what\s+does)\s+.+\s+work",
+        ],
+        "skills": ["code-analysis"],
+        "agents": ["scout", "api-cartographer"],
+        "mcps": [],
+        "ops": ["xray", "probe"],
+        "cli": ["rg -l '<pattern>'", "fd '<pattern>'"],
+        "desc": "Codebase exploration",
+    },
+    "ci_cd": {
+        "triggers": [
+            r"(ci|cd|pipeline|github\s+actions)",
+            r"(build|deploy)\s+(fail|slow|broken)",
+            r"(docker|container|dockerfile)",
+        ],
+        "skills": ["ci-cd", "docker-containers"],
+        "agents": ["ci-optimizer", "docker-analyzer"],
+        "mcps": [],
+        "ops": [],
+        "cli": [],
+        "desc": "CI/CD & containers",
+    },
+    "config_env": {
+        "triggers": [
+            r"(config|env|environment)\s+(issue|problem|variable)",
+            r"(wrong|missing)\s+(version|dep)",
+            r"works\s+on\s+my\s+machine",
+        ],
+        "skills": [],
+        "agents": ["env-debugger", "config-auditor"],
+        "mcps": [],
+        "ops": ["sysinfo", "inventory"],
+        "cli": ["env | grep -i '<var>'", "which <cmd>"],
+        "desc": "Config/environment issues",
+    },
+    "state_management": {
+        "triggers": [
+            r"(state|redux|zustand|context)\s+(bug|issue|flow)",
+            r"(data\s+flow|mutation)",
+            r"(why\s+is|where\s+does)\s+state",
+        ],
+        "skills": ["state-management"],
+        "agents": ["state-mapper"],
+        "mcps": [],
+        "ops": [],
+        "cli": [],
+        "desc": "State management",
+    },
+    "complex_decision": {
+        "triggers": [
+            r"(should\s+I|help\s+me)\s+(choose|decide)",
+            r"(pros?\s+and\s+cons?|trade.?offs?)",
+            r"(which|what)\s+(framework|library|approach)",
+        ],
+        "skills": ["decision-support"],
+        "agents": [],
+        "mcps": ["mcp__pal__consensus"],
+        "ops": ["council", "oracle"],
+        "cli": [],
+        "desc": "Complex decisions",
+    },
+    "json_processing": {
+        "triggers": [
+            r"(parse|extract|transform)\s+(json|csv|yaml|data)",
+            r"\.(json|csv|yaml)\s+(file|data)",
+            r"(jq|json\s+query)",
+        ],
+        "skills": ["data-processing"],
+        "agents": [],
+        "mcps": [],
+        "ops": [],
+        "cli": ["jq '.' <file>", "jq '.key' <file>", "jq -r '.[]'"],
+        "desc": "Data processing",
+    },
+    "text_search": {
+        "triggers": [
+            r"(search|find|grep)\s+(for|in)\s+(text|string|pattern)",
+            r"(regex|regular\s+expression)",
+            r"rg\s+",
+        ],
+        "skills": [],
+        "agents": [],
+        "mcps": [],
+        "ops": [],
+        "cli": [
+            "rg '<pattern>' --type <lang>",
+            "rg -l '<pattern>'",
+            "rg -C3 '<pattern>'",
+        ],
+        "desc": "Text/pattern search",
+    },
+    "file_operations": {
+        "triggers": [
+            r"(find|list|count)\s+(files|dirs)",
+            r"(disk|space)\s+usage",
+            r"(large|big)\s+files",
+        ],
+        "skills": [],
+        "agents": [],
+        "mcps": [],
+        "ops": ["housekeeping"],
+        "cli": ["fd '<pattern>'", "du -sh *", "fd -e <ext> -x wc -l"],
+        "desc": "File operations",
+    },
+    "system_health": {
+        "triggers": [
+            r"(system|disk|memory)\s+(health|status|usage)",
+            r"(what.s\s+running|process)",
+            r"(free\s+space|cleanup)",
+        ],
+        "skills": ["system-maintenance"],
+        "agents": [],
+        "mcps": [],
+        "ops": ["sysinfo", "housekeeping", "inventory"],
+        "cli": ["df -h", "free -h", "ps aux | head"],
+        "desc": "System health",
+    },
+    "memory_recall": {
+        "triggers": [
+            r"(remember|recall|what\s+did\s+we)",
+            r"(past|previous)\s+session",
+            r"(lesson|decision)\s+(learned|made)",
+        ],
+        "skills": ["memory-workflow"],
+        "agents": [],
+        "mcps": [],
+        "ops": ["spark", "remember", "evidence"],
+        "cli": [],
+        "desc": "Memory/recall",
+    },
+    "completeness_check": {
+        "triggers": [
+            r"(find|check)\s+(gaps|missing|stubs)",
+            r"(incomplete|todo|fixme)",
+            r"(dead|unused)\s+code",
+        ],
+        "skills": ["completeness-checking"],
+        "agents": ["dead-code-hunter"],
+        "mcps": [],
+        "ops": ["void", "gaps"],
+        "cli": ["rg 'TODO|FIXME|XXX'", "rg 'NotImplementedError|pass$'"],
+        "desc": "Completeness checking",
+    },
+    "serena_analysis": {
+        "triggers": [
+            r"(semantic|symbol|definition|reference)\s+(search|find|analysis)",
+            r"(find|go\s+to)\s+(definition|implementation|references)",
+            r"(class|function|method)\s+(hierarchy|inheritance)",
+            r"(call\s+graph|callers|callees)",
+            r"(rename|refactor)\s+(symbol|across\s+files)",
+            r"serena",
+        ],
+        "skills": ["serena-analysis", "code-analysis"],
+        "agents": [],
+        "mcps": [
+            "mcp__serena__find_symbol",
+            "mcp__serena__get_hover_info",
+            "mcp__serena__find_references",
+        ],
+        "ops": ["xray", "probe"],
+        "cli": [],
+        "desc": "Semantic code analysis (serena)",
+    },
+    "type_analysis": {
+        "triggers": [
+            r"(type|signature|parameter)\s+(of|for|info)",
+            r"(what\s+type|return\s+type)",
+            r"(hover|tooltip)\s+info",
+        ],
+        "skills": [],
+        "agents": [],
+        "mcps": ["mcp__serena__get_hover_info", "mcp__serena__find_symbol"],
+        "ops": ["probe"],
+        "cli": [],
+        "desc": "Type/signature analysis",
+    },
+    "api_development": {
+        "triggers": [
+            r"(create|build|design)\s+(an?\s+)?(api|endpoint|route)",
+            r"(rest|graphql)\s+(api|endpoint)",
+            r"(request|response)\s+(handler|format)",
+            r"(openapi|swagger)",
+        ],
+        "skills": ["api-development"],
+        "agents": ["api-cartographer"],
+        "mcps": ["mcp__pal__apilookup"],
+        "ops": [],
+        "cli": [],
+        "desc": "API development",
+    },
+    "database": {
+        "triggers": [
+            r"(database|db|sql)\s+(query|schema|migration)",
+            r"(prisma|sqlalchemy|orm)",
+            r"(index|transaction|join)",
+            r"(postgres|mysql|sqlite|mongodb)",
+        ],
+        "skills": ["database"],
+        "agents": ["schema-validator"],
+        "mcps": [],
+        "ops": [],
+        "cli": [],
+        "desc": "Database operations",
+    },
+    "logging_observability": {
+        "triggers": [
+            r"(logging|log\s+level|structured\s+log)",
+            r"(observability|tracing|metrics)",
+            r"(monitoring|apm|alerting)",
+            r"(correlation\s+id|log\s+aggregat)",
+        ],
+        "skills": ["logging-observability"],
+        "agents": ["log-analyzer"],
+        "mcps": [],
+        "ops": [],
+        "cli": [],
+        "desc": "Logging & observability",
+    },
+}
+
+# Compile task routing patterns
+for task_type, config in _TASK_ROUTING.items():
+    config["_compiled"] = [re.compile(p, re.I) for p in config["triggers"]]
+
+
 @register_hook("skill_suggestion", priority=82)
 def check_skill_suggestion(data: dict, state: SessionState) -> HookResult:
-    """Suggest Skills based on prompt patterns."""
-    from _cooldown import check_and_reset_cooldown
-
-    # 3-minute cooldown to prevent suggestion spam
-    if not check_and_reset_cooldown("skill_suggestion", cooldown_seconds=180):
-        return HookResult.allow()
-
+    """Route prompts to Skills, Agents, MCPs, Ops, and CLI - MANDATORY invocation."""
     prompt = data.get("prompt", "")
-    if not prompt or len(prompt) < 20:
+    if not prompt or len(prompt) < 15:
         return HookResult.allow()
 
     prompt_lower = prompt.lower()
-    matches = []
-    for skill_name, config in _SKILL_TRIGGERS.items():
-        for pattern in config["patterns"]:
-            if pattern.search(prompt_lower):
-                matches.append((skill_name, config))
-                break
-        if len(matches) >= 2:
-            break
 
-    if not matches:
+    # Collect routed items from task matrix
+    routed_skills = set()
+    routed_agents = set()
+    routed_mcps = set()
+    routed_ops = set()
+    routed_cli = []
+    route_reasons = []
+
+    for task_type, config in _TASK_ROUTING.items():
+        for pattern in config["_compiled"]:
+            if pattern.search(prompt_lower):
+                for skill in config.get("skills", []):
+                    routed_skills.add(skill)
+                for agent in config.get("agents", []):
+                    routed_agents.add(agent)
+                for mcp in config.get("mcps", []):
+                    routed_mcps.add(mcp)
+                for op in config.get("ops", []):
+                    routed_ops.add(op)
+                for cli in config.get("cli", []):
+                    if cli not in routed_cli:
+                        routed_cli.append(cli)
+                route_reasons.append(f"• {task_type}: {config['desc']}")
+                break
+
+    # Fallback to individual skill matching if no route matched
+    if (
+        not routed_skills
+        and not routed_agents
+        and not routed_mcps
+        and not routed_ops
+        and not routed_cli
+    ):
+        for skill_name, config in _SKILL_TRIGGERS.items():
+            for pattern in config["patterns"]:
+                if pattern.search(prompt_lower):
+                    routed_skills.add(skill_name)
+                    break
+            if len(routed_skills) >= 3:
+                break
+
+    # Nothing matched
+    if (
+        not routed_skills
+        and not routed_agents
+        and not routed_mcps
+        and not routed_ops
+        and not routed_cli
+    ):
         return HookResult.allow()
 
-    suggestions = []
-    for skill_name, config in matches:
-        suggestions.append(
-            f"📘 **{skill_name}**: {config['desc']}\n   → `{config['invoke']}`"
+    # Build directive output sections
+    sections = []
+
+    # Skills section
+    if routed_skills:
+        skill_lines = []
+        for skill_name in list(routed_skills)[:3]:
+            if skill_name in _SKILL_TRIGGERS:
+                cfg = _SKILL_TRIGGERS[skill_name]
+                skill_lines.append(
+                    f'  📘 `Skill(skill="{skill_name}")` — {cfg["desc"]}'
+                )
+            else:
+                skill_lines.append(f'  📘 `Skill(skill="{skill_name}")`')
+        sections.append("**Skills:**\n" + "\n".join(skill_lines))
+
+    # Agents section
+    if routed_agents:
+        agent_lines = []
+        for agent_name in list(routed_agents)[:2]:
+            agent_lines.append(
+                f'  🤖 `Task(subagent_type="{agent_name}", prompt="...")`'
+            )
+        sections.append("**Agents:**\n" + "\n".join(agent_lines))
+
+    # MCPs section
+    if routed_mcps:
+        mcp_lines = []
+        for mcp_name in list(routed_mcps)[:2]:
+            mcp_lines.append(f"  🔌 `{mcp_name}`")
+        sections.append("**MCPs:**\n" + "\n".join(mcp_lines))
+
+    # Ops section
+    if routed_ops:
+        ops_lines = []
+        for op_name in list(routed_ops)[:3]:
+            ops_lines.append(f"  🔧 `~/.claude/ops/{op_name}.py`")
+        sections.append("**Ops:**\n" + "\n".join(ops_lines))
+
+    # CLI section
+    if routed_cli:
+        cli_lines = [f"  💻 `{cmd}`" for cmd in routed_cli[:3]]
+        sections.append("**CLI:**\n" + "\n".join(cli_lines))
+
+    output = "⚡ **TASK ROUTER** — INVOKE BEFORE PROCEEDING:\n\n" + "\n\n".join(
+        sections
+    )
+
+    if route_reasons:
+        output += "\n\n_Matched:_ " + ", ".join(
+            r.split(":")[0].strip("• ") for r in route_reasons[:3]
         )
 
-    return HookResult.allow("📚 SKILLS AVAILABLE:\n" + "\n\n".join(suggestions))
+    return HookResult.allow(output)
 
 
 @register_hook("ops_nudge", priority=80)

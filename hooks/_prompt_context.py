@@ -207,6 +207,35 @@ def check_prompt_disclaimer(data: dict, state: SessionState) -> HookResult:
 
 
 # =============================================================================
+# SERENA & FILESYSTEM MCP (priority 31)
+# =============================================================================
+
+
+@register_hook("serena_filesystem_reminder", priority=31)
+def check_serena_filesystem(data: dict, state: SessionState) -> HookResult:
+    """Remind about serena activation and filesystem MCP usage."""
+    cwd = Path.cwd()
+    parts = []
+
+    # Check for .serena directory
+    serena_dir = cwd / ".serena"
+    if serena_dir.is_dir():
+        parts.append(
+            "🔮 **SERENA AVAILABLE**: `.serena/` detected — "
+            "activate with `mcp__serena__*` tools for semantic code analysis"
+        )
+
+    # Always recommend filesystem MCP for file operations
+    parts.append(
+        "📂 **FILESYSTEM MCP**: Prefer `mcp__filesystem__read_file`, "
+        "`mcp__filesystem__write_file`, `mcp__filesystem__edit_file` "
+        "for file operations (better error handling, atomic writes)"
+    )
+
+    return HookResult.allow("\n".join(parts))
+
+
+# =============================================================================
 # TECH VERSION RISK (priority 32)
 # =============================================================================
 
