@@ -1,48 +1,52 @@
-# Manual Scripts
+# Scripts Directory
 
-User-run scripts for ad-hoc purposes. These are **not** automated hooks—run them manually when needed.
+User-run scripts for setup and maintenance. Run manually after cloning.
 
-## Scripts
-
-### `bootstrap.sh`
-
-Run after cloning the repository to set up all dependencies.
+## Quick Start
 
 ```bash
-# Full bootstrap (creates venv, installs deps)
-./scripts/bootstrap.sh
-
-# Check what's missing without installing
-./scripts/bootstrap.sh --check
-
-# Auto-install missing Python packages
-./scripts/bootstrap.sh --fix
-
-# Verbose output
-./scripts/bootstrap.sh --verbose
+./scripts/bootstrap.sh           # First-time setup wizard
+./scripts/bootstrap.sh --check   # Health check (read-only)
+./scripts/bootstrap.sh --fix     # Auto-fix issues
+./scripts/bootstrap.sh --help    # Full help
 ```
 
-**What it does:**
-1. Creates Python virtual environment at `.venv/`
-2. Installs dependencies from `requirements.txt`
-3. Checks for required binaries (git, python3)
-4. Validates critical directories exist
-5. Runs the full dependency check
+## bootstrap.sh - Setup Wizard
+
+Comprehensive setup for getting the framework running from a fresh clone.
+
+### What It Checks & Fixes
+
+| Step | Check | Auto-Fix |
+|------|-------|----------|
+| Python | Version 3.10+, venv | Creates venv |
+| Packages | requirements.txt | Installs missing |
+| Node.js | Version 18+ (MCP) | Shows instructions |
+| Binaries | git, ruff, bd, jq | Shows hints |
+| Directories | Framework structure | Creates missing |
+| Hooks | ~/.claude.json | Shows config |
+| API Keys | Environment vars | Shows setup |
+| Plugins | Install paths | Reports issues |
+
+### Modes
+
+- **Interactive** (default): Asks before changes
+- **--check**: Read-only health check
+- **--fix**: Auto-fix without prompting
+- **--minimal**: Venv + packages only
 
 ## Adding New Scripts
 
-When adding scripts to this folder:
+1. `chmod +x script.sh`
+2. Add shebang: `#!/usr/bin/env bash`
+3. Include `--help` flag
+4. Keep standalone
 
-1. **Make executable**: `chmod +x script.sh`
-2. **Add shebang**: `#!/usr/bin/env bash` or `#!/usr/bin/env python3`
-3. **Document usage**: Include `--help` flag
-4. **Keep standalone**: Don't assume hooks are running
-
-## Difference from Other Directories
+## Directory Reference
 
 | Directory | Purpose | Runs |
 |-----------|---------|------|
-| `scripts/` | Manual user scripts | User runs manually |
-| `hooks/` | Claude Code hooks | Automatically on events |
-| `ops/` | Operational tools | Claude invokes via commands |
-| `config/` | Setup scripts | One-time configuration |
+| `scripts/` | Manual scripts | User runs |
+| `hooks/` | Claude Code hooks | Auto on events |
+| `ops/` | Operational tools | Claude invokes |
+| `config/` | Setup scripts | One-time |
