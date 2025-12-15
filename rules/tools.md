@@ -45,7 +45,7 @@ See `confidence.md` for full reference.
 | System binaries | `inventory` |
 | System health | `sysinfo` |
 | Disk cleanup | `housekeeping --status` or `--execute` |
-| Browser/CDP | `bdg <cmd>` (start/stop/status/page/dom/eval/network) |
+| Browser automation | `mcp__playwright__*` (navigate, click, type, snapshot, screenshot, evaluate) |
 
 ## External LLM (PAL MCP)
 

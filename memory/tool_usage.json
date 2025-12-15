@@ -24,11 +24,11 @@
     "sessions": 0
   },
   "fp": {
-    "total_uses": 39,
-    "successes": 39,
+    "total_uses": 40,
+    "successes": 40,
     "failures": 0,
     "first_used": "2025-12-13",
-    "last_used": "2025-12-14 22:38",
+    "last_used": "2025-12-14 23:27",
     "sessions": 0
   },
   "housekeeping": {
@@ -37,6 +37,14 @@
     "failures": 0,
     "first_used": "2025-12-14",
     "last_used": "2025-12-14 15:01",
+    "sessions": 0
+  },
+  "bdg": {
+    "total_uses": 17,
+    "successes": 17,
+    "failures": 0,
+    "first_used": "2025-12-14",
+    "last_used": "2025-12-14 23:27",
     "sessions": 0
   }
 }
