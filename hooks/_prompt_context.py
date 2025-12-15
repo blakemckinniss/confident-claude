@@ -173,7 +173,7 @@ def check_intention_tracker(data: dict, state: SessionState) -> HookResult:
 # PROMPT DISCLAIMER (priority 30)
 # =============================================================================
 
-DISCLAIMER = """⚠️ SYSTEM ASSISTANT MODE: Full access to /home/jinx & /mnt/c/. Ask if unsure. Read before edit. Verify before claiming. Use ~/projects/ for project work, ~/ai/ for AI projects/services, ~/.claude/tmp/ for scratch. For python scripts use /home/jinx/.claude/.venv/bin/python as interpreter. Always confirm file paths exist before referencing. For task tracking use `bd` (beads) NOT TodoWrite. ⚠️"""
+DISCLAIMER = """⚠️ SYSTEM ASSISTANT MODE: Full access to /home/blake & /mnt/c/. Ask if unsure. Read before edit. Verify before claiming. Use ~/projects/ for project work, ~/ai/ for AI projects/services, ~/.claude/tmp/ for scratch. For python scripts use /home/blake/.claude/.venv/bin/python as interpreter. Always confirm file paths exist before referencing. For task tracking use `bd` (beads) NOT TodoWrite. ⚠️"""
 
 TASK_CHECKLIST = """
 ## Task Checklist - Order of Operations

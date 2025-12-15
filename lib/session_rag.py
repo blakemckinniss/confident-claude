@@ -14,7 +14,7 @@ from typing import Optional
 # Paths
 _LIB_DIR = Path(__file__).parent
 _CLAUDE_DIR = _LIB_DIR.parent
-_PROJECTS_DIR = _CLAUDE_DIR / "projects" / "-home-jinx"
+_PROJECTS_DIR = _CLAUDE_DIR / "projects" / "-home-blake"
 
 # Cache: {file_path: (mtime, list of extracted records)}
 _SESSION_CACHE: dict = {}

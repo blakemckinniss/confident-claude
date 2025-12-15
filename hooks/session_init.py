@@ -2,7 +2,7 @@
 """
 Session Init Hook v3: SessionStart hook for initialization.
 
-SYSTEM CONTEXT: Global WSL2 assistant at /home/jinx
+SYSTEM CONTEXT: Global WSL2 assistant at /home/blake
 - Full system access, not project-scoped
 - Can help with any task across the system
 - Projects live in ~/projects/, AI projects in ~/ai/
@@ -594,7 +594,7 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
     For autonomous agents, this is AUTOMATIC - no human input needed.
     """
     parts = [
-        "💻 **SYSTEM**: WSL2 global assistant @ /home/jinx | Full access | ~/projects/ for work | ~/ai/ for AI projects"
+        "💻 **SYSTEM**: WSL2 global assistant @ /home/blake | Full access | ~/projects/ for work | ~/ai/ for AI projects"
     ]
 
     if ctx := _build_project_context(project_context):
