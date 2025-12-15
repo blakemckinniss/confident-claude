@@ -9,7 +9,7 @@ import re
 
 # Add .claude/lib to path (minimal bootstrap)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib'))
-from core import setup_script, finalize, logger, handle_debug, get_project_root  # noqa: E402
+from core import setup_script, finalize, logger, handle_debug  # noqa: E402
 
 
 def check_ruff(filepath):

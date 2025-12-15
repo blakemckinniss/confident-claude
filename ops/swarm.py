@@ -38,7 +38,7 @@ import re
 
 # Add .claude/lib to path (minimal bootstrap, then use get_project_root)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib'))
-from core import setup_script, finalize, logger, handle_debug, get_project_root  # noqa: E402
+from core import setup_script, finalize, logger, handle_debug  # noqa: E402
 from oracle import call_openrouter, OracleAPIError  # noqa: E402
 
 # Project root available via get_project_root() if needed

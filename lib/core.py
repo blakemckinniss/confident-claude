@@ -6,7 +6,6 @@ Shared utilities for all scripts in the arsenal.
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 from functools import lru_cache

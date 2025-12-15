@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Council Recruiter: Selects optimal personas for a given proposal."""
-import os, sys, json, re
+import os
+import sys
+import json
+import re
 from pathlib import Path
 
 _script_path = os.path.abspath(__file__)
@@ -15,7 +18,7 @@ else:
     raise RuntimeError("Could not find project root")
 
 sys.path.insert(0, os.path.join(_project_root, ".claude", "lib"))
-from core import logger
+from core import logger  # noqa: E402
 
 KEYWORD_PERSONAS = {
     r"architect|design|structure": ["architect", "pragmatist"],
@@ -36,7 +39,7 @@ def load_persona_library():
     try:
         with open(library_path) as f:
             return json.load(f)
-    except:
+    except Exception:
         return {"personas": {}}
 
 def recruit_council(proposal, max_personas=5):

@@ -24,13 +24,25 @@ Tools for documentation lookup and API introspection.
 
 ## Primary Tools
 
+### crawl4ai MCP (HIGHEST PRIORITY for web content)
+**USE INSTEAD OF WebFetch** - superior in every way.
+```
+mcp__crawl4ai__crawl    # Single URL with JS rendering + bot bypass
+mcp__crawl4ai__search   # DuckDuckGo search, returns URLs
+```
+Why crawl4ai:
+- Full JavaScript rendering (SPAs, React, Vue)
+- Bypasses Cloudflare, bot detection, CAPTCHAs
+- Returns clean, LLM-friendly markdown
+- Handles cookies, sessions, auth flows
+
 ### docs.py - Library Documentation
 ```bash
 docs.py "<library>"
 docs.py "<library>" --topic "<topic>"
 ```
 
-### research.py - Web Search
+### research.py - Web Search (Tavily)
 ```bash
 research.py "<query>"
 ```
@@ -39,31 +51,21 @@ research.py "<query>"
 ```bash
 probe.py "<module.path>"
 probe.py "requests.Session"
-probe.py "pathlib.Path"
-```
-
-### firecrawl.py - Web Scraping
-```bash
-firecrawl.py "<url>"
 ```
 
 ### PAL MCP
-- `mcp__pal__apilookup` - Current SDK docs
-- `mcp__crawl4ai__crawl` - Full page scraping
+- `mcp__pal__apilookup` - Current SDK docs, versions, breaking changes
 
 ## Slash Commands
-- `/docs <library>` - Library docs
-- `/research <query>` - Web search
-- `/probe <object>` - Runtime API
-
-## Built-in Tools
-- `WebSearch` - Quick search
-- `WebFetch` - Fetch URL
+- `/docs <library>` - Library docs via Context7
+- `/research <query>` - Tavily web search
+- `/probe <object>` - Python runtime API
 
 ## When to Use What
 | Need | Tool |
 |------|------|
+| Any web page | `mcp__crawl4ai__crawl` (FIRST CHOICE) |
 | Library docs | `/docs` |
 | Current news | `/research` |
 | Python API | `/probe` |
-| Scrape page | `firecrawl.py` |
+| Multiple URLs | crawl4ai search → crawl each |

@@ -164,64 +164,59 @@ def extract_lessons(state) -> list[dict]:
     return lessons
 
 
+def _extract_recent_insights(existing: str) -> set[str]:
+    """Extract recent insight texts for deduplication."""
+    recent_insights = set()
+    for line in existing.split("\n")[-50:]:
+        if line.startswith("- ["):
+            parts = line.split("] ", 1)
+            if len(parts) > 1:
+                recent_insights.add(parts[1].strip().lower())
+    return recent_insights
+
+
+def _deduplicate_lessons(lessons: list[dict], recent_insights: set[str]) -> list[dict]:
+    """Filter out lessons that already exist in recent insights."""
+    new_lessons = []
+    for lesson in lessons:
+        insight_lower = lesson["insight"].lower()
+        if insight_lower not in recent_insights:
+            new_lessons.append(lesson)
+            recent_insights.add(insight_lower)
+    return new_lessons
+
+
 def persist_lessons(lessons: list[dict]):
     """Append lessons to lessons.md file with deduplication.
 
     Uses atomic read-modify-write with file locking to avoid TOCTOU race.
-    Deduplicates against last 24 hours of entries to avoid spam.
     """
     if not lessons:
         return
 
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Atomic append with file locking to prevent race conditions
     lock_file = MEMORY_DIR / ".lessons.lock"
     lock_fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR)
+
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-        # Read existing content (inside lock)
         existing = ""
         try:
             existing = LESSONS_FILE.read_text()
         except FileNotFoundError:
             pass
 
-        # === DEDUPLICATION ===
-        # Extract recent insights (last 50 lines) to check for duplicates
-        recent_lines = existing.split("\n")[-50:]
-        recent_insights = set()
-        for line in recent_lines:
-            if line.startswith("- ["):
-                # Extract the insight text after the type tag
-                parts = line.split("] ", 1)
-                if len(parts) > 1:
-                    recent_insights.add(parts[1].strip().lower())
-
-        # Filter out duplicate lessons
-        new_lessons = []
-        for lesson in lessons:
-            insight_lower = lesson["insight"].lower()
-            if insight_lower not in recent_insights:
-                new_lessons.append(lesson)
-                recent_insights.add(insight_lower)
-
+        new_lessons = _deduplicate_lessons(lessons, _extract_recent_insights(existing))
         if not new_lessons:
-            return  # All duplicates, nothing to write
+            return
 
-        # Build new content to append
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         new_content = f"\n### {timestamp}\n"
-        for lesson in new_lessons:
-            new_content += f"- [{lesson['type']}] {lesson['insight']}\n"
+        new_content += "".join(f"- [{lesson['type']}] {lesson['insight']}\n" for lesson in new_lessons)
 
-        # Check if we need the section header
-        needs_header = "## Session Lessons" not in existing
-
-        # Write atomically
         with open(LESSONS_FILE, "a") as f:
-            if needs_header:
+            if "## Session Lessons" not in existing:
                 f.write("\n\n## Session Lessons\n")
             f.write(new_content)
     finally:

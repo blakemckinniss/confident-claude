@@ -1707,7 +1707,7 @@ def main():
                 for f in test_results["failures"][:10]:
                     print(f"  ❌ {f['file']}: {f['error']}")
             if test_results["slow"]:
-                print(f"\n⚠️  Slow hooks (>500ms):")
+                print("\n⚠️  Slow hooks (>500ms):")
                 for s in test_results["slow"][:5]:
                     print(f"  ⏱️  {s['file']}: {s['ms']}ms")
 

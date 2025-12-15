@@ -77,7 +77,7 @@ def extract_docstring(filepath: Path) -> tuple[str, str]:
         docstring = ast.get_docstring(tree) or ""
 
         # Get first meaningful line as summary
-        lines = [l.strip() for l in docstring.split("\n") if l.strip()]
+        lines = [line.strip() for line in docstring.split("\n") if line.strip()]
         summary = lines[0] if lines else filepath.stem
 
         # Clean up summary

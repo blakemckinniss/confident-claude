@@ -75,19 +75,41 @@ def extract_imports_from_file(filepath):
     return imports
 
 
+def _get_git_branch() -> str:
+    """Get current git branch name."""
+    result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        capture_output=True, text=True, cwd=_project_root
+    )
+    return result.stdout.strip() or "detached HEAD"
+
+
+def _categorize_git_status(lines: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """Categorize git status lines into staged, unstaged, untracked."""
+    staged = [ln for ln in lines if ln[0] != " " and ln[0] != "?"]
+    unstaged = [ln for ln in lines if ln[0] == " " or ln[1] != " "]
+    untracked = [ln for ln in lines if ln.startswith("??")]
+    return staged, unstaged, untracked
+
+
+def _print_git_summary(branch: str, staged: list, unstaged: list, untracked: list) -> None:
+    """Print git status summary."""
+    print(f"  Branch: {branch}")
+    print(f"  Staged: {len(staged)} | Modified: {len(unstaged) - len(untracked)} | Untracked: {len(untracked)}")
+    if staged:
+        print("  📦 Ready to commit:")
+        for line in staged[:5]:
+            print(f"     {line}")
+        if len(staged) > 5:
+            print(f"     ... and {len(staged) - 5} more")
+
+
 def check_git_status(dry_run):
     """Check git status for uncommitted changes."""
     section("Git Status", "📊")
 
     try:
-        # Get current branch
-        branch = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True, text=True, cwd=_project_root
-        )
-        current_branch = branch.stdout.strip() or "detached HEAD"
-
-        # Get status
+        current_branch = _get_git_branch()
         result = subprocess.run(
             ["git", "status", "--porcelain"],
             capture_output=True, text=True, cwd=_project_root
@@ -97,30 +119,71 @@ def check_git_status(dry_run):
             print("  ⚠️  Not a git repository or git error")
             return True
 
-        lines = [l for l in result.stdout.strip().split("\n") if l]
-
+        lines = [ln for ln in result.stdout.strip().split("\n") if ln]
         if not lines:
             print(f"  ✅ Clean working tree on '{current_branch}'")
             return True
 
-        staged = [l for l in lines if l[0] != " " and l[0] != "?"]
-        unstaged = [l for l in lines if l[0] == " " or l[1] != " "]
-        untracked = [l for l in lines if l.startswith("??")]
-
-        print(f"  Branch: {current_branch}")
-        print(f"  Staged: {len(staged)} | Modified: {len(unstaged) - len(untracked)} | Untracked: {len(untracked)}")
-
-        if staged:
-            print("  📦 Ready to commit:")
-            for line in staged[:5]:
-                print(f"     {line}")
-            if len(staged) > 5:
-                print(f"     ... and {len(staged) - 5} more")
-
+        staged, unstaged, untracked = _categorize_git_status(lines)
+        _print_git_summary(current_branch, staged, unstaged, untracked)
         return True
     except FileNotFoundError:
         print("  ⚠️  git not found")
         return True
+
+
+def _check_hook_executable(filepath: str, item: str, fix: bool, dry_run: bool) -> tuple[str | None, bool]:
+    """Check if hook file is executable, optionally fix. Returns (issue, was_fixed)."""
+    if not item.endswith((".py", ".sh", ".js")):
+        return None, False
+    mode = os.stat(filepath).st_mode
+    is_exec = mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    if is_exec:
+        return None, False
+    if fix and not dry_run:
+        os.chmod(filepath, mode | stat.S_IXUSR)
+        print(f"  🔧 Fixed: {item} (made executable)")
+        return None, True
+    return f"{item} not executable", False
+
+
+def _check_hook_syntax(filepath: str, item: str) -> str | None:
+    """Check Python syntax of hook file. Returns issue string or None."""
+    if not item.endswith(".py"):
+        return None
+    try:
+        with open(filepath, "r") as f:
+            ast.parse(f.read(), filename=item)
+        return None
+    except SyntaxError as e:
+        return f"{item} syntax error: {e.msg} (line {e.lineno})"
+
+
+def _get_hook_files(hooks_dir: str) -> list[tuple[str, str]]:
+    """Get list of (filepath, filename) for hook files to check."""
+    results = []
+    for item in os.listdir(hooks_dir):
+        if item.startswith((".", "_")) or item == "__pycache__":
+            continue
+        filepath = os.path.join(hooks_dir, item)
+        if os.path.isfile(filepath):
+            results.append((filepath, item))
+    return results
+
+
+def _check_all_hooks(hook_files: list[tuple[str, str]], fix: bool, dry_run: bool) -> tuple[list[str], int]:
+    """Check all hook files. Returns (issues, fixed_count)."""
+    issues = []
+    fixed = 0
+    for filepath, item in hook_files:
+        issue, was_fixed = _check_hook_executable(filepath, item, fix, dry_run)
+        if issue:
+            issues.append(issue)
+        if was_fixed:
+            fixed += 1
+        if syntax_issue := _check_hook_syntax(filepath, item):
+            issues.append(syntax_issue)
+    return issues, fixed
 
 
 def check_hooks_health(dry_run, fix=False):
@@ -132,37 +195,8 @@ def check_hooks_health(dry_run, fix=False):
         print("  ℹ️  No hooks directory")
         return True
 
-    issues = []
-    fixed = 0
-
-    for item in os.listdir(hooks_dir):
-        if item.startswith((".", "_")) or item == "__pycache__":
-            continue
-
-        filepath = os.path.join(hooks_dir, item)
-        if not os.path.isfile(filepath):
-            continue
-
-        # Check executable for .py and .sh files
-        if item.endswith((".py", ".sh", ".js")):
-            mode = os.stat(filepath).st_mode
-            is_exec = mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-            if not is_exec:
-                if fix and not dry_run:
-                    os.chmod(filepath, mode | stat.S_IXUSR)
-                    print(f"  🔧 Fixed: {item} (made executable)")
-                    fixed += 1
-                else:
-                    issues.append(f"{item} not executable")
-
-        # Check Python syntax
-        if item.endswith(".py"):
-            try:
-                with open(filepath, "r") as f:
-                    ast.parse(f.read(), filename=item)
-            except SyntaxError as e:
-                issues.append(f"{item} syntax error: {e.msg} (line {e.lineno})")
+    hook_files = _get_hook_files(hooks_dir)
+    issues, fixed = _check_all_hooks(hook_files, fix, dry_run)
 
     if issues:
         print(f"  ⚠️  {len(issues)} issue(s):")
@@ -172,10 +206,7 @@ def check_hooks_health(dry_run, fix=False):
             print("  💡 Run with --fix to auto-repair")
         return False
 
-    hook_count = len([f for f in os.listdir(hooks_dir)
-                      if os.path.isfile(os.path.join(hooks_dir, f))
-                      and not f.startswith((".", "_"))])
-    print(f"  ✅ {hook_count} hooks healthy" + (f" ({fixed} fixed)" if fixed else ""))
+    print(f"  ✅ {len(hook_files)} hooks healthy" + (f" ({fixed} fixed)" if fixed else ""))
     return True
 
 
@@ -213,53 +244,59 @@ def check_ops_syntax(dry_run):
     return True
 
 
-def check_dependencies(dry_run):
-    """Scan scripts for imports and verify against requirements.txt."""
-    section("Dependencies", "📦")
-
-    # Auto-detect local modules from .claude subdirs
-    local_modules = {"core", "parallel", "lib"}  # 'lib' is a package reference
+def _get_local_modules() -> set[str]:
+    """Auto-detect local modules from .claude subdirs."""
+    local_modules = {"core", "parallel", "lib"}
     for subdir in ["lib", "agents", "ops", "hooks"]:
         mod_dir = os.path.join(_project_root, ".claude", subdir)
         if os.path.isdir(mod_dir):
             for f in os.listdir(mod_dir):
                 if f.endswith(".py") and not f.startswith("_"):
                     local_modules.add(f[:-3])
+    return local_modules
 
-    scripts_dir = os.path.join(_project_root, ".claude")
+
+def _collect_all_imports(scripts_dir: str) -> set[str]:
+    """Collect all imports from Python files in directory."""
     all_imports = set()
-
     for root, dirs, files in os.walk(scripts_dir):
         dirs[:] = [d for d in dirs if d not in {".venv", "__pycache__", ".ruff_cache"}]
         for file in files:
             if file.endswith(".py"):
                 imports = extract_imports_from_file(os.path.join(root, file))
                 all_imports.update(imports)
+    return all_imports
+
+
+def _load_requirements(requirements_file: str) -> set[str]:
+    """Load package names from requirements.txt."""
+    required = set()
+    if not os.path.exists(requirements_file):
+        return required
+    with open(requirements_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                pkg_name = re.split(r"[=<>!\[]", line)[0].strip()
+                required.add(pkg_name.lower())
+    return required
+
+
+def check_dependencies(dry_run):
+    """Scan scripts for imports and verify against requirements.txt."""
+    section("Dependencies", "📦")
+
+    local_modules = _get_local_modules()
+    all_imports = _collect_all_imports(os.path.join(_project_root, ".claude"))
 
     external_imports = {
         imp for imp in all_imports
-        if imp not in STDLIB_MODULES
-        and imp not in local_modules
-        and not imp.startswith("_")
+        if imp not in STDLIB_MODULES and imp not in local_modules and not imp.startswith("_")
     }
 
-    # Read requirements.txt
-    requirements_file = os.path.join(_project_root, ".claude", "requirements.txt")
-    required_packages = set()
+    required_packages = _load_requirements(os.path.join(_project_root, ".claude", "requirements.txt"))
 
-    if os.path.exists(requirements_file):
-        with open(requirements_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    pkg_name = re.split(r"[=<>!\[]", line)[0].strip()
-                    required_packages.add(pkg_name.lower())
-
-    missing = []
-    for imp in external_imports:
-        pkg_name = IMPORT_TO_PACKAGE.get(imp, imp)
-        if pkg_name.lower() not in required_packages:
-            missing.append(imp)
+    missing = [imp for imp in external_imports if IMPORT_TO_PACKAGE.get(imp, imp).lower() not in required_packages]
 
     if missing:
         print(f"  ⚠️  {len(missing)} potentially undocumented:")
@@ -271,50 +308,83 @@ def check_dependencies(dry_run):
     return True
 
 
-def check_tmp_dir(dry_run, fix=False):
-    """Check .claude/tmp/ for stale files."""
-    section("Temp Directory", "🧹")
-
-    tmp_dir = os.path.join(_project_root, ".claude", "tmp")
-
-    if not os.path.exists(tmp_dir):
-        print("  ℹ️  .claude/tmp/ does not exist")
-        return True
-
-    files = [f for f in os.listdir(tmp_dir)
-             if os.path.isfile(os.path.join(tmp_dir, f))]
-
-    if not files:
-        print("  ✅ Clean (empty)")
-        return True
-
-    cutoff = datetime.now() - timedelta(hours=24)
-    old_files = []
-
+def _find_stale_files(tmp_dir: str, files: list[str], cutoff_hours: int = 24) -> list[tuple[str, float]]:
+    """Find files older than cutoff. Returns list of (filename, age_hours)."""
+    cutoff = datetime.now() - timedelta(hours=cutoff_hours)
+    stale = []
     for fname in files:
         fpath = os.path.join(tmp_dir, fname)
         mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
         if mtime < cutoff:
             age_h = (datetime.now() - mtime).total_seconds() / 3600
-            old_files.append((fname, age_h))
+            stale.append((fname, age_h))
+    return stale
 
+
+def _clean_stale_files(tmp_dir: str, old_files: list[tuple[str, float]]) -> None:
+    """Delete stale files from tmp directory."""
+    for fname, _ in old_files:
+        os.remove(os.path.join(tmp_dir, fname))
+    print(f"  🧹 Cleaned {len(old_files)} stale files")
+
+
+def check_tmp_dir(dry_run, fix=False):
+    """Check .claude/tmp/ for stale files."""
+    section("Temp Directory", "🧹")
+
+    tmp_dir = os.path.join(_project_root, ".claude", "tmp")
+    if not os.path.exists(tmp_dir):
+        print("  ℹ️  .claude/tmp/ does not exist")
+        return True
+
+    files = [f for f in os.listdir(tmp_dir) if os.path.isfile(os.path.join(tmp_dir, f))]
+    if not files:
+        print("  ✅ Clean (empty)")
+        return True
+
+    old_files = _find_stale_files(tmp_dir, files)
     print(f"  📊 {len(files)} file(s), {len(old_files)} stale (>24h)")
 
-    if old_files:
-        if fix and not dry_run:
-            for fname, _ in old_files:
-                os.remove(os.path.join(tmp_dir, fname))
-            print(f"  🧹 Cleaned {len(old_files)} stale files")
-            return True
-        else:
-            for fname, age in old_files[:3]:
-                print(f"     - {fname} ({age:.0f}h old)")
-            if len(old_files) > 3:
-                print(f"     ... and {len(old_files) - 3} more")
-            print("  💡 Run with --fix to clean, or promote to ops/")
-            return False
+    if not old_files:
+        return True
 
-    return True
+    if fix and not dry_run:
+        _clean_stale_files(tmp_dir, old_files)
+        return True
+
+    for fname, age in old_files[:3]:
+        print(f"     - {fname} ({age:.0f}h old)")
+    if len(old_files) > 3:
+        print(f"     ... and {len(old_files) - 3} more")
+    print("  💡 Run with --fix to clean, or promote to ops/")
+    return False
+
+
+def _get_staged_filepaths(lines: list[str]) -> list[str]:
+    """Extract staged file paths from git porcelain output."""
+    paths = []
+    for line in lines:
+        if not line or line.startswith("??"):
+            continue
+        if len(line) < 3 or line[0] == " ":
+            continue  # Not staged in index
+        filepath = line[3:].strip()
+        if " -> " in filepath:  # rename
+            filepath = filepath.split(" -> ")[1]
+        paths.append(filepath)
+    return paths
+
+
+def _find_large_staged_files(filepaths: list[str], size_limit: int) -> list[tuple[str, float]]:
+    """Find files exceeding size limit. Returns list of (path, size_mb)."""
+    large = []
+    for filepath in filepaths:
+        full_path = os.path.join(_project_root, filepath)
+        if os.path.isfile(full_path):
+            size = os.path.getsize(full_path)
+            if size > size_limit:
+                large.append((filepath, size / 1024 / 1024))
+    return large
 
 
 def check_large_files(dry_run):
@@ -330,25 +400,8 @@ def check_large_files(dry_run):
             return True
 
         lines = result.stdout.strip().split("\n")
-        large_files = []
-        size_limit = 1024 * 1024  # 1MB
-
-        for line in lines:
-            if not line or line.startswith("??"):
-                continue
-            # Porcelain format: XY filepath (X=staged, Y=worktree)
-            # Only check actually staged files (X is not space)
-            if len(line) < 3 or line[0] == " ":
-                continue  # Not staged in index
-            filepath = line[3:].strip()
-            if " -> " in filepath:  # rename
-                filepath = filepath.split(" -> ")[1]
-
-            full_path = os.path.join(_project_root, filepath)
-            if os.path.isfile(full_path):
-                size = os.path.getsize(full_path)
-                if size > size_limit:
-                    large_files.append((filepath, size / 1024 / 1024))
+        staged_paths = _get_staged_filepaths(lines)
+        large_files = _find_large_staged_files(staged_paths, 1024 * 1024)
 
         if large_files:
             print(f"  ⚠️  {len(large_files)} large file(s) staged:")
@@ -432,6 +485,40 @@ def log_maintenance(dry_run):
         return True
 
 
+def _run_checks(dry_run: bool, fix: bool, quick: bool) -> list[str]:
+    """Run all health checks. Returns list of issue names."""
+    issues = []
+    checks = [
+        (check_git_status, [dry_run], "git status"),
+        (check_hooks_health, [dry_run, fix], "hooks health"),
+        (check_ops_syntax, [dry_run], "ops syntax"),
+        (check_dependencies, [dry_run], "dependencies"),
+        (check_tmp_dir, [dry_run, fix], "stale tmp files"),
+        (check_claude_md, [dry_run], "CLAUDE.md"),
+    ]
+    for check_fn, check_args, name in checks:
+        if not check_fn(*check_args):
+            issues.append(name)
+    if not quick and not check_large_files(dry_run):
+        issues.append("large files")
+    return issues
+
+
+def _print_summary(issues: list[str], fix: bool) -> None:
+    """Print final summary of check results."""
+    print("\n" + "=" * 60)
+    print("📊 SUMMARY")
+    print("=" * 60)
+    if issues:
+        print(f"  ⚠️  {len(issues)} area(s) need attention:")
+        for issue in issues:
+            print(f"     • {issue}")
+        if not fix:
+            print("\n  💡 Run with --fix to auto-repair fixable issues")
+    else:
+        print("  ✅ All checks passed!")
+
+
 def main():
     parser = setup_script(
         "The Janitor: Pre-commit health checks and project maintenance."
@@ -457,49 +544,13 @@ def main():
     if args.fix:
         print("🔧 FIX MODE: Will auto-repair issues")
 
-    issues = []
-
-    # Always run these
-    if not check_git_status(args.dry_run):
-        issues.append("git status")
-
-    if not check_hooks_health(args.dry_run, fix=args.fix):
-        issues.append("hooks health")
-
-    if not check_ops_syntax(args.dry_run):
-        issues.append("ops syntax")
-
-    if not check_dependencies(args.dry_run):
-        issues.append("dependencies")
-
-    if not check_tmp_dir(args.dry_run, fix=args.fix):
-        issues.append("stale tmp files")
-
-    if not check_claude_md(args.dry_run):
-        issues.append("CLAUDE.md")
-
-    # Slower checks (skip with --quick)
-    if not args.quick:
-        if not check_large_files(args.dry_run):
-            issues.append("large files")
-
-    # Log run
+    issues = _run_checks(args.dry_run, args.fix, args.quick)
     log_maintenance(args.dry_run)
-
-    # Summary
-    print("\n" + "=" * 60)
-    print("📊 SUMMARY")
-    print("=" * 60)
+    _print_summary(issues, args.fix)
 
     if issues:
-        print(f"  ⚠️  {len(issues)} area(s) need attention:")
-        for issue in issues:
-            print(f"     • {issue}")
-        if not args.fix:
-            print("\n  💡 Run with --fix to auto-repair fixable issues")
         finalize(success=False, message=f"Upkeep found {len(issues)} issue(s)")
     else:
-        print("  ✅ All checks passed!")
         finalize(success=True, message="Upkeep complete - project healthy")
 
 

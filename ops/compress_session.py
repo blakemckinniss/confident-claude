@@ -42,11 +42,9 @@ Usage:
 import json
 import sys
 import re
-import os
 from typing import Dict, Any, Set
 from pathlib import Path
 from hashlib import md5
-from glob import glob
 
 
 class PreservationCompressor:

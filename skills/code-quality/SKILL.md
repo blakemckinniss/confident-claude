@@ -29,34 +29,35 @@ audit.py <file_or_dir>
 ```
 Detects: SQL injection, XSS, hardcoded secrets, command injection, unsafe deserialization.
 
-### void.py / gaps.py - Completeness Check
-```bash
-void.py <file_or_dir>
-gaps.py <file_or_dir>
-```
-Detects: TODO/FIXME, missing CRUD, error handling gaps, unimplemented methods.
-
 ### drift.py - Style Consistency
 ```bash
 drift.py <file>
 ```
+Detects violations of established patterns/templates.
 
 ### upkeep.py - Pre-Commit Health
 ```bash
 upkeep.py
 ```
 
+### External Review
+```bash
+/cr [files]                    # CodeRabbit AI review
+mcp__pal__codereview          # PAL systematic review
+```
+
 ## Slash Commands
 - `/audit <file>` - Security audit
-- `/void <file>` - Completeness check
-- `/gaps <file>` - Find missing functionality
-- `/drift` - Style consistency
+- `/drift` - Style consistency check
 - `/cr` - CodeRabbit AI review
 
 ## Before Commit Workflow
 ```bash
-void <files>      # Check completeness
 audit <files>     # Security scan
 upkeep            # Health check
 git commit
 ```
+
+## See Also
+- **completeness-checking** skill - For gaps, stubs, missing implementations
+- **debugging** skill - For fixing issues found

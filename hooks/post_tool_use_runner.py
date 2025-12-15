@@ -84,39 +84,52 @@ from _hooks_tracking import SCRATCH_STATE_FILE, INFO_GAIN_STATE_FILE
 # =============================================================================
 
 
+def _load_state_file(path) -> dict | None:
+    """Load JSON state from file, returning None on error."""
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _save_state_file(path, data: dict) -> None:
+    """Save JSON state to file, silently failing on error."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data))
+    except (IOError, OSError):
+        pass
+
+
+def _load_runner_state() -> dict:
+    """Load persisted runner state from disk."""
+    runner_state = {}
+    if scratch := _load_state_file(SCRATCH_STATE_FILE):
+        runner_state["scratch_state"] = scratch
+    if info_gain := _load_state_file(INFO_GAIN_STATE_FILE):
+        runner_state["info_gain_state"] = info_gain
+    return runner_state
+
+
+def _save_runner_state(runner_state: dict) -> None:
+    """Save runner state to disk."""
+    if "scratch_state" in runner_state:
+        _save_state_file(SCRATCH_STATE_FILE, runner_state["scratch_state"])
+    if "info_gain_state" in runner_state:
+        _save_state_file(INFO_GAIN_STATE_FILE, runner_state["info_gain_state"])
+
+
 def run_hooks(data: dict, state: SessionState) -> dict:
     """Run all applicable hooks and return aggregated result."""
     tool_name = data.get("tool_name", "")
-
-    # Sort by priority
-    # Hooks pre-sorted at module load
-
-    # Shared state for hooks in this run - load persisted state from disk
-    runner_state = {}
-
-    # Load scratch state from disk (fixes persistence bug - was write-only)
-    if SCRATCH_STATE_FILE.exists():
-        try:
-            runner_state["scratch_state"] = json.loads(SCRATCH_STATE_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    # Load info gain state from disk (fixes persistence bug - was never persisted)
-    if INFO_GAIN_STATE_FILE.exists():
-        try:
-            runner_state["info_gain_state"] = json.loads(
-                INFO_GAIN_STATE_FILE.read_text()
-            )
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    # Collect contexts
+    runner_state = _load_runner_state()
     contexts = []
 
     for name, matcher, check_func, priority in HOOKS:
         if not matches_tool(matcher, tool_name):
             continue
-
         try:
             result = check_func(data, state, runner_state)
             if result.context:
@@ -124,27 +137,11 @@ def run_hooks(data: dict, state: SessionState) -> dict:
         except Exception as e:
             print(f"[post-runner] Hook {name} error: {e}", file=sys.stderr)
 
-    # Save scratch state to disk
-    if "scratch_state" in runner_state:
-        try:
-            SCRATCH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            SCRATCH_STATE_FILE.write_text(json.dumps(runner_state["scratch_state"]))
-        except (IOError, OSError):
-            pass
+    _save_runner_state(runner_state)
 
-    # Save info gain state to disk (was missing - only read/modified in memory)
-    if "info_gain_state" in runner_state:
-        try:
-            INFO_GAIN_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            INFO_GAIN_STATE_FILE.write_text(json.dumps(runner_state["info_gain_state"]))
-        except (IOError, OSError):
-            pass
-
-    # Build output
     output = {"hookSpecificOutput": {"hookEventName": "PostToolUse"}}
     if contexts:
         output["hookSpecificOutput"]["additionalContext"] = "\n\n".join(contexts[:5])
-
     return output
 
 

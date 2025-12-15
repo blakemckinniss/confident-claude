@@ -67,65 +67,78 @@ TOOLS = [
 ALLOWED_COMMANDS = {"git": ["git"], "grep": ["grep"], "find": ["find"], "wc": ["wc"],
                     "head": ["head"], "tail": ["tail"], "sort": ["sort"], "cat": ["cat"], "ls": ["ls"]}
 
-def execute_tool(name: str, input_data: dict) -> dict:
+
+def _tool_read_file(input_data: dict) -> dict:
+    path = input_data.get("path", "")
+    if ".." in path or path.startswith("/"):
+        return {"error": "Path traversal not allowed"}
+    try:
+        return {"content": open(os.path.join(_project_root, path)).read()[:50000]}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _tool_list_files(input_data: dict) -> dict:
     import glob as glob_module
+    pattern = input_data.get("pattern", "")
+    if ".." in pattern:
+        return {"error": "Path traversal not allowed"}
+    matches = glob_module.glob(os.path.join(_project_root, pattern), recursive=True)
+    matches = [os.path.relpath(m, _project_root) for m in matches if '.git' not in m]
+    return {"files": matches[:500]}
+
+
+def _tool_search_content(input_data: dict) -> dict:
     import re
+    pattern, path = input_data.get("pattern", ""), input_data.get("path", ".")
+    if ".." in path:
+        return {"error": "Path traversal not allowed"}
+    try:
+        regex = re.compile(pattern, re.IGNORECASE)
+    except re.error as e:
+        return {"error": f"Invalid regex: {e}"}
+    matches = []
+    for root, _, files in os.walk(os.path.join(_project_root, path)):
+        if '.git' in root:
+            continue
+        for fname in files:
+            try:
+                for i, line in enumerate(open(os.path.join(root, fname), errors='ignore'), 1):
+                    if regex.search(line):
+                        matches.append({"file": os.path.relpath(os.path.join(root, fname), _project_root), "line": i, "content": line.strip()[:200]})
+                        if len(matches) >= 100:
+                            return {"matches": matches}
+            except Exception:
+                pass
+    return {"matches": matches}
 
-    if name == "read_file":
-        path = input_data.get("path", "")
-        if ".." in path or path.startswith("/"):
-            return {"error": "Path traversal not allowed"}
-        full_path = os.path.join(_project_root, path)
-        try:
-            return {"content": open(full_path).read()[:50000]}
-        except Exception as e:
-            return {"error": str(e)}
 
-    elif name == "list_files":
-        pattern = input_data.get("pattern", "")
-        if ".." in pattern:
-            return {"error": "Path traversal not allowed"}
-        matches = glob_module.glob(os.path.join(_project_root, pattern), recursive=True)
-        matches = [os.path.relpath(m, _project_root) for m in matches if '.git' not in m]
-        return {"files": matches[:500]}
+def _tool_run_safe_command(input_data: dict) -> dict:
+    cmd_name, args = input_data.get("command", ""), input_data.get("args", [])
+    if cmd_name not in ALLOWED_COMMANDS:
+        return {"error": f"Command not allowed. Use: {list(ALLOWED_COMMANDS.keys())}"}
+    try:
+        result = subprocess.run(ALLOWED_COMMANDS[cmd_name] + list(args), capture_output=True, text=True, timeout=30, cwd=_project_root)
+        return {"stdout": result.stdout[:10000], "stderr": result.stderr[:2000], "exit_code": result.returncode}
+    except Exception as e:
+        return {"error": str(e)}
 
-    elif name == "search_content":
-        pattern, path = input_data.get("pattern", ""), input_data.get("path", ".")
-        if ".." in path:
-            return {"error": "Path traversal not allowed"}
-        try:
-            regex = re.compile(pattern, re.IGNORECASE)
-        except re.error as e:
-            return {"error": f"Invalid regex: {e}"}
-        matches = []
-        for root, _, files in os.walk(os.path.join(_project_root, path)):
-            if '.git' in root:
-                continue
-            for fname in files:
-                try:
-                    for i, line in enumerate(open(os.path.join(root, fname), errors='ignore'), 1):
-                        if regex.search(line):
-                            matches.append({"file": os.path.relpath(os.path.join(root, fname), _project_root), "line": i, "content": line.strip()[:200]})
-                            if len(matches) >= 100:
-                                return {"matches": matches}
-                except:
-                    pass
-        return {"matches": matches}
 
-    elif name == "run_safe_command":
-        cmd_name, args = input_data.get("command", ""), input_data.get("args", [])
-        if cmd_name not in ALLOWED_COMMANDS:
-            return {"error": f"Command not allowed. Use: {list(ALLOWED_COMMANDS.keys())}"}
-        try:
-            result = subprocess.run(ALLOWED_COMMANDS[cmd_name] + list(args), capture_output=True, text=True, timeout=30, cwd=_project_root)
-            return {"stdout": result.stdout[:10000], "stderr": result.stderr[:2000], "exit_code": result.returncode}
-        except Exception as e:
-            return {"error": str(e)}
+_TOOL_DISPATCH = {
+    "read_file": _tool_read_file,
+    "list_files": _tool_list_files,
+    "search_content": _tool_search_content,
+    "run_safe_command": _tool_run_safe_command,
+}
 
-    return {"error": f"Unknown tool: {name}"}
+
+def execute_tool(name: str, input_data: dict) -> dict:
+    handler = _TOOL_DISPATCH.get(name)
+    return handler(input_data) if handler else {"error": f"Unknown tool: {name}"}
 
 def call_api(task: str, model: str = DEFAULT_MODEL, max_tokens: int = 8192) -> str:
-    import urllib.request, urllib.error
+    import urllib.request
+    import urllib.error
 
     system = """You orchestrate tools via Python code. Return ONLY final consolidated results.
 Tools: read_file(path), list_files(pattern), search_content(pattern,path), run_safe_command(command,args)"""

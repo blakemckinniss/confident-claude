@@ -52,6 +52,14 @@ playwright.py --verify       # Check installation
 - `/bdg <cmd>` - Browser debugger
 - `/f <error>` - Fix console errors
 
+## Web Scraping (crawl4ai)
+
+For scraping external sites, use crawl4ai MCP (not bdg):
+```
+mcp__crawl4ai__crawl "<url>"   # Full JS rendering + bot bypass
+mcp__crawl4ai__search "<query>" # Search then crawl results
+```
+
 ## Common Workflows
 
 ### After CSS/UI Changes
@@ -65,4 +73,10 @@ bdg stop
 ```bash
 bdg console    # See errors
 bdg eval "window.onerror = (e) => console.log('ERROR:', e)"
+```
+
+### Scrape Protected Site
+```
+mcp__crawl4ai__crawl "https://protected-site.com"
+# Handles Cloudflare, CAPTCHAs, bot detection
 ```
