@@ -463,6 +463,118 @@ def get_recent_block_lessons(limit: int = 3) -> list[str]:
         return []
 
 
+def _build_project_context(project_context) -> str | None:
+    """Build project context string."""
+    if not project_context or not PROJECT_AWARE:
+        return None
+
+    proj_name = project_context.project_name
+    proj_type = project_context.project_type
+
+    if proj_type == "ephemeral":
+        return "💬 **MODE**: Ephemeral (no project context)"
+
+    lang = project_context.language or "unknown"
+    framework = project_context.framework
+    ctx_str = f"📁 **PROJECT**: {proj_name}"
+    if framework:
+        ctx_str += f" ({framework}/{lang})"
+    elif lang:
+        ctx_str += f" ({lang})"
+    return ctx_str
+
+
+def _build_session_summary(handoff: dict | None) -> list[str]:
+    """Build previous session summary parts."""
+    if not handoff:
+        return []
+
+    parts = []
+    summary = handoff.get("summary", "")
+    if summary:
+        parts.append(f"📋 **PREVIOUS SESSION**: {summary}")
+
+    blockers = handoff.get("blockers", [])
+    if blockers:
+        blocker_list = ", ".join(b.get("type", "unknown")[:20] for b in blockers[:2])
+        parts.append(f"🚧 **BLOCKERS**: {blocker_list}")
+
+    recent = handoff.get("recent_files", [])
+    if recent:
+        names = [Path(f).name for f in recent[:3]]
+        parts.append(f"📝 **RECENT FILES**: {', '.join(names)}")
+
+    return parts
+
+
+def _build_next_work_item(state, handoff: dict | None) -> str | None:
+    """Build next work item context."""
+    next_item = get_next_work_item(state)
+    if next_item:
+        item_type = next_item.get("type", "task")
+        desc = next_item.get("description", "")[:60]
+        priority = next_item.get("priority", 50)
+        start_feature(state, desc)
+        return f"🎯 **NEXT PRIORITY** [{item_type}|P{priority}]: {desc}"
+
+    # Fallback to handoff next_steps
+    if handoff:
+        next_steps = handoff.get("next_steps", [])
+        if next_steps:
+            desc = next_steps[0].get("description", "")[:60]
+            return f"🎯 **SUGGESTED**: {desc}"
+
+    return None
+
+
+def _build_recovery_point(handoff: dict | None) -> str | None:
+    """Build recovery point context."""
+    if not handoff:
+        return None
+
+    checkpoint = handoff.get("last_checkpoint")
+    if not checkpoint:
+        return None
+
+    cp_id = checkpoint.get("checkpoint_id", "")
+    commit = checkpoint.get("commit_hash", "")[:7]
+    if commit:
+        return f"💾 **RECOVERY POINT**: {cp_id} (commit: {commit})"
+    return None
+
+
+def _build_lessons_context(state, project_context) -> list[str]:
+    """Build lessons and calibration context."""
+    parts = []
+
+    # Block lessons (cross-session learning)
+    block_lessons = get_recent_block_lessons(limit=3)
+    if block_lessons:
+        parts.append("⚠️ **RECENT LESSONS**:")
+        parts.extend(f"  • {lesson}" for lesson in block_lessons)
+
+    # Confidence FP history
+    fp_warnings = get_confidence_fp_history(state)
+    if fp_warnings:
+        parts.append("🎯 **CONFIDENCE CALIBRATION** (reducers with high FP rates):")
+        parts.extend(f"  {warning}" for warning in fp_warnings)
+
+    # Contextual lessons
+    if PROJECT_AWARE and project_context and project_context.project_type != "ephemeral":
+        keywords = [k for k in [
+            project_context.language,
+            project_context.framework,
+            project_context.project_name,
+        ] if k]
+        if keywords:
+            lessons = get_contextual_lessons(keywords)
+            if lessons:
+                lesson_preview = lessons[0].get("content", "")[:50]
+                parts.append(f"💡 **WISDOM**: {lesson_preview}...")
+
+    return parts
+
+
 def build_onboarding_context(state, handoff: dict | None, project_context=None) -> str:
     """Build the session onboarding protocol context.
 
@@ -472,118 +584,23 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
     3. Verify baseline before implementing
 
     For autonomous agents, this is AUTOMATIC - no human input needed.
-
-    NEW: Project-aware onboarding surfaces project context for fast switching.
-    NEW: Infrastructure awareness prevents "create X" when X exists.
     """
-    parts = []
-
-    # === STEP 0.5: System Context ===
-    # Brief reminder of available tools (not a hard block)
-    parts.append(
+    parts = [
         "💻 **SYSTEM**: WSL2 global assistant @ /home/jinx | Full access | ~/projects/ for work | ~/ai/ for AI projects"
-    )
+    ]
 
-    # === STEP 0: Project Context (for multi-project swiss army knife) ===
-    if project_context and PROJECT_AWARE:
-        proj_name = project_context.project_name
-        proj_type = project_context.project_type
+    if ctx := _build_project_context(project_context):
+        parts.append(ctx)
 
-        if proj_type == "ephemeral":
-            parts.append("💬 **MODE**: Ephemeral (no project context)")
-        else:
-            lang = project_context.language or "unknown"
-            framework = project_context.framework
-            ctx_str = f"📁 **PROJECT**: {proj_name}"
-            if framework:
-                ctx_str += f" ({framework}/{lang})"
-            elif lang:
-                ctx_str += f" ({lang})"
-            parts.append(ctx_str)
+    parts.extend(_build_session_summary(handoff))
 
-    # === STEP 1: Previous Session Summary ===
-    if handoff:
-        summary = handoff.get("summary", "")
-        if summary:
-            parts.append(f"📋 **PREVIOUS SESSION**: {summary}")
+    if item := _build_next_work_item(state, handoff):
+        parts.append(item)
 
-        # Blockers from previous session
-        blockers = handoff.get("blockers", [])
-        if blockers:
-            blocker_list = ", ".join(
-                b.get("type", "unknown")[:20] for b in blockers[:2]
-            )
-            parts.append(f"🚧 **BLOCKERS**: {blocker_list}")
+    if recovery := _build_recovery_point(handoff):
+        parts.append(recovery)
 
-        # Recent files (context continuity)
-        recent = handoff.get("recent_files", [])
-        if recent:
-            names = [Path(f).name for f in recent[:3]]
-            parts.append(f"📝 **RECENT FILES**: {', '.join(names)}")
-
-    # === STEP 2: Auto-Select Next Work Item ===
-    next_item = get_next_work_item(state)
-    if next_item:
-        item_type = next_item.get("type", "task")
-        desc = next_item.get("description", "")[:60]
-        priority = next_item.get("priority", 50)
-        parts.append(f"🎯 **NEXT PRIORITY** [{item_type}|P{priority}]: {desc}")
-
-        # Auto-start this feature for tracking
-        start_feature(state, desc)
-    else:
-        # Check handoff next_steps as fallback
-        if handoff:
-            next_steps = handoff.get("next_steps", [])
-            if next_steps:
-                step = next_steps[0]
-                desc = step.get("description", "")[:60]
-                parts.append(f"🎯 **SUGGESTED**: {desc}")
-
-    # === STEP 3: Recovery Point ===
-    if handoff:
-        checkpoint = handoff.get("last_checkpoint")
-        if checkpoint:
-            cp_id = checkpoint.get("checkpoint_id", "")
-            commit = checkpoint.get("commit_hash", "")[:7]
-            if commit:
-                parts.append(f"💾 **RECOVERY POINT**: {cp_id} (commit: {commit})")
-
-    # === STEP 4: Recent Block Lessons (cross-session learning) ===
-    # These are lessons from hook blocks - prevents repeating mistakes
-    block_lessons = get_recent_block_lessons(limit=3)
-    if block_lessons:
-        parts.append("⚠️ **RECENT LESSONS**:")
-        for lesson in block_lessons:
-            parts.append(f"  • {lesson}")
-
-    # === STEP 4.5: Confidence FP History (LLM can't learn - inject as context) ===
-    # Since I have no persistent memory, inject FP history so I don't
-    # trigger the same false positives that frustrated users before
-    fp_warnings = get_confidence_fp_history(state)
-    if fp_warnings:
-        parts.append("🎯 **CONFIDENCE CALIBRATION** (reducers with high FP rates):")
-        for warning in fp_warnings:
-            parts.append(f"  {warning}")
-
-    # === STEP 5: Relevant Global Lessons (cross-project wisdom) ===
-    if (
-        PROJECT_AWARE
-        and project_context
-        and project_context.project_type != "ephemeral"
-    ):
-        # Get lessons relevant to this project's language/framework
-        keywords = [
-            project_context.language,
-            project_context.framework,
-            project_context.project_name,
-        ]
-        keywords = [k for k in keywords if k]
-        if keywords:
-            lessons = get_contextual_lessons(keywords)
-            if lessons:
-                lesson_preview = lessons[0].get("content", "")[:50]
-                parts.append(f"💡 **WISDOM**: {lesson_preview}...")
+    parts.extend(_build_lessons_context(state, project_context))
 
     return "\n".join(parts) if parts else ""
 
