@@ -3,9 +3,10 @@
 ## Purpose
 Claude Code hooks and ops infrastructure - a comprehensive workflow automation system for Claude Code CLI. This is a **global WSL2 system assistant framework** providing:
 
-- **79 hooks** across 4 main runners (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
-- **37 ops tools** for code quality, debugging, and workflow automation
-- **67 slash commands** for common development tasks for common development tasks
+- **52 registered hooks** across 4 main runners (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
+- **31 hook files** (10 runners/standalone, 21 helper modules)
+- **36 ops tools** for code quality, debugging, and workflow automation
+- **66 slash commands** for common development tasks
 - **Dynamic confidence system** that mechanically regulates Claude's behavior
 - **Beads task tracking** (`bd` CLI) for persistent cross-session task management
 
@@ -41,7 +42,7 @@ radon>=6.0.0           # Complexity analysis
 ### Hook System
 4 main runners orchestrate hooks:
 1. `pre_tool_use_runner.py` - Permission gates, blocking checks
-2. `post_tool_use_runner.py` - Tool output processing (~60 hooks)
+2. `post_tool_use_runner.py` - Tool output processing (1 registered hook, inline logic)
 3. `user_prompt_submit_runner.py` - Context injection, dispute detection
 4. `stop_runner.py` - Completion gate, cleanup
 

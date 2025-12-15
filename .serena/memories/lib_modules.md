@@ -2,16 +2,43 @@
 
 ## Overview
 
-The `lib/` directory contains shared Python modules used by hooks and ops scripts.
+The `lib/` directory contains 36 shared Python modules used by hooks and ops scripts. Major subsystems (confidence, session_state) have been split into modular components.
 
-## Module Index
+## Module Index (36 modules)
 
 ### Core Utilities
 | Module | Purpose |
 |--------|---------|
 | `core.py` | Script setup utilities (`setup_script`, `finalize`, `safe_execute`) |
-| `session_state.py` | Session state management (`SessionState` dataclass, persistence) |
-| `confidence.py` | Confidence system (reducers, increasers, zones, gates) |
+| `session_state.py` | Session state facade (imports from `_session_*` modules) |
+| `confidence.py` | Confidence system facade (imports from `_confidence_*` modules) |
+
+### Confidence System (Modular - 8 files)
+| Module | Purpose |
+|--------|---------|
+| `_confidence_constants.py` | Constants, thresholds, zone definitions |
+| `_confidence_disputes.py` | False positive handling, disputes |
+| `_confidence_engine.py` | Core apply logic, rate limiting |
+| `_confidence_increasers.py` | All increaser definitions |
+| `_confidence_realignment.py` | Mean reversion, trajectory prediction |
+| `_confidence_reducers.py` | All reducer definitions |
+| `_confidence_streaks.py` | Streak/momentum system |
+| `_confidence_tiers.py` | Zone/tier definitions, tool permissions |
+
+### Session State (Modular - 11 files)
+| Module | Purpose |
+|--------|---------|
+| `_session_batch.py` | Batch operation tracking |
+| `_session_confidence.py` | Confidence state integration |
+| `_session_constants.py` | Constants, defaults |
+| `_session_context.py` | Context building for prompts |
+| `_session_errors.py` | Error tracking, framework errors |
+| `_session_goals.py` | Goal tracking, drift detection |
+| `_session_persistence.py` | State I/O, file locking |
+| `_session_state_class.py` | Main SessionState dataclass |
+| `_session_thresholds.py` | Adaptive thresholds |
+| `_session_tracking.py` | File/edit tracking |
+| `_session_workflow.py` | Workflow state (checkpoints, handoff) |
 
 ### External LLM Integration
 | Module | Purpose |
@@ -32,7 +59,6 @@ The `lib/` directory contains shared Python modules used by hooks and ops script
 | Module | Purpose |
 |--------|---------|
 | `ast_analysis.py` | AST parsing and analysis |
-| `analysis/` | Analysis submodule |
 | `analysis/__init__.py` | Submodule init |
 | `analysis/god_component_detector.py` | Detects overloaded components |
 
@@ -59,78 +85,26 @@ The `lib/` directory contains shared Python modules used by hooks and ops script
 | `command_awareness.py` | Command/tool awareness |
 | `persona_parser.py` | Persona prompt parsing |
 
-## Key Module Details
+## Key Facade Modules
 
-### `core.py`
+### `confidence.py` (Facade)
+Imports and re-exports from `_confidence_*` modules:
 ```python
-def get_project_root() -> Path:
-    """Find .claude directory by walking up."""
-
-def setup_script(description: str, add_args=None) -> Namespace:
-    """Standard arg parsing with --debug, --dry-run."""
-
-def finalize(success: bool, message: str):
-    """Exit with proper code and message."""
-
-def safe_execute(cmd: list[str]) -> tuple[int, str, str]:
-    """Run subprocess safely, return (code, stdout, stderr)."""
+from _confidence_engine import apply_reducers, apply_increasers, apply_rate_limit
+from _confidence_tiers import get_tier_info, check_tool_permission
+from _confidence_realignment import apply_mean_reversion, predict_trajectory
+from _confidence_disputes import record_false_positive, get_adaptive_cooldown
+from _confidence_streaks import update_streak, get_streak_multiplier
 ```
 
-### `oracle.py`
+### `session_state.py` (Facade)
+Imports and re-exports from `_session_*` modules:
 ```python
-def call_openrouter(prompt: str, model: str = None) -> str:
-    """Call OpenRouter API with prompt."""
-
-def oracle_judge(proposal: str) -> str:
-    """ROI/value assessment persona."""
-
-def oracle_critic(idea: str) -> str:
-    """10th Man attack persona."""
-
-def oracle_skeptic(proposal: str) -> str:
-    """Hostile review persona."""
-```
-
-### `spark_core.py`
-```python
-def fire_synapses(topic: str) -> list[dict]:
-    """Retrieve associative memories for topic."""
-
-def query_lessons(keywords: list[str]) -> list[str]:
-    """Query lessons file for matching entries."""
-
-def query_session_history(query: str) -> list[dict]:
-    """Search session history via RAG."""
-```
-
-### `detour.py`
-```python
-def detect_detour(text: str) -> Optional[DetourPattern]:
-    """Detect blocking issue patterns in text."""
-
-def push_detour(detour: Detour):
-    """Push blocking issue onto stack."""
-
-def pop_detour() -> Optional[Detour]:
-    """Pop and resolve top detour."""
-
-def get_active_detours() -> list[Detour]:
-    """Get all unresolved detours."""
-```
-
-### `confidence.py`
-```python
-def apply_reducers(context: dict, state: SessionState) -> list[tuple]:
-    """Apply all reducers, return (name, delta, reason) tuples."""
-
-def apply_increasers(context: dict, state: SessionState) -> list[tuple]:
-    """Apply all increasers, return (name, delta, reason) tuples."""
-
-def get_tier_info(confidence: int) -> tuple[str, str, str]:
-    """Return (zone_name, emoji, capabilities)."""
-
-def check_tool_permission(tool: str, confidence: int, path: str) -> tuple[bool, str]:
-    """Check if tool is allowed at current confidence."""
+from _session_state_class import SessionState
+from _session_persistence import load_state, save_state, reset_state, update_state
+from _session_tracking import track_file_read, track_file_edit, track_file_create
+from _session_goals import set_goal, check_goal_drift
+from _session_errors import track_failure, check_sunk_cost
 ```
 
 ## Import Pattern
@@ -142,8 +116,8 @@ from pathlib import Path
 # Add lib to path (for scripts outside lib/)
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
-# Now import
+# Use facades for clean imports
 from core import setup_script, finalize
-from session_state import load_state, save_state
-from confidence import apply_reducers
+from session_state import load_state, save_state, SessionState
+from confidence import apply_reducers, get_tier_info
 ```

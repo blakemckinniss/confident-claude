@@ -5,7 +5,7 @@
 Slash commands are markdown files in `~/.claude/commands/` that wrap ops scripts and provide quick access to common operations.
 
 ## Location
-- **Commands**: `~/.claude/commands/*.md` (65 commands)
+- **Commands**: `~/.claude/commands/*.md` (66 commands)
 - **Ops scripts**: `~/.claude/ops/*.py` (underlying tools)
 
 ## Command File Format
@@ -36,7 +36,7 @@ allowed-tools: Bash
 | `$1`, `$2`, etc. | Positional arguments |
 | `$CLAUDE_PROJECT_DIR` | Project root directory |
 
-## Complete Command Index (65 commands)
+## Complete Command Index (66 commands)
 
 ### 🧠 Cognition & Decision Making
 | Command | Tool | Purpose |
@@ -107,6 +107,7 @@ allowed-tools: Bash
 | Command | Tool | Purpose |
 |---------|------|---------|
 | `/sysinfo` | sysinfo.py | WSL2 system health (CPU/mem/disk/services) |
+| `/deps` | dependency_check.py | Check dependencies (API keys, packages, binaries) |
 | `/inventory` | inventory.py | Scan available binaries and system tools |
 | `/housekeeping` | housekeeping.py | Manage .claude disk space |
 | `/bdg` | bdg.py | Browser Debugger - Chrome DevTools Protocol CLI |

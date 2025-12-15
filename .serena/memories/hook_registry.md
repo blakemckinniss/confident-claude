@@ -9,10 +9,10 @@ Hooks are registered via decorator and stored in the `HOOKS` list. The runner ex
 ### Runners (4 main entry points)
 | File | Event | Purpose |
 |------|-------|---------|
-| `post_tool_use_runner.py` | PostToolUse | ~60 hooks for tool output processing |
-| `pre_tool_use_runner.py` | PreToolUse | Permission gates, blocking checks |
-| `user_prompt_submit_runner.py` | UserPromptSubmit | Context injection, dispute detection |
-| `stop_runner.py` | Stop | Completion gate, cleanup |
+| `post_tool_use_runner.py` | PostToolUse | 1 hook (confidence tracking), bulk logic moved to inline |
+| `pre_tool_use_runner.py` | PreToolUse | 38 hooks for permission gates, blocking checks |
+| `user_prompt_submit_runner.py` | UserPromptSubmit | 1 hook, context injection via _prompt_* modules |
+| `stop_runner.py` | Stop | 12 hooks for completion gate, cleanup |
 
 ### Additional Runners
 | File | Event | Purpose |
@@ -23,7 +23,12 @@ Hooks are registered via decorator and stored in the `HOOKS` list. The runner ex
 | `pre_compact.py` | PreCompact | Pre-compaction processing |
 | `statusline.py` | Statusline | Status bar rendering |
 
-### Helper Modules (Private)
+### Standalone Hook Files
+| File | Purpose |
+|------|---------|
+| `dependency_check.py` | Dependency validation (API keys, packages, binaries) |
+
+### Helper Modules (Private - 21 files)
 | File | Purpose |
 |------|---------|
 | `_hook_result.py` | HookResult class (approve/deny/none) |
