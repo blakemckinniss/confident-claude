@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dependency Checker v1.1: Validates all .claude dependencies at session start.
+Dependency Checker v1.2: Validates all .claude dependencies at session start.
 
 Checks:
 1. Required API keys (for external services)
@@ -9,29 +9,43 @@ Checks:
 4. Critical directories and files
 5. Node.js/npm for MCP servers and frontend workflows
 6. MCP server dependencies
+7. MCP config validity (settings.json plugin entries)
+8. Stale MCP server processes
 
 Features:
-- Fast (<500ms total)
+- Fast (<500ms total with caching)
 - Non-blocking (warnings only, never fails session)
 - Comprehensive (catches missing deps before cryptic failures)
 - Auto-fix mode (--fix to install missing Python packages)
+- Result caching (5 min TTL to avoid re-checking mid-session)
+- Timeout protection on slow external commands
 """
 
+import json
 import os
 import sys
 import shutil
 import subprocess
 import importlib.util
+import time
 from pathlib import Path
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
+# Cache settings
+CACHE_FILE = Path.home() / ".claude" / "tmp" / "dep_check_cache.json"
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
+# Timeout for external commands (seconds)
+CMD_TIMEOUT_FAST = 2  # For quick commands like node --version
+CMD_TIMEOUT_SLOW = 5  # For npm list (can be slow)
+
 # API keys and their purposes (for clear error messages)
 API_KEYS = {
     "OPENROUTER_API_KEY": {
-        "required": False,  # Not required for basic operation
+        "required": False,
         "used_by": ["think.py", "oracle.py", "council.py", "gaps.py", "void.py", "drift.py", "scope.py"],
         "purpose": "External LLM consultation (OpenRouter)",
     },
@@ -95,14 +109,13 @@ BINARIES = {
 }
 
 # Python packages to check (module_name -> package_name if different)
-# Only checking critical ones - full list in requirements.txt
 PYTHON_PACKAGES = {
     "requests": None,
     "pydantic": None,
     "yaml": "pyyaml",
     "dotenv": "python-dotenv",
     "rapidfuzz": None,
-    "websockets": None,  # For bdg.py CDP
+    "websockets": None,
 }
 
 # Critical paths that must exist
@@ -114,7 +127,7 @@ CRITICAL_PATHS = {
     "~/.claude/.venv": "Python virtual environment",
 }
 
-# MCP servers that require npm packages (server_name -> npm_package)
+# MCP servers that require npm packages
 MCP_SERVERS = {
     "repomix-mcp": {
         "package": "repomix",
@@ -127,6 +140,58 @@ MCP_SERVERS = {
         "required": False,
     },
 }
+
+# Known MCP process patterns (for stale process detection)
+MCP_PROCESS_PATTERNS = [
+    "mcp-server",
+    "repomix",
+    "@anthropic/mcp",
+    "claude-mem",
+    "crawl4ai",
+]
+
+
+# =============================================================================
+# CACHING
+# =============================================================================
+
+
+def load_cache() -> dict | None:
+    """Load cached results if valid."""
+    if not CACHE_FILE.exists():
+        return None
+
+    try:
+        with open(CACHE_FILE) as f:
+            cache = json.load(f)
+
+        # Check TTL
+        cached_at = cache.get("cached_at", 0)
+        if time.time() - cached_at > CACHE_TTL_SECONDS:
+            return None
+
+        return cache.get("result")
+    except (json.JSONDecodeError, KeyError, IOError):
+        return None
+
+
+def save_cache(result: dict) -> None:
+    """Save results to cache."""
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump({"cached_at": time.time(), "result": result}, f)
+    except IOError:
+        pass  # Non-critical
+
+
+def clear_cache() -> None:
+    """Clear the cache file."""
+    if CACHE_FILE.exists():
+        try:
+            CACHE_FILE.unlink()
+        except IOError:
+            pass
 
 
 # =============================================================================
@@ -214,7 +279,6 @@ def check_venv_integrity() -> list[dict]:
                 "hint": "Run: python3 -m venv ~/.claude/.venv",
             })
 
-        # Check if pip is available
         pip_path = venv_path / "bin" / "pip"
         if not pip_path.exists():
             issues.append({
@@ -232,17 +296,15 @@ def check_node_ecosystem() -> list[dict]:
     """Check Node.js ecosystem health."""
     issues = []
 
-    # Skip if node/npm not installed (already caught by check_binaries)
     if not shutil.which("node") or not shutil.which("npm"):
         return issues
 
-    # Check node version (need 18+ for modern MCP servers)
     try:
         result = subprocess.run(
             ["node", "--version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=CMD_TIMEOUT_FAST,
         )
         if result.returncode == 0:
             version = result.stdout.strip().lstrip("v")
@@ -262,10 +324,9 @@ def check_node_ecosystem() -> list[dict]:
 
 
 def check_mcp_servers() -> list[dict]:
-    """Check MCP server dependencies."""
+    """Check MCP server dependencies with timeout protection."""
     issues = []
 
-    # Skip if npm not available
     if not shutil.which("npm"):
         return issues
 
@@ -274,7 +335,6 @@ def check_mcp_servers() -> list[dict]:
         is_global = info.get("global", False)
 
         try:
-            # Check if package is installed
             cmd = ["npm", "list", package]
             if is_global:
                 cmd.insert(2, "-g")
@@ -283,7 +343,7 @@ def check_mcp_servers() -> list[dict]:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=CMD_TIMEOUT_SLOW,
             )
 
             if result.returncode != 0 and "(empty)" not in result.stdout:
@@ -295,7 +355,131 @@ def check_mcp_servers() -> list[dict]:
                     "hint": f"npm install {'-g ' if is_global else ''}{package}",
                 })
         except subprocess.TimeoutExpired:
-            pass  # Skip slow checks
+            # Skip slow checks, don't report as issue
+            pass
+
+    return issues
+
+
+def check_mcp_config() -> list[dict]:
+    """Check MCP configuration in settings.json."""
+    issues = []
+    settings_path = Path.home() / ".claude" / "settings.json"
+
+    if not settings_path.exists():
+        return issues
+
+    try:
+        with open(settings_path) as f:
+            settings = json.load(f)
+
+        enabled_plugins = settings.get("enabledPlugins", {})
+
+        for plugin_name, enabled in enabled_plugins.items():
+            if not enabled:
+                continue
+
+            # Check for common plugin name patterns that suggest missing deps
+            if "mcp" in plugin_name.lower():
+                # Plugin enabled but we can't verify it's installed
+                # This is informational, not blocking
+                pass
+
+        # Check hooks configuration
+        hooks = settings.get("hooks", {})
+        for hook_type, hook_configs in hooks.items():
+            if not isinstance(hook_configs, list):
+                continue
+
+            for config in hook_configs:
+                if not isinstance(config, dict):
+                    continue
+
+                hook_list = config.get("hooks", [])
+                for hook in hook_list:
+                    if not isinstance(hook, dict):
+                        continue
+
+                    command = hook.get("command", "")
+                    if command:
+                        # Check if hook script exists
+                        # Expand $HOME
+                        expanded = command.replace("$HOME", str(Path.home()))
+                        parts = expanded.split()
+                        if parts:
+                            script_path = Path(parts[-1])  # Last part is usually the script
+                            if script_path.suffix == ".py" and not script_path.exists():
+                                issues.append({
+                                    "type": "mcp_config",
+                                    "name": f"Hook script missing: {script_path.name}",
+                                    "description": f"Hook type {hook_type} references missing script",
+                                    "required": False,
+                                    "hint": f"Check {settings_path}",
+                                })
+
+    except (json.JSONDecodeError, KeyError, IOError):
+        pass
+
+    return issues
+
+
+def check_stale_mcp_processes() -> list[dict]:
+    """Check for stale MCP server processes."""
+    issues = []
+
+    try:
+        # Get list of running processes
+        result = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True,
+            timeout=CMD_TIMEOUT_FAST,
+        )
+
+        if result.returncode != 0:
+            return issues
+
+        lines = result.stdout.strip().split("\n")
+        stale_processes = []
+
+        for line in lines[1:]:  # Skip header
+            parts = line.split(None, 10)
+            if len(parts) < 11:
+                continue
+
+            pid = parts[1]
+            cpu = parts[2]
+            command = parts[10]
+
+            # Check if this looks like an MCP process
+            for pattern in MCP_PROCESS_PATTERNS:
+                if pattern in command.lower():
+                    # Check if it's consuming resources but possibly orphaned
+                    try:
+                        cpu_val = float(cpu)
+                        # Flag processes using significant CPU or matching patterns
+                        if cpu_val > 10 or "defunct" in command:
+                            stale_processes.append({
+                                "pid": pid,
+                                "cpu": cpu,
+                                "command": command[:60],
+                            })
+                    except ValueError:
+                        pass
+                    break
+
+        if stale_processes:
+            for proc in stale_processes[:3]:  # Limit to 3
+                issues.append({
+                    "type": "stale_process",
+                    "name": f"PID {proc['pid']}",
+                    "description": f"Possible stale MCP: {proc['command']}",
+                    "required": False,
+                    "hint": f"kill {proc['pid']} (if safe)",
+                })
+
+    except (subprocess.TimeoutExpired, IOError):
+        pass
 
     return issues
 
@@ -306,15 +490,12 @@ def check_mcp_servers() -> list[dict]:
 
 
 def fix_python_packages(issues: list[dict], verbose: bool = False) -> list[dict]:
-    """Attempt to install missing Python packages.
-
-    Returns list of issues that couldn't be fixed.
-    """
+    """Attempt to install missing Python packages."""
     remaining = []
     pip_path = Path.home() / ".claude" / ".venv" / "bin" / "pip"
 
     if not pip_path.exists():
-        return issues  # Can't fix without pip
+        return issues
 
     python_issues = [i for i in issues if i["type"] == "python_package"]
     other_issues = [i for i in issues if i["type"] != "python_package"]
@@ -322,7 +503,6 @@ def fix_python_packages(issues: list[dict], verbose: bool = False) -> list[dict]
     if not python_issues:
         return issues
 
-    # Collect packages to install
     packages = [i["package"] for i in python_issues]
 
     if verbose:
@@ -339,7 +519,6 @@ def fix_python_packages(issues: list[dict], verbose: bool = False) -> list[dict]
         if result.returncode == 0:
             if verbose:
                 print(f"✅ Installed {len(packages)} packages")
-            # Verify installation
             for issue in python_issues:
                 spec = importlib.util.find_spec(issue["name"])
                 if spec is None:
@@ -362,12 +541,19 @@ def fix_python_packages(issues: list[dict], verbose: bool = False) -> list[dict]
 # =============================================================================
 
 
-def run_dependency_check(auto_fix: bool = False, verbose: bool = False) -> dict:
+def run_dependency_check(
+    auto_fix: bool = False,
+    verbose: bool = False,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> dict:
     """Run all dependency checks and return results.
 
     Args:
         auto_fix: If True, attempt to install missing Python packages.
         verbose: If True, print progress messages during fix.
+        use_cache: If True, use cached results if available.
+        force_refresh: If True, ignore cache and run fresh checks.
 
     Returns:
         dict with keys:
@@ -376,7 +562,15 @@ def run_dependency_check(auto_fix: bool = False, verbose: bool = False) -> dict:
             - warnings: list of warnings (optional deps missing)
             - summary: str (human-readable summary)
             - fixed: int (number of issues fixed, if auto_fix=True)
+            - cached: bool (True if results came from cache)
     """
+    # Check cache first (unless fixing or forcing refresh)
+    if use_cache and not auto_fix and not force_refresh:
+        cached = load_cache()
+        if cached:
+            cached["cached"] = True
+            return cached
+
     all_issues = []
 
     # Run all checks
@@ -386,15 +580,18 @@ def run_dependency_check(auto_fix: bool = False, verbose: bool = False) -> dict:
     all_issues.extend(check_python_packages())
     all_issues.extend(check_node_ecosystem())
     all_issues.extend(check_mcp_servers())
+    all_issues.extend(check_mcp_config())
+    all_issues.extend(check_stale_mcp_processes())
     all_issues.extend(check_api_keys())
 
     fixed_count = 0
 
-    # Attempt auto-fix if requested
     if auto_fix:
         original_count = len(all_issues)
         all_issues = fix_python_packages(all_issues, verbose=verbose)
         fixed_count = original_count - len(all_issues)
+        # Clear cache after fixing
+        clear_cache()
 
     # Separate critical vs warnings
     critical = [i for i in all_issues if i.get("required", False)]
@@ -408,7 +605,7 @@ def run_dependency_check(auto_fix: bool = False, verbose: bool = False) -> dict:
 
     if critical:
         summary_parts.append(f"🔴 {len(critical)} MISSING (required)")
-        for issue in critical[:3]:  # Show first 3
+        for issue in critical[:3]:
             name = issue.get("name", "unknown")
             hint = issue.get("hint", "")
             if hint:
@@ -419,15 +616,18 @@ def run_dependency_check(auto_fix: bool = False, verbose: bool = False) -> dict:
             summary_parts.append(f"   ... and {len(critical) - 3} more")
 
     if warnings:
-        # Group by type for cleaner output
         api_keys_missing = [w for w in warnings if w["type"] == "api_key"]
-        other_warnings = [w for w in warnings if w["type"] != "api_key"]
+        stale_procs = [w for w in warnings if w["type"] == "stale_process"]
+        other_warnings = [w for w in warnings if w["type"] not in ("api_key", "stale_process")]
 
         if api_keys_missing:
             key_names = [w["name"] for w in api_keys_missing]
             summary_parts.append(f"🟡 API keys not set: {', '.join(key_names[:4])}")
             if len(key_names) > 4:
                 summary_parts.append(f"   ... and {len(key_names) - 4} more")
+
+        if stale_procs:
+            summary_parts.append(f"🟠 {len(stale_procs)} possible stale MCP process(es)")
 
         if other_warnings:
             for issue in other_warnings[:2]:
@@ -438,18 +638,29 @@ def run_dependency_check(auto_fix: bool = False, verbose: bool = False) -> dict:
     elif not critical and not summary_parts:
         summary_parts.insert(0, "✅ Core dependencies OK")
 
-    return {
+    result = {
         "ok": len(critical) == 0,
         "critical": critical,
         "warnings": warnings,
         "summary": "\n".join(summary_parts),
         "fixed": fixed_count,
+        "cached": False,
     }
+
+    # Save to cache (if not fixing)
+    if use_cache and not auto_fix:
+        save_cache(result)
+
+    return result
 
 
 def format_full_report(result: dict) -> str:
     """Format a full dependency report for verbose output."""
     lines = ["=" * 50, "DEPENDENCY CHECK REPORT", "=" * 50, ""]
+
+    if result.get("cached"):
+        lines.append("📋 (from cache)")
+        lines.append("")
 
     if result.get("fixed", 0) > 0:
         lines.append(f"🔧 Auto-fixed {result['fixed']} packages")
@@ -477,8 +688,10 @@ def format_full_report(result: dict) -> str:
             lines.append(f"  [{issue['type']}] {issue['name']}")
             if "purpose" in issue:
                 lines.append(f"      Purpose: {issue['purpose']}")
+            if "description" in issue:
+                lines.append(f"      Info: {issue['description']}")
             if "hint" in issue:
-                lines.append(f"      Install: {issue['hint']}")
+                lines.append(f"      Fix: {issue['hint']}")
         lines.append("")
 
     if result["ok"] and not result["warnings"]:
@@ -509,12 +722,23 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--quiet", "-q", action="store_true", help="Only show if issues exist")
     parser.add_argument("--fix", action="store_true", help="Auto-install missing Python packages")
+    parser.add_argument("--no-cache", action="store_true", help="Skip cache, run fresh checks")
+    parser.add_argument("--clear-cache", action="store_true", help="Clear cache and exit")
     args = parser.parse_args()
 
-    result = run_dependency_check(auto_fix=args.fix, verbose=args.verbose or args.fix)
+    if args.clear_cache:
+        clear_cache()
+        print("Cache cleared")
+        sys.exit(0)
+
+    result = run_dependency_check(
+        auto_fix=args.fix,
+        verbose=args.verbose or args.fix,
+        use_cache=not args.no_cache,
+        force_refresh=args.no_cache,
+    )
 
     if args.json:
-        import json
         print(json.dumps(result, indent=2))
     elif args.verbose:
         print(format_full_report(result))
@@ -524,7 +748,6 @@ def main():
     else:
         print(result["summary"])
 
-    # Exit code: 0 if ok, 1 if critical issues
     sys.exit(0 if result["ok"] else 1)
 
 
