@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dependency Checker v1.2: Validates all .claude dependencies at session start.
+Dependency Checker v1.3: Validates all .claude dependencies at session start.
 
 Checks:
 1. Required API keys (for external services)
@@ -11,6 +11,7 @@ Checks:
 6. MCP server dependencies
 7. MCP config validity (settings.json plugin entries)
 8. Stale MCP server processes
+9. Installed plugins (valid paths and structure)
 
 Features:
 - Fast (<500ms total with caching)
@@ -46,7 +47,15 @@ CMD_TIMEOUT_SLOW = 5  # For npm list (can be slow)
 API_KEYS = {
     "OPENROUTER_API_KEY": {
         "required": False,
-        "used_by": ["think.py", "oracle.py", "council.py", "gaps.py", "void.py", "drift.py", "scope.py"],
+        "used_by": [
+            "think.py",
+            "oracle.py",
+            "council.py",
+            "gaps.py",
+            "void.py",
+            "drift.py",
+            "scope.py",
+        ],
         "purpose": "External LLM consultation (OpenRouter)",
     },
     "TAVILY_API_KEY": {
@@ -205,13 +214,15 @@ def check_api_keys() -> list[dict]:
     for key, info in API_KEYS.items():
         value = os.environ.get(key, "").strip()
         if not value:
-            issues.append({
-                "type": "api_key",
-                "name": key,
-                "required": info["required"],
-                "purpose": info["purpose"],
-                "used_by": info["used_by"],
-            })
+            issues.append(
+                {
+                    "type": "api_key",
+                    "name": key,
+                    "required": info["required"],
+                    "purpose": info["purpose"],
+                    "used_by": info["used_by"],
+                }
+            )
     return issues
 
 
@@ -239,12 +250,14 @@ def check_python_packages() -> list[dict]:
     for module_name, package_name in PYTHON_PACKAGES.items():
         spec = importlib.util.find_spec(module_name)
         if spec is None:
-            issues.append({
-                "type": "python_package",
-                "name": module_name,
-                "package": package_name or module_name,
-                "required": True,
-            })
+            issues.append(
+                {
+                    "type": "python_package",
+                    "name": module_name,
+                    "package": package_name or module_name,
+                    "required": True,
+                }
+            )
     return issues
 
 
@@ -254,12 +267,14 @@ def check_critical_paths() -> list[dict]:
     for path_str, description in CRITICAL_PATHS.items():
         path = Path(path_str).expanduser()
         if not path.exists():
-            issues.append({
-                "type": "path",
-                "name": str(path),
-                "description": description,
-                "required": True,
-            })
+            issues.append(
+                {
+                    "type": "path",
+                    "name": str(path),
+                    "description": description,
+                    "required": True,
+                }
+            )
     return issues
 
 
@@ -271,23 +286,27 @@ def check_venv_integrity() -> list[dict]:
     if venv_path.exists():
         python_path = venv_path / "bin" / "python"
         if not python_path.exists():
-            issues.append({
-                "type": "venv",
-                "name": "venv python",
-                "description": "Virtual environment exists but python binary missing",
-                "required": True,
-                "hint": "Run: python3 -m venv ~/.claude/.venv",
-            })
+            issues.append(
+                {
+                    "type": "venv",
+                    "name": "venv python",
+                    "description": "Virtual environment exists but python binary missing",
+                    "required": True,
+                    "hint": "Run: python3 -m venv ~/.claude/.venv",
+                }
+            )
 
         pip_path = venv_path / "bin" / "pip"
         if not pip_path.exists():
-            issues.append({
-                "type": "venv",
-                "name": "venv pip",
-                "description": "Virtual environment missing pip",
-                "required": True,
-                "hint": "Run: ~/.claude/.venv/bin/python -m ensurepip",
-            })
+            issues.append(
+                {
+                    "type": "venv",
+                    "name": "venv pip",
+                    "description": "Virtual environment missing pip",
+                    "required": True,
+                    "hint": "Run: ~/.claude/.venv/bin/python -m ensurepip",
+                }
+            )
 
     return issues
 
@@ -310,13 +329,15 @@ def check_node_ecosystem() -> list[dict]:
             version = result.stdout.strip().lstrip("v")
             major = int(version.split(".")[0])
             if major < 18:
-                issues.append({
-                    "type": "node_version",
-                    "name": f"Node.js {version}",
-                    "description": f"Node.js {major}.x is outdated, MCP servers need 18+",
-                    "required": False,
-                    "hint": "Update Node.js to v18 or newer",
-                })
+                issues.append(
+                    {
+                        "type": "node_version",
+                        "name": f"Node.js {version}",
+                        "description": f"Node.js {major}.x is outdated, MCP servers need 18+",
+                        "required": False,
+                        "hint": "Update Node.js to v18 or newer",
+                    }
+                )
     except (subprocess.TimeoutExpired, ValueError, IndexError):
         pass
 
@@ -347,13 +368,15 @@ def check_mcp_servers() -> list[dict]:
             )
 
             if result.returncode != 0 and "(empty)" not in result.stdout:
-                issues.append({
-                    "type": "mcp_server",
-                    "name": server_name,
-                    "package": package,
-                    "required": info.get("required", False),
-                    "hint": f"npm install {'-g ' if is_global else ''}{package}",
-                })
+                issues.append(
+                    {
+                        "type": "mcp_server",
+                        "name": server_name,
+                        "package": package,
+                        "required": info.get("required", False),
+                        "hint": f"npm install {'-g ' if is_global else ''}{package}",
+                    }
+                )
         except subprocess.TimeoutExpired:
             # Skip slow checks, don't report as issue
             pass
@@ -407,15 +430,19 @@ def check_mcp_config() -> list[dict]:
                         expanded = command.replace("$HOME", str(Path.home()))
                         parts = expanded.split()
                         if parts:
-                            script_path = Path(parts[-1])  # Last part is usually the script
+                            script_path = Path(
+                                parts[-1]
+                            )  # Last part is usually the script
                             if script_path.suffix == ".py" and not script_path.exists():
-                                issues.append({
-                                    "type": "mcp_config",
-                                    "name": f"Hook script missing: {script_path.name}",
-                                    "description": f"Hook type {hook_type} references missing script",
-                                    "required": False,
-                                    "hint": f"Check {settings_path}",
-                                })
+                                issues.append(
+                                    {
+                                        "type": "mcp_config",
+                                        "name": f"Hook script missing: {script_path.name}",
+                                        "description": f"Hook type {hook_type} references missing script",
+                                        "required": False,
+                                        "hint": f"Check {settings_path}",
+                                    }
+                                )
 
     except (json.JSONDecodeError, KeyError, IOError):
         pass
@@ -459,27 +486,123 @@ def check_stale_mcp_processes() -> list[dict]:
                         cpu_val = float(cpu)
                         # Flag processes using significant CPU or matching patterns
                         if cpu_val > 10 or "defunct" in command:
-                            stale_processes.append({
-                                "pid": pid,
-                                "cpu": cpu,
-                                "command": command[:60],
-                            })
+                            stale_processes.append(
+                                {
+                                    "pid": pid,
+                                    "cpu": cpu,
+                                    "command": command[:60],
+                                }
+                            )
                     except ValueError:
                         pass
                     break
 
         if stale_processes:
             for proc in stale_processes[:3]:  # Limit to 3
-                issues.append({
-                    "type": "stale_process",
-                    "name": f"PID {proc['pid']}",
-                    "description": f"Possible stale MCP: {proc['command']}",
-                    "required": False,
-                    "hint": f"kill {proc['pid']} (if safe)",
-                })
+                issues.append(
+                    {
+                        "type": "stale_process",
+                        "name": f"PID {proc['pid']}",
+                        "description": f"Possible stale MCP: {proc['command']}",
+                        "required": False,
+                        "hint": f"kill {proc['pid']} (if safe)",
+                    }
+                )
 
     except (subprocess.TimeoutExpired, IOError):
         pass
+
+    return issues
+
+
+def check_installed_plugins() -> list[dict]:
+    """Check that installed plugins have valid install paths and structure."""
+    issues = []
+    plugins_file = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+
+    if not plugins_file.exists():
+        return issues
+
+    try:
+        with open(plugins_file) as f:
+            data = json.load(f)
+
+        plugins = data.get("plugins", {})
+
+        for plugin_id, installations in plugins.items():
+            if not isinstance(installations, list):
+                continue
+
+            for install in installations:
+                if not isinstance(install, dict):
+                    continue
+
+                install_path = install.get("installPath", "")
+                version = install.get("version", "unknown")
+
+                if not install_path:
+                    issues.append(
+                        {
+                            "type": "plugin",
+                            "name": f"Plugin {plugin_id}",
+                            "description": "Missing installPath in installed_plugins.json",
+                            "required": False,
+                            "hint": "Re-install the plugin",
+                        }
+                    )
+                    continue
+
+                path = Path(install_path)
+                if not path.exists():
+                    issues.append(
+                        {
+                            "type": "plugin",
+                            "name": f"Plugin {plugin_id} v{version}",
+                            "description": f"Install path missing: {install_path}",
+                            "required": False,
+                            "hint": "Re-install the plugin or remove from installed_plugins.json",
+                        }
+                    )
+                    continue
+
+                # Check for at least one expected plugin component
+                has_skills = (path / "skills").is_dir()
+                has_agents = (path / "agents").is_dir()
+                has_commands = (path / "commands").is_dir()
+                has_hooks = (path / "hooks").is_dir()
+                has_mcp = (path / ".mcp.json").is_file()
+                has_plugin_dir = (path / ".claude-plugin").is_dir()
+
+                if not any(
+                    [
+                        has_skills,
+                        has_agents,
+                        has_commands,
+                        has_hooks,
+                        has_mcp,
+                        has_plugin_dir,
+                    ]
+                ):
+                    issues.append(
+                        {
+                            "type": "plugin",
+                            "name": f"Plugin {plugin_id} v{version}",
+                            "description": "No recognized plugin components (skills/, agents/, commands/, hooks/, .mcp.json)",
+                            "required": False,
+                            "hint": f"Check plugin structure at {install_path}",
+                        }
+                    )
+
+    except (json.JSONDecodeError, KeyError, IOError) as e:
+        issues.append(
+            {
+                "type": "plugin",
+                "name": "installed_plugins.json",
+                "description": f"Failed to parse: {e}",
+                "required": False,
+                "hint": "Check file format or delete to reset",
+            }
+        )
 
     return issues
 
@@ -583,6 +706,7 @@ def run_dependency_check(
     all_issues.extend(check_mcp_config())
     all_issues.extend(check_stale_mcp_processes())
     all_issues.extend(check_api_keys())
+    all_issues.extend(check_installed_plugins())
 
     fixed_count = 0
 
@@ -618,7 +742,9 @@ def run_dependency_check(
     if warnings:
         api_keys_missing = [w for w in warnings if w["type"] == "api_key"]
         stale_procs = [w for w in warnings if w["type"] == "stale_process"]
-        other_warnings = [w for w in warnings if w["type"] not in ("api_key", "stale_process")]
+        other_warnings = [
+            w for w in warnings if w["type"] not in ("api_key", "stale_process")
+        ]
 
         if api_keys_missing:
             key_names = [w["name"] for w in api_keys_missing]
@@ -627,7 +753,9 @@ def run_dependency_check(
                 summary_parts.append(f"   ... and {len(key_names) - 4} more")
 
         if stale_procs:
-            summary_parts.append(f"🟠 {len(stale_procs)} possible stale MCP process(es)")
+            summary_parts.append(
+                f"🟠 {len(stale_procs)} possible stale MCP process(es)"
+            )
 
         if other_warnings:
             for issue in other_warnings[:2]:
@@ -720,10 +848,18 @@ def main():
     parser = argparse.ArgumentParser(description="Check .claude dependencies")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show full report")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
-    parser.add_argument("--quiet", "-q", action="store_true", help="Only show if issues exist")
-    parser.add_argument("--fix", action="store_true", help="Auto-install missing Python packages")
-    parser.add_argument("--no-cache", action="store_true", help="Skip cache, run fresh checks")
-    parser.add_argument("--clear-cache", action="store_true", help="Clear cache and exit")
+    parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Only show if issues exist"
+    )
+    parser.add_argument(
+        "--fix", action="store_true", help="Auto-install missing Python packages"
+    )
+    parser.add_argument(
+        "--no-cache", action="store_true", help="Skip cache, run fresh checks"
+    )
+    parser.add_argument(
+        "--clear-cache", action="store_true", help="Clear cache and exit"
+    )
     args = parser.parse_args()
 
     if args.clear_cache:
