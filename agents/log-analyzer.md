@@ -1,7 +1,7 @@
 ---
 name: log-analyzer
 description: Parse application logs, find error patterns, correlate events across services. Use when debugging production issues or analyzing behavior.
-model: sonnet
+model: haiku
 allowed-tools:
   - Read
   - Glob

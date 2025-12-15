@@ -1,7 +1,7 @@
 ---
 name: config-auditor
 description: Audit configuration consistency across environments, find missing env vars, detect config drift. Use before deployments or when debugging env issues.
-model: sonnet
+model: haiku
 allowed-tools:
   - Read
   - Glob

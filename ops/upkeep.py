@@ -3,6 +3,7 @@
 The Janitor: Pre-commit health checks and project maintenance.
 Run before commits to catch issues early.
 """
+
 import sys
 import os
 import subprocess
@@ -28,29 +29,169 @@ from core import setup_script, finalize, logger, handle_debug  # noqa: E402
 
 # Standard library modules for dependency checking
 STDLIB_MODULES = {
-    "abc", "argparse", "ast", "asyncio", "base64", "collections", "concurrent",
-    "copy", "csv", "datetime", "decimal", "email", "enum", "functools", "glob",
-    "hashlib", "hmac", "html", "http", "importlib", "inspect", "io", "itertools",
-    "json", "logging", "math", "multiprocessing", "operator", "os", "pathlib",
-    "pickle", "platform", "pprint", "re", "secrets", "shutil", "socket", "sqlite3",
-    "stat", "statistics", "string", "subprocess", "sys", "tempfile", "textwrap",
-    "threading", "time", "traceback", "typing", "unittest", "urllib", "uuid",
-    "warnings", "xml", "contextlib", "dataclasses", "difflib", "fnmatch",
-    "getpass", "grp", "pwd", "queue", "random", "select", "signal", "struct",
-    "tarfile", "zipfile", "zlib", "types", "weakref", "array", "binascii",
-    "fcntl", "termios", "tty", "pty", "resource", "syslog",  # Unix-specific
-    "colorsys", "codeop", "code", "cgi", "cgitb", "chunk", "cmath", "cmd",
-    "codecs", "crypt", "curses", "dbm", "dis", "doctest", "filecmp", "fileinput",
-    "fractions", "ftplib", "gc", "getopt", "gettext", "graphlib", "gzip",
-    "heapq", "idlelib", "imaplib", "ipaddress", "keyword", "lib2to3", "linecache",
-    "locale", "lzma", "mailbox", "mimetypes", "mmap", "modulefinder", "netrc",
-    "nis", "nntplib", "numbers", "optparse", "ossaudiodev", "parser", "pdb",
-    "pkgutil", "poplib", "posix", "posixpath", "profile", "pstats", "rlcompleter",
-    "runpy", "sched", "shelve", "shlex", "smtpd", "smtplib", "sndhdr", "spwd",
-    "ssl", "stringprep", "sunau", "symbol", "symtable", "sysconfig", "tabnanny",
-    "telnetlib", "test", "textwrap", "tkinter", "token", "tokenize", "trace",
-    "tracemalloc", "turtledemo", "unicodedata", "venv", "wave", "webbrowser",
-    "winreg", "winsound", "wsgiref", "xdrlib", "xmlrpc",
+    "abc",
+    "argparse",
+    "ast",
+    "asyncio",
+    "base64",
+    "collections",
+    "concurrent",
+    "copy",
+    "csv",
+    "datetime",
+    "decimal",
+    "email",
+    "enum",
+    "functools",
+    "glob",
+    "hashlib",
+    "hmac",
+    "html",
+    "http",
+    "importlib",
+    "inspect",
+    "io",
+    "itertools",
+    "json",
+    "logging",
+    "math",
+    "multiprocessing",
+    "operator",
+    "os",
+    "pathlib",
+    "pickle",
+    "platform",
+    "pprint",
+    "re",
+    "secrets",
+    "shutil",
+    "socket",
+    "sqlite3",
+    "stat",
+    "statistics",
+    "string",
+    "subprocess",
+    "sys",
+    "tempfile",
+    "textwrap",
+    "threading",
+    "time",
+    "traceback",
+    "typing",
+    "unittest",
+    "urllib",
+    "uuid",
+    "warnings",
+    "xml",
+    "contextlib",
+    "dataclasses",
+    "difflib",
+    "fnmatch",
+    "getpass",
+    "grp",
+    "pwd",
+    "queue",
+    "random",
+    "select",
+    "signal",
+    "struct",
+    "tarfile",
+    "zipfile",
+    "zlib",
+    "types",
+    "weakref",
+    "array",
+    "binascii",
+    "fcntl",
+    "termios",
+    "tty",
+    "pty",
+    "resource",
+    "syslog",  # Unix-specific
+    "colorsys",
+    "codeop",
+    "code",
+    "cgi",
+    "cgitb",
+    "chunk",
+    "cmath",
+    "cmd",
+    "codecs",
+    "crypt",
+    "curses",
+    "dbm",
+    "dis",
+    "doctest",
+    "filecmp",
+    "fileinput",
+    "fractions",
+    "ftplib",
+    "gc",
+    "getopt",
+    "gettext",
+    "graphlib",
+    "gzip",
+    "heapq",
+    "idlelib",
+    "imaplib",
+    "ipaddress",
+    "keyword",
+    "lib2to3",
+    "linecache",
+    "locale",
+    "lzma",
+    "mailbox",
+    "mimetypes",
+    "mmap",
+    "modulefinder",
+    "netrc",
+    "nis",
+    "nntplib",
+    "numbers",
+    "optparse",
+    "ossaudiodev",
+    "parser",
+    "pdb",
+    "pkgutil",
+    "poplib",
+    "posix",
+    "posixpath",
+    "profile",
+    "pstats",
+    "rlcompleter",
+    "runpy",
+    "sched",
+    "shelve",
+    "shlex",
+    "smtpd",
+    "smtplib",
+    "sndhdr",
+    "spwd",
+    "ssl",
+    "stringprep",
+    "sunau",
+    "symbol",
+    "symtable",
+    "sysconfig",
+    "tabnanny",
+    "telnetlib",
+    "test",
+    "textwrap",
+    "tkinter",
+    "token",
+    "tokenize",
+    "trace",
+    "tracemalloc",
+    "turtledemo",
+    "unicodedata",
+    "venv",
+    "wave",
+    "webbrowser",
+    "winreg",
+    "winsound",
+    "wsgiref",
+    "xdrlib",
+    "xmlrpc",
 }
 
 # Import name -> Package name mapping
@@ -63,6 +204,37 @@ IMPORT_TO_PACKAGE = {
     "docx": "python-docx",
     "pptx": "python-pptx",
     "sklearn": "scikit-learn",
+}
+
+# Known project-local modules (imports from ~/projects/ or ~/ai/ workspaces)
+# These are NOT external deps - they're imported from projects being worked on
+PROJECT_LOCAL_MODULES = {
+    "analysis",
+    "hookify",
+    "ooxml",
+    "templates",
+    "validation",  # Common project modules
+    "models",
+    "utils",
+    "helpers",
+    "config",
+    "settings",
+    "constants",  # Generic names
+    "api",
+    "services",
+    "handlers",
+    "routes",
+    "views",
+    "controllers",  # Web patterns
+    "schemas",
+    "types",
+    "interfaces",
+    "entities",
+    "repositories",  # Data patterns
+    "tests",
+    "fixtures",
+    "mocks",
+    "factories",  # Test patterns
 }
 
 
@@ -94,7 +266,9 @@ def _get_git_branch() -> str:
     """Get current git branch name."""
     result = subprocess.run(
         ["git", "branch", "--show-current"],
-        capture_output=True, text=True, cwd=_project_root
+        capture_output=True,
+        text=True,
+        cwd=_project_root,
     )
     return result.stdout.strip() or "detached HEAD"
 
@@ -107,10 +281,14 @@ def _categorize_git_status(lines: list[str]) -> tuple[list[str], list[str], list
     return staged, unstaged, untracked
 
 
-def _print_git_summary(branch: str, staged: list, unstaged: list, untracked: list) -> None:
+def _print_git_summary(
+    branch: str, staged: list, unstaged: list, untracked: list
+) -> None:
     """Print git status summary."""
     print(f"  Branch: {branch}")
-    print(f"  Staged: {len(staged)} | Modified: {len(unstaged) - len(untracked)} | Untracked: {len(untracked)}")
+    print(
+        f"  Staged: {len(staged)} | Modified: {len(unstaged) - len(untracked)} | Untracked: {len(untracked)}"
+    )
     if staged:
         print("  📦 Ready to commit:")
         for line in staged[:5]:
@@ -127,7 +305,9 @@ def check_git_status(dry_run):
         current_branch = _get_git_branch()
         result = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, cwd=_project_root
+            capture_output=True,
+            text=True,
+            cwd=_project_root,
         )
 
         if result.returncode != 0:
@@ -147,7 +327,9 @@ def check_git_status(dry_run):
         return True
 
 
-def _check_hook_executable(filepath: str, item: str, fix: bool, dry_run: bool) -> tuple[str | None, bool]:
+def _check_hook_executable(
+    filepath: str, item: str, fix: bool, dry_run: bool
+) -> tuple[str | None, bool]:
     """Check if hook file is executable, optionally fix. Returns (issue, was_fixed)."""
     if not item.endswith((".py", ".sh", ".js")):
         return None, False
@@ -186,7 +368,9 @@ def _get_hook_files(hooks_dir: str) -> list[tuple[str, str]]:
     return results
 
 
-def _check_all_hooks(hook_files: list[tuple[str, str]], fix: bool, dry_run: bool) -> tuple[list[str], int]:
+def _check_all_hooks(
+    hook_files: list[tuple[str, str]], fix: bool, dry_run: bool
+) -> tuple[list[str], int]:
     """Check all hook files. Returns (issues, fixed_count)."""
     issues = []
     fixed = 0
@@ -221,7 +405,9 @@ def check_hooks_health(dry_run, fix=False):
             print("  💡 Run with --fix to auto-repair")
         return False
 
-    print(f"  ✅ {len(hook_files)} hooks healthy" + (f" ({fixed} fixed)" if fixed else ""))
+    print(
+        f"  ✅ {len(hook_files)} hooks healthy" + (f" ({fixed} fixed)" if fixed else "")
+    )
     return True
 
 
@@ -262,7 +448,15 @@ def check_ops_syntax(dry_run):
 def _get_local_modules() -> set[str]:
     """Auto-detect local modules from .claude subdirs."""
     import glob as glob_module
-    local_modules = {"core", "parallel", "lib", "confidence", "session_state", "context_builder"}
+
+    local_modules = {
+        "core",
+        "parallel",
+        "lib",
+        "confidence",
+        "session_state",
+        "context_builder",
+    }
     # Find all .py files in .claude (excluding venv/cache)
     pattern = os.path.join(_project_root, ".claude", "**", "*.py")
     for path in glob_module.glob(pattern, recursive=True):
@@ -309,13 +503,23 @@ def check_dependencies(dry_run):
     all_imports = _collect_all_imports(os.path.join(_project_root, ".claude"))
 
     external_imports = {
-        imp for imp in all_imports
-        if imp not in STDLIB_MODULES and imp not in local_modules and not imp.startswith("_")
+        imp
+        for imp in all_imports
+        if imp not in STDLIB_MODULES
+        and imp not in local_modules
+        and imp not in PROJECT_LOCAL_MODULES
+        and not imp.startswith("_")
     }
 
-    required_packages = _load_requirements(os.path.join(_project_root, ".claude", "requirements.txt"))
+    required_packages = _load_requirements(
+        os.path.join(_project_root, ".claude", "requirements.txt")
+    )
 
-    missing = [imp for imp in external_imports if IMPORT_TO_PACKAGE.get(imp, imp).lower() not in required_packages]
+    missing = [
+        imp
+        for imp in external_imports
+        if IMPORT_TO_PACKAGE.get(imp, imp).lower() not in required_packages
+    ]
 
     if missing:
         print(f"  ⚠️  {len(missing)} potentially undocumented:")
@@ -327,7 +531,9 @@ def check_dependencies(dry_run):
     return True
 
 
-def _find_stale_files(tmp_dir: str, files: list[str], cutoff_hours: int = 24) -> list[tuple[str, float]]:
+def _find_stale_files(
+    tmp_dir: str, files: list[str], cutoff_hours: int = 24
+) -> list[tuple[str, float]]:
     """Find files older than cutoff. Returns list of (filename, age_hours)."""
     cutoff = datetime.now() - timedelta(hours=cutoff_hours)
     stale = []
@@ -394,7 +600,9 @@ def _get_staged_filepaths(lines: list[str]) -> list[str]:
     return paths
 
 
-def _find_large_staged_files(filepaths: list[str], size_limit: int) -> list[tuple[str, float]]:
+def _find_large_staged_files(
+    filepaths: list[str], size_limit: int
+) -> list[tuple[str, float]]:
     """Find files exceeding size limit. Returns list of (path, size_mb)."""
     large = []
     for filepath in filepaths:
@@ -413,7 +621,9 @@ def check_large_files(dry_run):
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, cwd=_project_root
+            capture_output=True,
+            text=True,
+            cwd=_project_root,
         )
         if result.returncode != 0:
             return True
@@ -493,8 +703,10 @@ def log_maintenance(dry_run):
         # (Bash-invoked upkeep doesn't trigger hooks, so we update directly)
         try:
             from session_state import update_state
+
             def mark_upkeep(state):
                 state.ops_turns["upkeep"] = state.turn_count
+
             update_state(mark_upkeep)
         except Exception:
             pass  # Don't fail upkeep if state update fails
@@ -543,12 +755,14 @@ def main():
         "The Janitor: Pre-commit health checks and project maintenance."
     )
     parser.add_argument(
-        "--quick", action="store_true",
-        help="Skip slow checks (large files, full syntax scan)"
+        "--quick",
+        action="store_true",
+        help="Skip slow checks (large files, full syntax scan)",
     )
     parser.add_argument(
-        "--fix", action="store_true",
-        help="Auto-fix issues where possible (chmod hooks, clean tmp)"
+        "--fix",
+        action="store_true",
+        help="Auto-fix issues where possible (chmod hooks, clean tmp)",
     )
 
     args = parser.parse_args()

@@ -1,7 +1,7 @@
 ---
 name: dependency-mapper
 description: Map internal module dependencies, find circular imports, analyze coupling. Use for architecture understanding or refactoring planning.
-model: sonnet
+model: haiku
 allowed-tools:
   - Read
   - Glob

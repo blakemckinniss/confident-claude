@@ -233,6 +233,51 @@ Key lib files refactored for maintainability:
 
 ---
 
+## 🤖 Task Agents (27 total)
+
+Spawn via `Task(subagent_type="agent-name", prompt="...")`. Use for parallel/background work.
+
+### Exploration (haiku - fast/cheap)
+| Agent | Purpose |
+|-------|---------|
+| `scout` | Find files/symbols when you don't know where |
+| `background-watcher` | Monitor long-running processes (dev servers, test watchers) |
+
+### Analysis (haiku)
+| Agent | Purpose |
+|-------|---------|
+| `api-cartographer` | Map API endpoints, types, auth requirements |
+| `config-auditor` | Env var consistency, config drift, missing configs |
+| `dependency-mapper` | Import graphs, circular deps, coupling analysis |
+| `log-analyzer` | Parse logs, find error patterns, correlate events |
+| `bundle-analyzer` | JS bundle size, heavy imports, code splitting |
+| `i18n-checker` | Hardcoded strings, missing translations, RTL issues |
+| `a11y-auditor` | WCAG violations, ARIA issues, keyboard accessibility |
+| `license-scanner` | Dependency license compliance, copyleft detection |
+| `docker-analyzer` | Dockerfile security, size optimization, layer caching |
+| `ci-optimizer` | Pipeline speed, caching, parallelization |
+| `env-debugger` | "Works on my machine" debugging, version mismatches |
+
+### Deep Analysis (sonnet - accuracy critical)
+| Agent | Purpose |
+|-------|---------|
+| `deep-research` | Multi-agent recursive research, decomposes questions |
+| `deep-security` | Security audit, OWASP, auth flows, injection vectors |
+| `dead-code-hunter` | Unreachable code, unused exports, orphaned files |
+| `orchestrate` | Batch file operations, aggregate results |
+| `upgrade-scout` | Framework upgrade planning, breaking changes |
+| `test-analyzer` | Coverage gaps, flaky tests, test quality |
+| `perf-profiler` | N+1 queries, memory leaks, expensive loops |
+| `git-archeologist` | Blame, bisect, history investigation |
+| `error-tracer` | Exception paths, unhandled errors, error boundaries |
+| `refactor-planner` | Safe refactoring sequences, extract candidates |
+| `schema-validator` | DB-code mismatches, migration safety |
+| `state-mapper` | Redux/Zustand flows, state mutations |
+| `migration-planner` | Data/schema migrations with rollback plans |
+| `type-migrator` | JS→TS migration, gradual typing adoption |
+
+---
+
 ## Before Creating New Functionality
 
 1. **Search this index** for similar capabilities

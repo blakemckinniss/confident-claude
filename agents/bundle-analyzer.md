@@ -1,7 +1,7 @@
 ---
 name: bundle-analyzer
 description: Analyze JavaScript bundle size, find heavy imports, identify code splitting opportunities. Use for frontend performance optimization.
-model: sonnet
+model: haiku
 allowed-tools:
   - Read
   - Glob

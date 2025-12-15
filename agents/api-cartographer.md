@@ -1,7 +1,7 @@
 ---
 name: api-cartographer
 description: Build complete API map with endpoints, types, auth requirements, rate limits. Aggregates across route files into single reference. Use to understand or document APIs.
-model: sonnet
+model: haiku
 allowed-tools:
   - Read
   - Glob

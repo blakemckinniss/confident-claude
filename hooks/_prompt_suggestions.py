@@ -6,6 +6,7 @@ Hooks that provide suggestions and guidance:
   72 self_heal_diagnostic  - Diagnostic guidance for self-heal mode
   75 proactive_nudge       - Actionable suggestions from state
   80 ops_nudge             - Suggest ops tools based on patterns
+  81 agent_suggestion      - Suggest Task agents based on prompt patterns
   85 ops_awareness         - Fallback ops script reminders
   86 ops_audit_reminder    - Periodic ops tool usage audit
   88 intent_classifier     - ML-based intent classification
@@ -427,6 +428,222 @@ _TOOL_TRIGGERS = {
         "reason": "🌟 Crawl4AI: JS rendering + bot bypass - BEST tool for web content retrieval",
     },
 }
+
+
+# =============================================================================
+# AGENT SUGGESTION (priority 81)
+# =============================================================================
+
+_AGENT_TRIGGERS = {
+    # Haiku agents (fast/cheap)
+    "scout": {
+        "patterns": [
+            re.compile(r"(where|find|locate)\s+(is|are|the)\s+\w+", re.I),
+            re.compile(r"(which\s+file|what\s+file)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Find files/symbols when you don't know where",
+    },
+    "config-auditor": {
+        "patterns": [
+            re.compile(r"(env|environment)\s+(var|variable|config)", re.I),
+            re.compile(r"(missing|check)\s+.*(config|\.env)", re.I),
+            re.compile(r"config\s+(drift|mismatch|consistency)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Env var consistency, config drift detection",
+    },
+    "log-analyzer": {
+        "patterns": [
+            re.compile(r"(parse|analyze|check)\s+.*(log|logs)", re.I),
+            re.compile(r"(error|exception)\s+(pattern|spike|frequency)", re.I),
+            re.compile(r"(log|logs)\s+.*(pattern|trace|correlat)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Parse logs, find error patterns, correlate events",
+    },
+    "dependency-mapper": {
+        "patterns": [
+            re.compile(r"(circular|cyclic)\s+(import|depend)", re.I),
+            re.compile(r"(import|dependency)\s+(graph|tree|map)", re.I),
+            re.compile(r"(coupling|afferent|efferent)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Import graphs, circular deps, coupling analysis",
+    },
+    "bundle-analyzer": {
+        "patterns": [
+            re.compile(r"(bundle|webpack|vite)\s+(size|bloat|large)", re.I),
+            re.compile(r"(tree.?shak|code.?split)", re.I),
+            re.compile(r"(heavy|large)\s+(import|package|depend)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "JS bundle size, heavy imports, code splitting",
+    },
+    "i18n-checker": {
+        "patterns": [
+            re.compile(r"(hardcoded|missing)\s+(string|translation)", re.I),
+            re.compile(r"(i18n|internationali|locali)", re.I),
+            re.compile(r"(rtl|right.to.left|translation)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Hardcoded strings, missing translations",
+    },
+    "a11y-auditor": {
+        "patterns": [
+            re.compile(r"(a11y|accessibility|wcag)", re.I),
+            re.compile(r"(aria|screen.?reader|keyboard\s+nav)", re.I),
+            re.compile(r"(alt\s+text|missing\s+alt)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "WCAG violations, ARIA issues, accessibility",
+    },
+    "license-scanner": {
+        "patterns": [
+            re.compile(r"(license|licensing)\s+(scan|check|audit|compliance)", re.I),
+            re.compile(r"(gpl|copyleft|mit|apache)\s+(depend|issue)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Dependency license compliance",
+    },
+    "docker-analyzer": {
+        "patterns": [
+            re.compile(r"(docker|dockerfile)\s+(optim|security|size|layer)", re.I),
+            re.compile(r"(container|image)\s+(bloat|large|security)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Dockerfile security, size optimization",
+    },
+    "ci-optimizer": {
+        "patterns": [
+            re.compile(r"(ci|pipeline|workflow)\s+(slow|optim|cache|parallel)", re.I),
+            re.compile(r"(github\s+actions|gitlab\s+ci|circleci)\s+(slow|fast)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Pipeline speed, caching, parallelization",
+    },
+    "env-debugger": {
+        "patterns": [
+            re.compile(r"works\s+on\s+my\s+machine", re.I),
+            re.compile(r"(version|node|python)\s+(mismatch|wrong|different)", re.I),
+            re.compile(r"(path|env|environment)\s+(issue|problem|wrong)", re.I),
+        ],
+        "model": "haiku",
+        "desc": "Environment debugging, version mismatches",
+    },
+    # Sonnet agents (accuracy critical)
+    "test-analyzer": {
+        "patterns": [
+            re.compile(r"(test|coverage)\s+(gap|missing|flaky)", re.I),
+            re.compile(r"(flaky|unstable|intermittent)\s+test", re.I),
+            re.compile(r"(test|spec)\s+(quality|health)", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "Coverage gaps, flaky tests, test quality",
+    },
+    "perf-profiler": {
+        "patterns": [
+            re.compile(r"(n\+1|n \+ 1)\s+(query|problem)", re.I),
+            re.compile(r"(memory\s+leak|performance)\s+(issue|problem)", re.I),
+            re.compile(r"(slow|expensive)\s+(loop|query|function)", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "N+1 queries, memory leaks, perf anti-patterns",
+    },
+    "git-archeologist": {
+        "patterns": [
+            re.compile(r"(when|who)\s+(did|made|introduced|changed)", re.I),
+            re.compile(r"(git\s+)?(blame|bisect|history)", re.I),
+            re.compile(r"(regression|broke|when\s+did)", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "Blame, bisect, history investigation",
+    },
+    "error-tracer": {
+        "patterns": [
+            re.compile(r"(unhandled|uncaught)\s+(error|exception)", re.I),
+            re.compile(r"(error|exception)\s+(path|propagat|flow|boundary)", re.I),
+            re.compile(r"(swallow|silent)\s+(error|fail)", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "Exception paths, error boundaries, unhandled errors",
+    },
+    "refactor-planner": {
+        "patterns": [
+            re.compile(r"(refactor|extract|inline)\s+(plan|opportunit|candidate)", re.I),
+            re.compile(r"(code\s+smell|technical\s+debt)\s+(fix|address)", re.I),
+            re.compile(r"(safe|incremental)\s+refactor", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "Safe refactoring sequences, extract candidates",
+    },
+    "schema-validator": {
+        "patterns": [
+            re.compile(r"(schema|db|database)\s+(mismatch|drift|validat)", re.I),
+            re.compile(r"(orm|model)\s+.*(schema|column|type)", re.I),
+            re.compile(r"(migration)\s+(safe|risk|issue)", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "DB-code mismatches, migration safety",
+    },
+    "state-mapper": {
+        "patterns": [
+            re.compile(r"(redux|zustand|mobx|state)\s+(flow|mutation|map)", re.I),
+            re.compile(r"(state\s+management|data\s+flow)\s+(trace|debug)", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "Redux/Zustand flows, state mutations",
+    },
+    "migration-planner": {
+        "patterns": [
+            re.compile(r"(data|schema|code)\s+migration\s+(plan|strateg)", re.I),
+            re.compile(r"(rollback|zero.?downtime)\s+(plan|strateg)", re.I),
+            re.compile(r"(safe|incremental)\s+migration", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "Data/schema migrations with rollback plans",
+    },
+    "type-migrator": {
+        "patterns": [
+            re.compile(r"(js|javascript)\s+(to|→)\s+(ts|typescript)", re.I),
+            re.compile(r"(add|migrate)\s+.*(type|typescript)", re.I),
+            re.compile(r"(gradual|incremental)\s+typing", re.I),
+        ],
+        "model": "sonnet",
+        "desc": "JS→TS migration, gradual typing adoption",
+    },
+}
+
+
+@register_hook("agent_suggestion", priority=81)
+def check_agent_suggestion(data: dict, state: SessionState) -> HookResult:
+    """Suggest Task agents based on prompt patterns."""
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 20:
+        return HookResult.allow()
+
+    prompt_lower = prompt.lower()
+    matches = []
+    for agent_name, config in _AGENT_TRIGGERS.items():
+        for pattern in config["patterns"]:
+            if pattern.search(prompt_lower):
+                matches.append((agent_name, config))
+                break
+        if len(matches) >= 2:
+            break
+
+    if not matches:
+        return HookResult.allow()
+
+    suggestions = []
+    for agent_name, config in matches:
+        model_badge = "⚡" if config["model"] == "haiku" else "🎯"
+        suggestions.append(
+            f'{model_badge} **{agent_name}**: {config["desc"]}\n'
+            f'   → `Task(subagent_type="{agent_name}", prompt="...")`'
+        )
+
+    return HookResult.allow("🤖 TASK AGENTS AVAILABLE:\n" + "\n\n".join(suggestions))
 
 
 @register_hook("ops_nudge", priority=80)
