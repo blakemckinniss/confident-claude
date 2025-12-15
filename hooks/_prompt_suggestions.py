@@ -787,6 +787,111 @@ _SKILL_TRIGGERS = {
         "desc": "Confidence system mechanics and signals",
         "invoke": 'Skill(skill="confidence-system")',
     },
+    "project-scaffold": {
+        "patterns": [
+            re.compile(r"(create|start|init)\s+(new|a)\s+(project|app)", re.I),
+            re.compile(r"(scaffold|bootstrap|boilerplate)", re.I),
+            re.compile(r"(set\s*up|initialize)\s+(repo|project)", re.I),
+        ],
+        "desc": "Create new projects, scaffold, initialize repos",
+        "invoke": 'Skill(skill="project-scaffold")',
+    },
+    "autonomous-mode": {
+        "patterns": [
+            re.compile(r"(just\s+do\s+it|go\s+ahead)", re.I),
+            re.compile(r"(fix\s+everything|work\s+autonomously)", re.I),
+            re.compile(r"(yes\s+mode|auto\s+mode|hands\s*off)", re.I),
+        ],
+        "desc": "Self-directed execution, minimal guidance",
+        "invoke": 'Skill(skill="autonomous-mode")',
+    },
+    "session-management": {
+        "patterns": [
+            re.compile(r"(compress|save)\s+(session|context)", re.I),
+            re.compile(r"(context\s+recovery|recover\s+context)", re.I),
+            re.compile(r"(blocking\s+issue|detour)", re.I),
+            re.compile(r"(pick\s+up|continue)\s+where", re.I),
+        ],
+        "desc": "Session context, compression, blocking issues",
+        "invoke": 'Skill(skill="session-management")',
+    },
+    "system-maintenance": {
+        "patterns": [
+            re.compile(r"(system|disk)\s+(health|space|cleanup)", re.I),
+            re.compile(r"(housekeeping|maintenance)", re.I),
+            re.compile(r"(free\s+some|clean\s+up)\s+space", re.I),
+            re.compile(r"(cpu|memory)\s+usage", re.I),
+        ],
+        "desc": "System health, disk cleanup, performance",
+        "invoke": 'Skill(skill="system-maintenance")',
+    },
+    "task-tracking": {
+        "patterns": [
+            re.compile(r"(track|create)\s+(this\s+)?task", re.I),
+            re.compile(r"(what\s+needs|remaining\s+work)", re.I),
+            re.compile(r"(beads?|bd)\s+(ready|list|create)", re.I),
+            re.compile(r"(open|in.progress)\s+(tasks?|issues?)", re.I),
+        ],
+        "desc": "Beads task tracking, issues, blockers",
+        "invoke": 'Skill(skill="task-tracking")',
+    },
+    "decision-support": {
+        "patterns": [
+            re.compile(r"(should\s+I|help\s+me)\s+(use|decide)", re.I),
+            re.compile(r"(pros?\s+and\s+cons?|trade.?offs?)", re.I),
+            re.compile(r"(compare|which)\s+(framework|library)", re.I),
+            re.compile(r"(architecture|design)\s+(decision|choice)", re.I),
+        ],
+        "desc": "Complex decisions, multi-perspective analysis",
+        "invoke": 'Skill(skill="decision-support")',
+    },
+    "mcp-servers": {
+        "patterns": [
+            re.compile(r"mcp\s+(server|tool)", re.I),
+            re.compile(r"(crawl4ai|serena|repomix|pal\s+mcp)", re.I),
+            re.compile(r"(which|available)\s+mcp", re.I),
+        ],
+        "desc": "MCP server capabilities and usage",
+        "invoke": 'Skill(skill="mcp-servers")',
+    },
+    "external-llm": {
+        "patterns": [
+            re.compile(r"(ask|consult)\s+(another|external)\s+(model|ai)", re.I),
+            re.compile(r"(second\s+opinion|multi.?model)", re.I),
+            re.compile(r"(use|what\s+does)\s+(gpt|gemini|groq)", re.I),
+        ],
+        "desc": "External AI consultation, PAL tools, consensus",
+        "invoke": 'Skill(skill="external-llm")',
+    },
+    "windows-interop": {
+        "patterns": [
+            re.compile(r"(windows|wsl2?)\s+(path|file|interop)", re.I),
+            re.compile(r"/mnt/c/", re.I),
+            re.compile(r"(winget|powershell|cmd\.exe)", re.I),
+        ],
+        "desc": "WSL2/Windows integration, paths, winget",
+        "invoke": 'Skill(skill="windows-interop")',
+    },
+    "code-analysis": {
+        "patterns": [
+            re.compile(r"(find|where\s+is)\s+(class|function)", re.I),
+            re.compile(r"(code\s+structure|ast|symbol\s+lookup)", re.I),
+            re.compile(r"(who\s+calls|callers|references)", re.I),
+            re.compile(r"(inspect|introspect)\s+(object|api)", re.I),
+        ],
+        "desc": "AST search, symbol lookup, code navigation",
+        "invoke": 'Skill(skill="code-analysis")',
+    },
+    "implementation-planning": {
+        "patterns": [
+            re.compile(r"(how\s+should|best\s+way)\s+(I\s+)?implement", re.I),
+            re.compile(r"(implementation|technical)\s+(plan|strategy)", re.I),
+            re.compile(r"(build\s+vs?\s+buy|existing\s+solution)", re.I),
+            re.compile(r"(worth\s+building|should\s+I\s+build)", re.I),
+        ],
+        "desc": "Implementation strategy, build vs buy",
+        "invoke": 'Skill(skill="implementation-planning")',
+    },
 }
 
 
