@@ -1,60 +1,281 @@
-# Virtual environment
-.venv/
+# ============================================================================
+# Claude Code Framework - .gitignore
+# ============================================================================
+# This file controls what gets versioned in the framework repository.
+# Sensitive data, ephemeral state, and large generated files are excluded.
+# ============================================================================
 
-# Cache directories
-__pycache__/
-*.pyc
-cache/
-.cache/
-.ruff_cache/
-
-# Credentials and secrets
+# ----------------------------------------------------------------------------
+# CREDENTIALS & SECRETS (NEVER version control)
+# ----------------------------------------------------------------------------
 .credentials.json
+credentials.json
 *.pem
 *.key
+*.p12
+*.pfx
+secrets/
+.env
+.env.*
+!.env.example
+privacy-restore.yaml
 
-# IDE and editor
-.idea/
-.vscode/
-*.swp
+# ----------------------------------------------------------------------------
+# PYTHON
+# ----------------------------------------------------------------------------
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
 
-# Session data (ephemeral)
+# Bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+eggs/
+*.egg-info/
+*.egg
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+
+# Linting
+.ruff_cache/
+.ruff/
+
+# ----------------------------------------------------------------------------
+# SESSION DATA (Ephemeral per-session state)
+# ----------------------------------------------------------------------------
+# Main session file
 history.jsonl
+
+# Session artifacts
 file-history/
 debug/
-downloads/
-telemetry/
-
-# Large/generated files
-*.log
-*.bak
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# External plugins (separate repos)
-plugins/marketplaces/
-
-# Ephemeral session state
-todos/
 shell-snapshots/
 session-env/
-projects/
-backups/
+todos/
+plans/
+
+# Stats & telemetry
+telemetry/
+stats-cache.json
 statsig/
-ide/
 
-# Lock files (never version control)
-*.lock
+# ----------------------------------------------------------------------------
+# CACHE & TEMPORARY FILES
+# ----------------------------------------------------------------------------
+cache/
+.cache/
+tmp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*~
 
-# Memory ephemeral state (regenerable/session-specific)
-memory/.file_index.json
+# Downloads (user-initiated, not framework)
+downloads/
+
+# Logs (regenerable)
+logs/
+*.log
+
+# ----------------------------------------------------------------------------
+# MEMORY - EPHEMERAL STATE (session-specific, regenerable)
+# ----------------------------------------------------------------------------
+# Session state files
 memory/session_log.jsonl
 memory/session_state_v3.json
+memory/block_log.jsonl
+
+# Index files (auto-generated)
+memory/.file_index.json
+
+# Cooldown trackers (ephemeral rate-limiting state)
 memory/*_cooldown.json
+memory/*_cooldown.lock
 memory/*_state.json
+memory/*.lock
+
+# Last-run state files
 memory/assumption_ledger_last.json
 memory/counterfactual_cooldowns.json
 memory/thinking_coach_last.json
-memory/block_log.jsonl
+memory/info_gain_state.json
+
+# Beads sync state (regenerable)
+memory/beads_*.json
+
+# ----------------------------------------------------------------------------
+# MEMORY - VERSIONED (DO track these)
+# ----------------------------------------------------------------------------
+# The following are explicitly tracked (NOT ignored):
+#   memory/__*.md          - Core knowledge files
+#   memory/__synapses.json - Associative memory index
+#   memory/global/         - Global persistent memory
+
+# ----------------------------------------------------------------------------
+# IDE & EDITORS
+# ----------------------------------------------------------------------------
+# JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Vim/Neovim
+*.swp
+*.swo
+*.swn
+*~
+tags
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ----------------------------------------------------------------------------
+# OS FILES
+# ----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.directory
+
+# ----------------------------------------------------------------------------
+# FRAMEWORK-SPECIFIC EXCLUSIONS
+# ----------------------------------------------------------------------------
+# External plugins (separate repositories)
+plugins/marketplaces/
+
+# IDE integration state
+ide/
+
+# Project workspace (user projects, not framework)
+projects/
+
+# Backups (handled separately)
+backups/
+
+# Serena MCP state (regenerable)
+.serena/cache/
+.serena/index/
+
+# Beads local state (synced via git in .beads/)
+.beads/*.lock
+.beads/sync_state.json
+
+# ----------------------------------------------------------------------------
+# BUILD & DEPENDENCIES
+# ----------------------------------------------------------------------------
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ----------------------------------------------------------------------------
+# LOCK FILES (process locks, not dependency locks)
+# ----------------------------------------------------------------------------
+*.lock
+!requirements.lock
+
+# ----------------------------------------------------------------------------
+# LARGE FILES (should use Git LFS if needed)
+# ----------------------------------------------------------------------------
+*.sqlite
+*.db
+*.sqlite3
+*.pkl
+*.pickle
+*.parquet
+*.arrow
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Media (if any accidentally added)
+*.mp4
+*.mp3
+*.wav
+*.mov
+*.avi
+
+# ----------------------------------------------------------------------------
+# SETTINGS - LOCAL OVERRIDES
+# ----------------------------------------------------------------------------
+# Local settings override (machine-specific)
+settings.local.json
+
+# Main settings file is tracked:
+#   settings.json - Framework configuration
+
+# ----------------------------------------------------------------------------
+# DOCUMENTATION ARTIFACTS
+# ----------------------------------------------------------------------------
+# Generated docs
+docs/_build/
+site/
+.docusaurus/
+
+# ----------------------------------------------------------------------------
+# WHAT IS TRACKED (for reference)
+# ----------------------------------------------------------------------------
+# The following directories/files ARE versioned:
+#
+# agents/           - Task agent definitions
+# commands/         - Slash command definitions
+# config/           - Framework configuration scripts
+# hooks/            - Hook system (pre/post tool use, etc.)
+# lib/              - Shared Python libraries
+# memory/__*.md     - Core knowledge/capability docs
+# memory/__synapses.json - Associative memory
+# memory/global/    - Global persistent memories
+# ops/              - Operational tools/scripts
+# rules/            - Context rules (.md files)
+# skills/           - Skill definitions
+# reminders/        - Persistent reminders
+#
+# requirements.txt  - Python dependencies
+# settings.json     - Framework settings
+# .gitattributes    - Git configuration
+# .gitignore        - This file
