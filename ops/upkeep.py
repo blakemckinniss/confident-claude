@@ -39,6 +39,18 @@ STDLIB_MODULES = {
     "getpass", "grp", "pwd", "queue", "random", "select", "signal", "struct",
     "tarfile", "zipfile", "zlib", "types", "weakref", "array", "binascii",
     "fcntl", "termios", "tty", "pty", "resource", "syslog",  # Unix-specific
+    "colorsys", "codeop", "code", "cgi", "cgitb", "chunk", "cmath", "cmd",
+    "codecs", "crypt", "curses", "dbm", "dis", "doctest", "filecmp", "fileinput",
+    "fractions", "ftplib", "gc", "getopt", "gettext", "graphlib", "gzip",
+    "heapq", "idlelib", "imaplib", "ipaddress", "keyword", "lib2to3", "linecache",
+    "locale", "lzma", "mailbox", "mimetypes", "mmap", "modulefinder", "netrc",
+    "nis", "nntplib", "numbers", "optparse", "ossaudiodev", "parser", "pdb",
+    "pkgutil", "poplib", "posix", "posixpath", "profile", "pstats", "rlcompleter",
+    "runpy", "sched", "shelve", "shlex", "smtpd", "smtplib", "sndhdr", "spwd",
+    "ssl", "stringprep", "sunau", "symbol", "symtable", "sysconfig", "tabnanny",
+    "telnetlib", "test", "textwrap", "tkinter", "token", "tokenize", "trace",
+    "tracemalloc", "turtledemo", "unicodedata", "venv", "wave", "webbrowser",
+    "winreg", "winsound", "wsgiref", "xdrlib", "xmlrpc",
 }
 
 # Import name -> Package name mapping
@@ -48,6 +60,9 @@ IMPORT_TO_PACKAGE = {
     "PIL": "pillow",
     "yaml": "pyyaml",
     "bs4": "beautifulsoup4",
+    "docx": "python-docx",
+    "pptx": "python-pptx",
+    "sklearn": "scikit-learn",
 }
 
 
@@ -246,13 +261,17 @@ def check_ops_syntax(dry_run):
 
 def _get_local_modules() -> set[str]:
     """Auto-detect local modules from .claude subdirs."""
-    local_modules = {"core", "parallel", "lib"}
-    for subdir in ["lib", "agents", "ops", "hooks"]:
-        mod_dir = os.path.join(_project_root, ".claude", subdir)
-        if os.path.isdir(mod_dir):
-            for f in os.listdir(mod_dir):
-                if f.endswith(".py") and not f.startswith("_"):
-                    local_modules.add(f[:-3])
+    import glob as glob_module
+    local_modules = {"core", "parallel", "lib", "confidence", "session_state", "context_builder"}
+    # Find all .py files in .claude (excluding venv/cache)
+    pattern = os.path.join(_project_root, ".claude", "**", "*.py")
+    for path in glob_module.glob(pattern, recursive=True):
+        if any(x in path for x in [".venv", "__pycache__", ".ruff_cache"]):
+            continue
+        name = os.path.basename(path)[:-3]  # Remove .py
+        local_modules.add(name)
+        if name.startswith("_"):
+            local_modules.add(name[1:])  # Also add without underscore
     return local_modules
 
 

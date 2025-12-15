@@ -14,8 +14,46 @@ ruff>=0.1.0
 bandit>=1.7.0
 radon>=6.0.0
 
+# AI/ML APIs
+anthropic>=0.18.0
+mcp>=1.0.0
+
+# Data processing & validation
+pydantic>=2.0.0
+numpy>=1.24.0
+rapidfuzz>=3.0.0
+
+# Document processing (optional - for file analysis tools)
+pillow>=10.0.0
+pypdf>=3.0.0
+pdf2image>=1.16.0
+openpyxl>=3.1.0
+python-docx>=0.8.11
+python-pptx>=0.6.21
+lxml>=4.9.0
+defusedxml>=0.7.1
+
+# Web frameworks (optional - for local services)
+fastapi>=0.100.0
+uvicorn>=0.22.0
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+six>=1.16.0
+
+# ML/Transformers (optional - for embedding/analysis)
+# transformers>=4.30.0  # Heavy dep, uncomment if needed
+
+# Sandbox execution (optional)
+# e2b>=0.15.0  # Uncomment if using E2B sandbox
+
+# Image processing (optional)
+# imageio>=2.31.0  # Uncomment if needed
+
 # API Keys expected in environment:
 # - OPENROUTER_API_KEY (oracle.py, council.py)
 # - TAVILY_API_KEY (research.py)
 # - FIRECRAWL_API_KEY (firecrawl.py)
 # - GROQ_API_KEY (groq.py)
+# - ANTHROPIC_API_KEY (orchestrate.py)

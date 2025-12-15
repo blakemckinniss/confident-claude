@@ -90,32 +90,48 @@ from _logging import log_debug
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
 # =============================================================================
 
-# Bash loop detection patterns
+# Bash loop detection patterns - BLOCK inefficient shell loops
+# Philosophy: Block patterns that spawn shell per iteration.
 _BASH_LOOP_PATTERNS = [
-    re.compile(r"\bfor\s+\w+\s+in\b", re.IGNORECASE),
-    re.compile(r"\bwhile\s+", re.IGNORECASE),
-    re.compile(r"\buntil\s+", re.IGNORECASE),
+    # Inefficient: piping to while loop (loses exit codes, spawns subshell)
     re.compile(r"\|\s*while\b", re.IGNORECASE),
-    re.compile(r"\bxargs\s+.*\bsh\b", re.IGNORECASE),
-    re.compile(r"\bfind\s+.*-exec\b", re.IGNORECASE),
+    # Inefficient: xargs spawning shell per item
+    re.compile(r"\bxargs\s+.*\b(sh|bash)\s+-c\b", re.IGNORECASE),
+    # Inefficient: for loop over command substitution (spawns subshell per iteration)
+    re.compile(r"\bfor\s+\w+\s+in\s+\$\([^)]*\bfind\b", re.IGNORECASE),
+    re.compile(r"\bfor\s+\w+\s+in\s+\$\([^)]*\bls\b", re.IGNORECASE),
+    # Inefficient: process substitution to while
+    re.compile(r"\bwhile\s+.*<\s*<\(", re.IGNORECASE),
 ]
 
-# Allowed loop patterns (safe exceptions)
+# Efficient patterns - NEVER block (they're the solution, not the problem)
+_BASH_EFFICIENT_PATTERNS = [
+    re.compile(r"\bfind\s+.*-exec\b", re.IGNORECASE),  # find -exec: runs in C
+    re.compile(r"\bfind\s+.*-execdir\b", re.IGNORECASE),  # safer variant
+    re.compile(r"\bxargs\s+(?!.*\b(sh|bash)\s+-c)", re.IGNORECASE),  # no shell
+    re.compile(r"\bparallel\b", re.IGNORECASE),  # GNU parallel
+]
+
+# Allowed loop patterns (legitimate shell loops)
 _BASH_ALLOWED_PATTERNS = [
-    re.compile(r"for\s+\w+\s+in\s+\$\(", re.IGNORECASE),
-    re.compile(r"for\s+\w+\s+in\s+[~./\w-]*\*", re.IGNORECASE),
-    re.compile(r"while\s+read.*<<<", re.IGNORECASE),
-    re.compile(r'python[3]?\s+.*-c\s+["\']', re.IGNORECASE),
-    re.compile(
-        r"\bfind\s+.*-exec\s+(chmod|chown|chgrp|rm|mv|cp|touch|mkdir|ln|stat)\b",
-        re.IGNORECASE,
-    ),
+    # Small fixed iteration (for i in 1 2 3)
     re.compile(
         r"for\s+\w+\s+in\s+[\w.-]+\s+[\w.-]+(\s+[\w.-]+){0,5}\s*;", re.IGNORECASE
     ),
-    re.compile(r"\btime\s+\(", re.IGNORECASE),
-    # Allow brace expansion loops (small fixed iterations like {1..5}, {0..10})
+    # Brace expansion (for i in {1..5})
     re.compile(r"for\s+\w+\s+in\s+\{\d+\.\.\d+\}", re.IGNORECASE),
+    # Glob expansion (for f in *.txt)
+    re.compile(r"for\s+\w+\s+in\s+[~./\w-]*\*", re.IGNORECASE),
+    # Here-string (while read <<< "string")
+    re.compile(r"while\s+read.*<<<", re.IGNORECASE),
+    # Python one-liner
+    re.compile(r'python[3]?\s+.*-c\s+["\']', re.IGNORECASE),
+    # time wrapper
+    re.compile(r"\btime\s+\(", re.IGNORECASE),
+    # while true/while :  (daemon loops - intentional)
+    re.compile(r"\bwhile\s+(true|:)\s*;", re.IGNORECASE),
+    # until with simple condition
+    re.compile(r"\buntil\s+\[", re.IGNORECASE),
 ]
 
 # Script nudge loop patterns (simpler set)
@@ -195,7 +211,7 @@ def register_hook(name: str, matcher: Optional[str], priority: int = 50):
 
 @register_hook("loop_detector", "Bash", priority=10)
 def check_loop_detector(data: dict, state: SessionState) -> HookResult:
-    """Block bash loops (Hard Block #6)."""
+    """Block inefficient bash loops, allow efficient alternatives like find -exec."""
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
     description = tool_input.get("description", "")
@@ -214,15 +230,25 @@ def check_loop_detector(data: dict, state: SessionState) -> HookResult:
     check_cmd = re.sub(r"'[^']*'", "'Q'", check_cmd)
     check_cmd = re.sub(r'"[^"]*"', '"Q"', check_cmd)
 
-    # Use pre-compiled patterns from module level
+    # FIRST: Allow efficient patterns unconditionally (find -exec, xargs, parallel)
+    # These are the SOLUTION, not the problem - never block them
+    for pattern in _BASH_EFFICIENT_PATTERNS:
+        if pattern.search(check_cmd):
+            return HookResult.approve()
+
+    # SECOND: Allow legitimate shell loop patterns
     for pattern in _BASH_ALLOWED_PATTERNS:
         if pattern.search(check_cmd):
             return HookResult.approve()
 
+    # THIRD: Block only inefficient patterns (piping to while, for over $(find), etc.)
     for pattern in _BASH_LOOP_PATTERNS:
         match = pattern.search(check_cmd)
         if match:
-            return HookResult.deny(f"⛔ BASH LOOP BLOCKED: `{match.group(0)}` → Use parallel.py/swarm. SUDO LOOP to bypass.")
+            return HookResult.deny(
+                f"⛔ INEFFICIENT LOOP: `{match.group(0)}` "
+                "→ Use find -exec/xargs/parallel. SUDO LOOP to bypass."
+            )
     return HookResult.approve()
 
 
@@ -318,15 +344,15 @@ def check_background_enforcer(data: dict, state: SessionState) -> HookResult:
 
     # Patterns that truncate output or are inherently fast
     FAST_PATTERNS = [
-        "| head",      # Terminates after N lines
+        "| head",  # Terminates after N lines
         "|head",
-        "| tail",      # Only outputs last N lines (still reads all, but fast enough)
+        "| tail",  # Only outputs last N lines (still reads all, but fast enough)
         "|tail",
-        "--help",      # Instant help output
-        "-h ",         # Short help flag (with space to avoid false matches)
-        "--version",   # Instant version output
-        "-V ",         # Short version flag
-        "timeout ",    # Explicit timeout wrapper
+        "--help",  # Instant help output
+        "-h ",  # Short help flag (with space to avoid false matches)
+        "--version",  # Instant version output
+        "-V ",  # Short version flag
+        "timeout ",  # Explicit timeout wrapper
     ]
 
     # Strip heredoc content to avoid false positives on content mentioning slow commands
@@ -339,7 +365,9 @@ def check_background_enforcer(data: dict, state: SessionState) -> HookResult:
 
     for slow in SLOW_COMMANDS:
         if slow in cmd_to_check:
-            return HookResult.deny(f"⛔ BACKGROUND REQUIRED: `{slow}` is slow → run_in_background=true")
+            return HookResult.deny(
+                f"⛔ BACKGROUND REQUIRED: `{slow}` is slow → run_in_background=true"
+            )
     return HookResult.approve()
 
 
@@ -382,7 +410,9 @@ def check_probe_gate(data: dict, state: SessionState) -> HookResult:
 
     if found_libs and len(found_libs) <= 2:
         libs = ", ".join(lib for lib, _ in found_libs[:2])
-        return HookResult.approve(f"🔬 PROBE? Unfamiliar: {libs} → `probe \"<lib>.<obj>\"`")
+        return HookResult.approve(
+            f'🔬 PROBE? Unfamiliar: {libs} → `probe "<lib>.<obj>"`'
+        )
     return HookResult.approve()
 
 
@@ -607,8 +637,14 @@ def check_self_heal_enforcer(data: dict, state: SessionState) -> HookResult:
 
 _CACHE_BYPASS_KEYWORDS = frozenset(["force", "fresh", "re-explore", "bypass cache"])
 _GROUNDING_KEYWORDS = (
-    "tech stack", "framework", "what is this project", "project structure",
-    "dependencies", "entry point", "how is this project", "what does this project use",
+    "tech stack",
+    "framework",
+    "what is this project",
+    "project structure",
+    "dependencies",
+    "entry point",
+    "how is this project",
+    "what does this project use",
 )
 
 
@@ -618,6 +654,7 @@ def _check_grounding_cache(prompt_lower: str, project_path: str) -> str | None:
         return None
     try:
         from cache.grounding_analyzer import get_or_create_grounding
+
         grounding = get_or_create_grounding(Path(project_path))
         return grounding.to_markdown() if grounding else None
     except Exception:
@@ -641,6 +678,7 @@ def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
 
     try:
         from project_detector import detect_project
+
         project_info = detect_project()
         if not project_info or not project_info.get("path"):
             return HookResult.approve()
@@ -651,6 +689,7 @@ def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
     # Check exploration cache
     try:
         from cache.exploration_cache import check_exploration_cache as get_cached
+
         if cached := get_cached(project_path, prompt):
             return HookResult.approve(cached)
     except Exception as e:
@@ -673,7 +712,9 @@ _LONG_RUNNING_AGENTS = {
 }
 
 
-def _track_background_task(state: SessionState, subagent_type: str, prompt: str) -> None:
+def _track_background_task(
+    state: SessionState, subagent_type: str, prompt: str
+) -> None:
     """Record background task for later check-in reminder."""
     if not hasattr(state, "background_tasks"):
         state.background_tasks = []
@@ -724,16 +765,26 @@ def check_parallel_nudge(data: dict, state: SessionState) -> HookResult:
     # Multiple tasks this turn = good parallel behavior
     if state.task_spawns_this_turn > 1:
         state.consecutive_single_tasks = 0
-        return HookResult.approve("\n".join(messages)) if messages else HookResult.approve()
+        return (
+            HookResult.approve("\n".join(messages))
+            if messages
+            else HookResult.approve()
+        )
 
     # Sequential single-Task pattern
     if state.consecutive_single_tasks >= 3:
         state.parallel_nudge_count += 1
-        messages.insert(0, "⚡ **PARALLEL AGENTS**: 3+ sequential Tasks detected. "
-            "Spawn ALL independent Tasks in ONE message for concurrent execution.")
+        messages.insert(
+            0,
+            "⚡ **PARALLEL AGENTS**: 3+ sequential Tasks detected. "
+            "Spawn ALL independent Tasks in ONE message for concurrent execution.",
+        )
     elif state.consecutive_single_tasks >= 2:
         state.parallel_nudge_count += 1
-        messages.insert(0, "💡 **Parallel opportunity**: Multiple independent Tasks? Spawn them all in one message.")
+        messages.insert(
+            0,
+            "💡 **Parallel opportunity**: Multiple independent Tasks? Spawn them all in one message.",
+        )
 
     return HookResult.approve("\n".join(messages)) if messages else HookResult.approve()
 
@@ -948,12 +999,13 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
         )
     elif state.consecutive_single_tasks >= 2:
         # Strong nudge at 2
-        return HookResult.approve(f"⚡ {bead_count} beads ready for parallel:\n{task_structure}")
+        return HookResult.approve(
+            f"⚡ {bead_count} beads ready for parallel:\n{task_structure}"
+        )
     elif bead_count >= 2:
         # Soft nudge when beads available
         bead_list = ", ".join(f"`{b.get('id', '?')[:12]}`" for b in independent_beads)
-        return HookResult.approve(f"💡 Parallel: {bead_list}"
-        )
+        return HookResult.approve(f"💡 Parallel: {bead_list}")
 
     return HookResult.approve()
 
@@ -1202,17 +1254,24 @@ _BLOCK_PATTERNS = [
 
 def _is_content_exempt_path(file_path: str) -> bool:
     """Check if path is exempt from content checks."""
-    return any(p in file_path for p in (".claude/lib/", ".claude/hooks/", ".claude/tmp/"))
+    return any(
+        p in file_path for p in (".claude/lib/", ".claude/hooks/", ".claude/tmp/")
+    )
 
 
 def _check_python_ast(content: str) -> HookResult | None:
     """Check Python content with AST analysis. Returns deny result or None."""
     try:
         from ast_analysis import has_critical_violations
+
         is_critical, violations = has_critical_violations(content)
         if is_critical:
             msgs = [f"- {v.message} (line {v.line})" for v in violations[:3]]
-            return HookResult.deny("**CONTENT BLOCKED** (AST analysis):\n" + "\n".join(msgs) + "\nFix the vulnerabilities.")
+            return HookResult.deny(
+                "**CONTENT BLOCKED** (AST analysis):\n"
+                + "\n".join(msgs)
+                + "\nFix the vulnerabilities."
+            )
     except Exception as e:
         log_debug("pre_tool_use_runner", f"AST analysis failed: {e}")
     return None
@@ -1234,12 +1293,16 @@ def check_content_gate(data: dict, state: SessionState) -> HookResult:
 
     for pattern, message in _CRITICAL_PATTERNS:
         if pattern.search(content):
-            return HookResult.deny(f"**CONTENT BLOCKED**: {message}\nFix the vulnerability.")
+            return HookResult.deny(
+                f"**CONTENT BLOCKED**: {message}\nFix the vulnerability."
+            )
 
     if not data.get("_sudo_bypass") and "__init__.py" not in file_path:
         for pattern, message in _BLOCK_PATTERNS:
             if pattern.search(content):
-                return HookResult.deny(f"**CONTENT BLOCKED**: {message}\nSay SUDO to bypass.")
+                return HookResult.deny(
+                    f"**CONTENT BLOCKED**: {message}\nSay SUDO to bypass."
+                )
 
     return HookResult.approve()
 
@@ -1249,9 +1312,12 @@ def check_content_gate(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 
-def _get_projected_content(tool_name: str, tool_input: dict, file_path: str) -> str | None:
+def _get_projected_content(
+    tool_name: str, tool_input: dict, file_path: str
+) -> str | None:
     """Get content that will exist after edit. Returns None if can't determine."""
     from pathlib import Path
+
     path = Path(file_path)
     if tool_name == "Write":
         return tool_input.get("content", "")
@@ -1278,20 +1344,32 @@ def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve()
 
     try:
-        content = _get_projected_content(data.get("tool_name", ""), tool_input, file_path)
+        content = _get_projected_content(
+            data.get("tool_name", ""), tool_input, file_path
+        )
         if not content:
             return HookResult.approve()
     except Exception:
         return HookResult.approve()
 
-    edit_count = state.get_file_edit_count(file_path) if hasattr(state, "get_file_edit_count") else 0
+    edit_count = (
+        state.get_file_edit_count(file_path)
+        if hasattr(state, "get_file_edit_count")
+        else 0
+    )
 
     try:
-        from analysis.god_component_detector import detect_god_component, format_detection_message
+        from analysis.god_component_detector import (
+            detect_god_component,
+            format_detection_message,
+        )
+
         result = detect_god_component(file_path, content, edit_count)
         if result.severity == "block":
             msg = format_detection_message(result)
-            return HookResult.deny(f"{msg}\nBypass: `# LARGE_FILE_OK: reason` as first line, SUDO, or use .claude/tmp/")
+            return HookResult.deny(
+                f"{msg}\nBypass: `# LARGE_FILE_OK: reason` as first line, SUDO, or use .claude/tmp/"
+            )
         elif result.severity == "warn":
             return HookResult.approve_with_context(format_detection_message(result))
     except Exception as e:
