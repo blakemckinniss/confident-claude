@@ -1092,10 +1092,11 @@ _TASK_ROUTING = {
     "testing": {
         "triggers": [
             r"(run|write|add)\s+tests?",
-            r"(pytest|jest|vitest)",
+            r"(pytest|jest|vitest|playwright|cypress)",
             r"test\s+(coverage|driven|flaky)",
+            r"(react\s+)?testing\s+library",
         ],
-        "skills": ["testing", "verification"],
+        "skills": ["testing", "testing-frontend", "verification"],
         "agents": ["test-analyzer"],
         "mcps": [],
         "ops": ["verify"],
@@ -1106,13 +1107,35 @@ _TASK_ROUTING = {
         "triggers": [
             r"(build|create|design)\s+(a\s+)?(ui|interface|page|component)",
             r"(react|vue|nextjs|tailwind)",
+            r"(hook|useState|useEffect|component)",
         ],
-        "skills": ["frontend-design", "browser-automation"],
+        "skills": [
+            "frontend-design",
+            "react-patterns",
+            "nextjs",
+            "tailwind",
+            "typescript-advanced",
+        ],
         "agents": ["a11y-auditor"],
         "mcps": [],
         "ops": [],
         "cli": [],
         "desc": "Frontend/UI work",
+    },
+    "python_backend": {
+        "triggers": [
+            r"(python|fastapi|flask|django)",
+            r"(pydantic|dataclass|typing)",
+            r"(async\s+def|await|asyncio)",
+            r"(decorator|context\s+manager)",
+            r"(pytest|unittest)",
+        ],
+        "skills": ["python-patterns", "fastapi", "api-development"],
+        "agents": [],
+        "mcps": [],
+        "ops": [],
+        "cli": ["ruff check", "pytest -v"],
+        "desc": "Python backend development",
     },
     "research_docs": {
         "triggers": [
