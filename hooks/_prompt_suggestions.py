@@ -618,6 +618,12 @@ _AGENT_TRIGGERS = {
 @register_hook("agent_suggestion", priority=81)
 def check_agent_suggestion(data: dict, state: SessionState) -> HookResult:
     """Suggest Task agents based on prompt patterns."""
+    from _cooldown import check_and_reset_cooldown
+
+    # 3-minute cooldown to prevent suggestion spam
+    if not check_and_reset_cooldown("agent_suggestion", cooldown_seconds=180):
+        return HookResult.allow()
+
     prompt = data.get("prompt", "")
     if not prompt or len(prompt) < 20:
         return HookResult.allow()
