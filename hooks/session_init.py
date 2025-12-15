@@ -61,6 +61,14 @@ try:
 except ImportError:
     SPARK_AVAILABLE = False
 
+# Import dependency checker (v3.10)
+try:
+    from dependency_check import run_dependency_check
+
+    DEPENDENCY_CHECK_AVAILABLE = True
+except ImportError:
+    DEPENDENCY_CHECK_AVAILABLE = False
+
 # Scope's punch list file
 PUNCH_LIST_FILE = MEMORY_DIR / "punch_list.json"
 
@@ -751,6 +759,16 @@ def main():
     except (json.JSONDecodeError, ValueError):
         pass
 
+    # === DEPENDENCY CHECK (v3.10) ===
+    dep_warning = None
+    if DEPENDENCY_CHECK_AVAILABLE:
+        try:
+            dep_result = run_dependency_check()
+            if not dep_result["ok"] or dep_result["warnings"]:
+                dep_warning = dep_result["summary"]
+        except Exception:
+            pass  # Non-critical, don't fail session start
+
     # === SYSTEM HEALTH CHECK (v3.9) ===
     health_warning = check_system_health()
 
@@ -840,6 +858,13 @@ def main():
             output["message"] = f"🔁 Resuming: {context}"
 
     # Note: Duplication prevention removed - this is a system assistant, not a template project
+
+    # Append dependency warning if deps are missing (v3.10)
+    if dep_warning:
+        if output.get("message"):
+            output["message"] += f"\n\n📦 **DEPENDENCIES**:\n{dep_warning}"
+        else:
+            output["message"] = f"📦 **DEPENDENCIES**:\n{dep_warning}"
 
     # Append health warning if resources are constrained (v3.9)
     if health_warning and output.get("message"):

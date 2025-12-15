@@ -652,6 +652,180 @@ def check_agent_suggestion(data: dict, state: SessionState) -> HookResult:
     return HookResult.allow("🤖 TASK AGENTS AVAILABLE:\n" + "\n\n".join(suggestions))
 
 
+# =============================================================================
+# SKILL SUGGESTION (priority 82)
+# =============================================================================
+
+_SKILL_TRIGGERS = {
+    "debugging": {
+        "patterns": [
+            re.compile(r"(debug|fix)\s+(this|the|an?)\s+(error|bug|issue)", re.I),
+            re.compile(r"stack\s*trace", re.I),
+            re.compile(r"(why|what).*(fail|crash|broken|not\s+work)", re.I),
+            re.compile(r"(exception|error\s+message|runtime\s+error)", re.I),
+            re.compile(r"(troubleshoot|diagnose|root\s+cause)", re.I),
+        ],
+        "desc": "Debug errors, stack traces, root cause analysis",
+        "invoke": 'Skill(skill="debugging")',
+    },
+    "testing": {
+        "patterns": [
+            re.compile(r"(run|write|add)\s+tests?", re.I),
+            re.compile(r"(pytest|jest|vitest|mocha)", re.I),
+            re.compile(r"test\s+(coverage|driven|tdd)", re.I),
+            re.compile(r"(mock|fixture|assertion)", re.I),
+            re.compile(r"(unit|integration)\s+test", re.I),
+        ],
+        "desc": "Run/write tests, pytest, jest, TDD, coverage",
+        "invoke": 'Skill(skill="testing")',
+    },
+    "browser-automation": {
+        "patterns": [
+            re.compile(r"(screenshot|headless|browser\s+test)", re.I),
+            re.compile(r"(devtools|chrome\s+debug|cdp)", re.I),
+            re.compile(r"(scrape|crawl)\s+(web|page|site)", re.I),
+            re.compile(r"(dom|element|selector)\s+(inspect|check)", re.I),
+            re.compile(r"(playwright|puppeteer|selenium)", re.I),
+            re.compile(r"(e2e|end.to.end)\s+test", re.I),
+        ],
+        "desc": "Browser testing, DevTools, screenshots, scraping",
+        "invoke": 'Skill(skill="browser-automation")',
+    },
+    "code-quality": {
+        "patterns": [
+            re.compile(r"(review|audit)\s+(this|the|my)?\s*code", re.I),
+            re.compile(r"(security|vulnerabilit|owasp)", re.I),
+            re.compile(r"(code\s+smell|anti.?pattern|technical\s+debt)", re.I),
+            re.compile(r"before\s+(I\s+)?(commit|deploy|merge)", re.I),
+            re.compile(r"(pr|pull\s+request)\s+review", re.I),
+        ],
+        "desc": "Code review, security audit, anti-patterns",
+        "invoke": 'Skill(skill="code-quality")',
+    },
+    "completeness-checking": {
+        "patterns": [
+            re.compile(r"(find|check).*(gaps?|missing|incomplete)", re.I),
+            re.compile(r"(stub|placeholder|todo)\s+(impl|code)", re.I),
+            re.compile(r"(void|completeness)\s+check", re.I),
+            re.compile(r"(dead|unused)\s+code", re.I),
+            re.compile(r"notimplementederror", re.I),
+        ],
+        "desc": "Find gaps, stubs, missing implementations, dead code",
+        "invoke": 'Skill(skill="completeness-checking")',
+    },
+    "frontend-design": {
+        "patterns": [
+            re.compile(r"(build|create|design)\s+(a\s+)?(ui|interface|page)", re.I),
+            re.compile(r"(react|vue|svelte|nextjs)\s+(component|page)", re.I),
+            re.compile(r"(css|tailwind|styled|aesthetic)", re.I),
+            re.compile(r"(landing|dashboard|form|modal)\s+(page|design)", re.I),
+            re.compile(r"(responsive|mobile)\s+(design|layout)", re.I),
+        ],
+        "desc": "Distinctive, production-grade frontend interfaces",
+        "invoke": 'Skill(skill="frontend-design")',
+    },
+    "git-workflow": {
+        "patterns": [
+            re.compile(r"(commit|push|merge|rebase)\s+(this|the|my)?", re.I),
+            re.compile(r"(create|open)\s+(a\s+)?(pr|pull\s+request)", re.I),
+            re.compile(r"(git\s+)(blame|log|diff|status)", re.I),
+            re.compile(r"(resolve|fix)\s+(merge\s+)?conflict", re.I),
+            re.compile(r"(undo|revert|reset)\s+(commit|change)", re.I),
+        ],
+        "desc": "Git operations, commits, PRs, conflict resolution",
+        "invoke": 'Skill(skill="git-workflow")',
+    },
+    "memory-workflow": {
+        "patterns": [
+            re.compile(r"(remember|recall|store)\s+(this|for\s+later)", re.I),
+            re.compile(r"(what|did)\s+(we|I)\s+(do|decide)\s+(before|last)", re.I),
+            re.compile(r"(lesson|decision).*(learned|made)", re.I),
+            re.compile(r"(previous|past|old)\s+session", re.I),
+            re.compile(r"(search|find)\s+(memor|past\s+work)", re.I),
+        ],
+        "desc": "Persistent memory, recall past work, lessons learned",
+        "invoke": 'Skill(skill="memory-workflow")',
+    },
+    "research-docs": {
+        "patterns": [
+            re.compile(r"(how\s+do\s+I|what.s\s+the)\s+(use|api)", re.I),
+            re.compile(r"(latest|current)\s+(version|docs|documentation)", re.I),
+            re.compile(r"(look\s*up|search\s+for)\s+(doc|info)", re.I),
+            re.compile(r"(api|sdk)\s+(reference|docs)", re.I),
+            re.compile(r"(changelog|release\s+notes|breaking\s+change)", re.I),
+        ],
+        "desc": "Documentation lookup, API docs, web research",
+        "invoke": 'Skill(skill="research-docs")',
+    },
+    "verification": {
+        "patterns": [
+            re.compile(r"(verify|check|confirm)\s+(this|it|the)\s+(work|exist)", re.I),
+            re.compile(r"(is\s+the|does\s+the)\s+(file|port|server)", re.I),
+            re.compile(r"(reality|sanity)\s+check", re.I),
+            re.compile(r"(prove|assert|ensure)\s+(it|that)", re.I),
+            re.compile(r"(did\s+it|does\s+it)\s+(work|run|succeed)", re.I),
+        ],
+        "desc": "Verify state, check existence, validate claims",
+        "invoke": 'Skill(skill="verification")',
+    },
+    "hook-development": {
+        "patterns": [
+            re.compile(r"(create|write|add)\s+(a\s+)?hook", re.I),
+            re.compile(r"(pre|post).?tool.?use", re.I),
+            re.compile(r"hookresult\.(allow|deny)", re.I),
+            re.compile(r"register_hook", re.I),
+        ],
+        "desc": "Claude Code hook development patterns",
+        "invoke": 'Skill(skill="hook-development")',
+    },
+    "confidence-system": {
+        "patterns": [
+            re.compile(r"confidence\s+(system|level|zone)", re.I),
+            re.compile(r"(reducer|increaser)\s+(fire|trigger)", re.I),
+            re.compile(r"(false\s+positive|fp:)", re.I),
+        ],
+        "desc": "Confidence system mechanics and signals",
+        "invoke": 'Skill(skill="confidence-system")',
+    },
+}
+
+
+@register_hook("skill_suggestion", priority=82)
+def check_skill_suggestion(data: dict, state: SessionState) -> HookResult:
+    """Suggest Skills based on prompt patterns."""
+    from _cooldown import check_and_reset_cooldown
+
+    # 3-minute cooldown to prevent suggestion spam
+    if not check_and_reset_cooldown("skill_suggestion", cooldown_seconds=180):
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 20:
+        return HookResult.allow()
+
+    prompt_lower = prompt.lower()
+    matches = []
+    for skill_name, config in _SKILL_TRIGGERS.items():
+        for pattern in config["patterns"]:
+            if pattern.search(prompt_lower):
+                matches.append((skill_name, config))
+                break
+        if len(matches) >= 2:
+            break
+
+    if not matches:
+        return HookResult.allow()
+
+    suggestions = []
+    for skill_name, config in matches:
+        suggestions.append(
+            f'📘 **{skill_name}**: {config["desc"]}\n'
+            f'   → `{config["invoke"]}`'
+        )
+
+    return HookResult.allow("📚 SKILLS AVAILABLE:\n" + "\n\n".join(suggestions))
+
+
 @register_hook("ops_nudge", priority=80)
 def check_ops_nudge(data: dict, state: SessionState) -> HookResult:
     """Suggest ops tools based on prompt patterns."""

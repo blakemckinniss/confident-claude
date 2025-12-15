@@ -278,6 +278,55 @@ Spawn via `Task(subagent_type="agent-name", prompt="...")`. Use for parallel/bac
 
 ---
 
+## 📚 Skills (23 total)
+
+Invoke via `Skill(skill="skill-name")`. Contextual guidance for specific workflows.
+
+### Core Workflows
+| Skill | Purpose |
+|-------|---------|
+| `debugging` | Debug errors, stack traces, root cause analysis |
+| `testing` | Run/write tests, pytest, jest, TDD, coverage |
+| `code-quality` | Code review, security audit, anti-patterns |
+| `completeness-checking` | Find gaps, stubs, missing implementations |
+| `verification` | Verify state, check existence, validate claims |
+| `git-workflow` | Git operations, commits, PRs, conflict resolution |
+
+### Development
+| Skill | Purpose |
+|-------|---------|
+| `frontend-design` | Distinctive, production-grade UI/UX |
+| `browser-automation` | DevTools, screenshots, scraping, e2e tests |
+| `hook-development` | Claude Code hook patterns |
+| `project-scaffold` | New project setup and structure |
+
+### Research & Memory
+| Skill | Purpose |
+|-------|---------|
+| `research-docs` | Documentation lookup, API docs, web research |
+| `memory-workflow` | Persistent memory, recall past work |
+| `decision-support` | Decision frameworks, trade-off analysis |
+
+### System
+| Skill | Purpose |
+|-------|---------|
+| `confidence-system` | Confidence mechanics and signals |
+| `session-management` | Session lifecycle, state management |
+| `system-maintenance` | System health, cleanup, upkeep |
+| `task-tracking` | Beads workflow, issue management |
+| `autonomous-mode` | Self-directed task execution |
+
+### Integration
+| Skill | Purpose |
+|-------|---------|
+| `mcp-servers` | MCP server configuration and usage |
+| `external-llm` | PAL MCP, oracle, external model consultation |
+| `windows-interop` | WSL2/Windows integration |
+| `code-analysis` | AST analysis, structural code search |
+| `implementation-planning` | Feature planning, architecture decisions |
+
+---
+
 ## Before Creating New Functionality
 
 1. **Search this index** for similar capabilities
