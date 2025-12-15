@@ -10,6 +10,7 @@ import os
 import tempfile
 from datetime import datetime
 from typing import TYPE_CHECKING
+from _logging import log_debug
 
 if TYPE_CHECKING:
     from session_state import SessionState
@@ -50,14 +51,14 @@ def get_open_beads(state: "SessionState") -> list:
                     pass
 
         _BD_CACHE = all_beads
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("_beads", f"bd list parsing failed: {e}")
     finally:
         # Clean up temp file
         try:
             os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug("_beads", f"temp file cleanup failed: {e}")
 
     return all_beads
 
@@ -95,8 +96,8 @@ def get_independent_beads(state: "SessionState") -> list:
                 blocked = json.loads(content)
                 blocked_ids = {b.get("id") for b in blocked}
         os.unlink(tmp_path)
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("_beads", f"bd blocked parsing failed: {e}")
 
     # Filter to independent beads
     independent = [b for b in beads if b.get("id") not in blocked_ids]

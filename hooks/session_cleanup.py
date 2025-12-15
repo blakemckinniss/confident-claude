@@ -13,6 +13,7 @@ Silent by default - performs cleanup in background.
 """
 
 import _lib_path  # noqa: F401
+from _logging import log_debug
 import sys
 import json
 import time
@@ -63,8 +64,8 @@ def _get_project_progress_file() -> Path:
         try:
             context = get_current_project()
             return get_project_memory_dir(context.project_id) / "progress.json"
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug("session_cleanup", f"project progress path failed: {e}")
     return PROGRESS_FILE
 
 
@@ -74,8 +75,8 @@ def _get_project_handoff_file() -> Path:
         try:
             context = get_current_project()
             return get_project_memory_dir(context.project_id) / "handoff.json"
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug("session_cleanup", f"project handoff path failed: {e}")
     return HANDOFF_FILE
 
 

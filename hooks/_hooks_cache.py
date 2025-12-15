@@ -10,6 +10,7 @@ from pathlib import Path
 
 from _hook_registry import register_hook
 from _hook_result import HookResult
+from _logging import log_debug
 from session_state import SessionState
 
 
@@ -64,8 +65,8 @@ def check_exploration_cacher(
             directory_path="",
             touched_files=[],
         )
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("_hooks_cache", f"exploration cache write failed: {e}")
 
     return HookResult.allow()
 
@@ -102,8 +103,8 @@ def check_read_cacher(
         from cache.read_cache import cache_read_result
 
         cache_read_result(file_path, content)
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("_hooks_cache", f"read cache write failed: {e}")
 
     return HookResult.allow()
 
@@ -123,7 +124,7 @@ def check_read_cache_invalidator(
         from cache.read_cache import invalidate_read_cache
 
         invalidate_read_cache(file_path)
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("_hooks_cache", f"read cache invalidation failed: {e}")
 
     return HookResult.allow()

@@ -84,6 +84,7 @@ from _beads import (
     get_independent_beads,
     generate_parallel_task_calls,
 )
+from _logging import log_debug
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -527,8 +528,8 @@ def check_read_cache(data: dict, state: SessionState) -> HookResult:
                 f"```\n{cached_content[:50000]}\n```\n"
                 f"_(Use `fresh` in prompt to force re-read)_"
             )
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("pre_tool_use_runner", f"read cache lookup failed: {e}")
     return HookResult.approve()
 
 
@@ -652,8 +653,8 @@ def check_exploration_cache(data: dict, state: SessionState) -> HookResult:
         from cache.exploration_cache import check_exploration_cache as get_cached
         if cached := get_cached(project_path, prompt):
             return HookResult.approve(cached)
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("pre_tool_use_runner", f"exploration cache lookup failed: {e}")
 
     # Check grounding cache
     if grounding := _check_grounding_cache(prompt_lower, project_path):
@@ -1212,8 +1213,8 @@ def _check_python_ast(content: str) -> HookResult | None:
         if is_critical:
             msgs = [f"- {v.message} (line {v.line})" for v in violations[:3]]
             return HookResult.deny("**CONTENT BLOCKED** (AST analysis):\n" + "\n".join(msgs) + "\nFix the vulnerabilities.")
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("pre_tool_use_runner", f"AST analysis failed: {e}")
     return None
 
 
@@ -1293,8 +1294,8 @@ def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
             return HookResult.deny(f"{msg}\nBypass: `# LARGE_FILE_OK: reason` as first line, SUDO, or use .claude/tmp/")
         elif result.severity == "warn":
             return HookResult.approve_with_context(format_detection_message(result))
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("pre_tool_use_runner", f"large file detection failed: {e}")
     return HookResult.approve()
 
 

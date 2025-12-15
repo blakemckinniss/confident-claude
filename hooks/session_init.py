@@ -19,6 +19,7 @@ Silent by default - outputs brief status only if resuming work or issues detecte
 """
 
 import _lib_path  # noqa: F401
+from _logging import log_debug
 import sys
 import json
 import os
@@ -81,8 +82,8 @@ def _get_project_handoff_file(project_context=None) -> Path:
             from project_state import get_project_memory_dir
 
             return get_project_memory_dir(project_context.project_id) / "handoff.json"
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug("session_init", f"project context loading failed: {e}")
     return HANDOFF_FILE
 
 
@@ -93,8 +94,8 @@ def _get_project_progress_file(project_context=None) -> Path:
             from project_state import get_project_memory_dir
 
             return get_project_memory_dir(project_context.project_id) / "progress.json"
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug("session_init", f"project context loading failed: {e}")
     return PROGRESS_FILE
 
 
@@ -194,8 +195,8 @@ def prewarm_memory_cache():
                 prompt, include_constraints=False, include_session_history=False
             )
 
-    except Exception:
-        pass  # Non-critical, don't fail session init
+    except Exception as e:
+        log_debug("session_init", f"recent context preload failed: {e}")
 
 
 def sync_beads_on_start():
@@ -815,8 +816,8 @@ def main():
                         f"📁 Now in: {new_ctx.project_name}\n"
                         f"Previous context saved."
                     )
-                except Exception:
-                    pass  # Fall through to normal resume
+                except Exception as e:
+                    log_debug("session_init", f"project switch failed: {e}")
 
         if context and "message" not in output:
             output["message"] = f"🔁 Resuming: {context}"

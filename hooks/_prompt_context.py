@@ -17,6 +17,7 @@ from typing import Optional
 
 from _prompt_registry import register_hook
 from _hook_result import HookResult
+from _logging import log_debug
 from session_state import (
     SessionState,
     add_pending_file,
@@ -633,8 +634,8 @@ def check_context_injector(data: dict, state: SessionState) -> HookResult:
             suggestions = suggest_commands(prompt, max_suggestions=2)
             for s in suggestions:
                 parts.append(f"💡 {s}")
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug("_prompt_context", f"command suggestion loading failed: {e}")
 
     return HookResult.allow("\n".join(parts)) if parts else HookResult.allow()
 

@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 sys.path.insert(0, str(Path(__file__).parent))  # For _config
 
 from _config import get_magic_number
+from _logging import log_debug
 
 # =============================================================================
 # CACHE LAYER - subprocess results don't change rapidly
@@ -57,8 +58,8 @@ def load_cache() -> dict:
     try:
         if CACHE_FILE.exists():
             return json.loads(CACHE_FILE.read_text())
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("statusline", f"confidence state read failed: {e}")
     return {}
 
 
@@ -66,8 +67,8 @@ def save_cache(cache: dict):
     """Save cache to file (best effort)."""
     try:
         CACHE_FILE.write_text(json.dumps(cache))
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("statusline", f"git data read failed: {e}")
 
 
 def get_cached(cache: dict, key: str) -> tuple[bool, str]:
@@ -169,8 +170,8 @@ def get_services_status():
             )
             if count > 0:
                 services.append(f"{C.CYAN}D:{count}{C.RESET}")
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("statusline", f"bead state read failed: {e}")
 
     # Node processes
     try:
@@ -181,8 +182,8 @@ def get_services_status():
             count = int(result.stdout.strip())
             if count > 0:
                 services.append(f"{C.GREEN}N:{count}{C.RESET}")
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("statusline", f"bead state read failed: {e}")
 
     # Python processes
     try:
@@ -193,8 +194,8 @@ def get_services_status():
             count = int(result.stdout.strip())
             if count > 1:
                 services.append(f"{C.YELLOW}P:{count - 1}{C.RESET}")
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug("statusline", f"decay timer read failed: {e}")
 
     return " ".join(services) if services else ""
 
