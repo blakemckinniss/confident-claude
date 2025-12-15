@@ -122,6 +122,9 @@ memory/info_gain_state.json
 # Beads sync state (regenerable)
 memory/beads_*.json
 
+# Tool usage tracking (regenerable)
+memory/tool_usage.json
+
 # ----------------------------------------------------------------------------
 # MEMORY - VERSIONED (DO track these)
 # ----------------------------------------------------------------------------
