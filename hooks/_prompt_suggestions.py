@@ -3,10 +3,13 @@ Suggestion hooks for UserPromptSubmit (priority 72-95).
 
 Hooks that provide suggestions and guidance:
    2 beads_periodic_sync   - Periodic background beads sync
+  70 complexity_assessment - BMAD-style complexity detection (Path B)
+  71 advisor_context       - Persona-flavored advisory (Path C)
   72 self_heal_diagnostic  - Diagnostic guidance for self-heal mode
   75 proactive_nudge       - Actionable suggestions from state
   80 ops_nudge             - Suggest ops tools based on patterns
   81 agent_suggestion      - Suggest Task agents based on prompt patterns
+  82 skill_suggestion      - Suggest Skills based on prompt patterns
   85 ops_awareness         - Fallback ops script reminders
   86 ops_audit_reminder    - Periodic ops tool usage audit
   88 intent_classifier     - ML-based intent classification
@@ -41,6 +44,35 @@ try:
 except ImportError:
     INTENT_CLASSIFIER_AVAILABLE = False
     classify_intent = None
+
+# Try to import complexity detector (Path B - BMAD-inspired)
+try:
+    import _lib_path  # noqa: F401 - Sets up sys.path for lib imports
+
+    from _complexity import assess_complexity, get_complexity_context_injection
+
+    COMPLEXITY_AVAILABLE = True
+except ImportError:
+    COMPLEXITY_AVAILABLE = False
+    assess_complexity = None
+    get_complexity_context_injection = None
+
+# Try to import advisory personas (Path C - BMAD-inspired)
+try:
+    from _advisors import (
+        detect_advisor_context,
+        get_advisory_context_injection,
+        format_advisory,
+        ADVISORS,
+    )
+
+    ADVISORS_AVAILABLE = True
+except ImportError:
+    ADVISORS_AVAILABLE = False
+    detect_advisor_context = None
+    get_advisory_context_injection = None
+    format_advisory = None
+    ADVISORS = {}
 
 # Try to import PAL mandates
 try:
@@ -113,6 +145,87 @@ def check_beads_periodic_sync(data: dict, state: SessionState) -> HookResult:
         BEADS_PERIODIC_SYNC_FILE.write_text(json.dumps({"last": time.time()}))
     except (OSError, IOError):
         pass
+
+    return HookResult.allow()
+
+
+# =============================================================================
+# COMPLEXITY ASSESSMENT (priority 70) - Path B: BMAD-inspired
+# =============================================================================
+
+
+@register_hook("complexity_assessment", priority=70)
+def check_complexity_assessment(data: dict, state: SessionState) -> HookResult:
+    """Assess task complexity to tune hook verbosity (BMAD-inspired)."""
+    if not COMPLEXITY_AVAILABLE or assess_complexity is None:
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 30:
+        return HookResult.allow()
+
+    # Skip trivial prompts
+    if re.match(r"^(yes|no|ok|hi|hello|thanks|commit|push|/\w+)\b", prompt.lower()):
+        return HookResult.allow()
+
+    # Gather context
+    context = {
+        "consecutive_failures": getattr(state, "consecutive_failures", 0),
+        "turn_count": getattr(state, "turn_count", 0),
+    }
+
+    # Assess complexity
+    complexity = assess_complexity(prompt, context=context)
+
+    # Store in state for other hooks to use
+    state.set("task_complexity", complexity.level)
+    state.set("task_complexity_score", complexity.score)
+
+    # Only inject context for complex tasks (avoid noise for simple tasks)
+    injection = get_complexity_context_injection(complexity)
+    if injection:
+        return HookResult.allow(injection)
+
+    return HookResult.allow()
+
+
+# =============================================================================
+# ADVISOR CONTEXT (priority 71) - Path C: BMAD-inspired
+# =============================================================================
+
+
+@register_hook("advisor_context", priority=71)
+def check_advisor_context(data: dict, state: SessionState) -> HookResult:
+    """Inject persona-flavored advisory context (BMAD-inspired)."""
+    if not ADVISORS_AVAILABLE or detect_advisor_context is None:
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 30:
+        return HookResult.allow()
+
+    # Skip trivial prompts
+    if re.match(r"^(yes|no|ok|hi|hello|thanks|commit|push|/\w+)\b", prompt.lower()):
+        return HookResult.allow()
+
+    # Only show advisors for complex tasks (use complexity from previous hook)
+    complexity_level = state.get("task_complexity", "standard")
+    if complexity_level == "trivial":
+        return HookResult.allow()
+
+    # Detect relevant advisors
+    advisors = detect_advisor_context(prompt)
+    if not advisors:
+        return HookResult.allow()
+
+    # Store for other hooks
+    state.set("active_advisors", advisors)
+
+    # Generate injection (only for complex tasks)
+    if complexity_level == "complex":
+        injection = get_advisory_context_injection(advisors, prompt)
+        if injection:
+            return HookResult.allow(injection)
 
     return HookResult.allow()
 
@@ -570,7 +683,9 @@ _AGENT_TRIGGERS = {
     },
     "refactor-planner": {
         "patterns": [
-            re.compile(r"(refactor|extract|inline)\s+(plan|opportunit|candidate)", re.I),
+            re.compile(
+                r"(refactor|extract|inline)\s+(plan|opportunit|candidate)", re.I
+            ),
             re.compile(r"(code\s+smell|technical\s+debt)\s+(fix|address)", re.I),
             re.compile(r"(safe|incremental)\s+refactor", re.I),
         ],
@@ -645,7 +760,7 @@ def check_agent_suggestion(data: dict, state: SessionState) -> HookResult:
     for agent_name, config in matches:
         model_badge = "⚡" if config["model"] == "haiku" else "🎯"
         suggestions.append(
-            f'{model_badge} **{agent_name}**: {config["desc"]}\n'
+            f"{model_badge} **{agent_name}**: {config['desc']}\n"
             f'   → `Task(subagent_type="{agent_name}", prompt="...")`'
         )
 
@@ -924,8 +1039,7 @@ def check_skill_suggestion(data: dict, state: SessionState) -> HookResult:
     suggestions = []
     for skill_name, config in matches:
         suggestions.append(
-            f'📘 **{skill_name}**: {config["desc"]}\n'
-            f'   → `{config["invoke"]}`'
+            f"📘 **{skill_name}**: {config['desc']}\n   → `{config['invoke']}`"
         )
 
     return HookResult.allow("📚 SKILLS AVAILABLE:\n" + "\n\n".join(suggestions))

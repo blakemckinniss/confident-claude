@@ -27,10 +27,14 @@ HOOKS INDEX (by priority):
    45  context_injector    - Session state, command suggestions
    50  reminder_injector   - Custom trigger-based reminders
 
-  SUGGESTIONS (72-95) - _prompt_suggestions.py:
+  SUGGESTIONS (70-95) - _prompt_suggestions.py:
+   70  complexity_assessment - BMAD-style task complexity detection
+   71  advisor_context     - Persona-flavored advisory (security, architecture, etc.)
    72  self_heal_diagnostic - Diagnostic commands when self-heal active
    75  proactive_nudge     - Actionable suggestions from state
    80  ops_nudge           - Tool suggestions (comprehensive)
+   81  agent_suggestion    - Suggest Task agents based on prompt patterns
+   82  skill_suggestion    - Suggest Skills based on prompt patterns
    85  ops_awareness       - Script awareness (fallback)
    86  ops_audit_reminder  - Periodic unused tool reminder
    88  intent_classifier   - ML-based intent classification
