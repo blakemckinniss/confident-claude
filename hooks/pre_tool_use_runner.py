@@ -1010,6 +1010,41 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     return HookResult.approve()
 
 
+@register_hook("serena_activation_gate", "mcp__serena__", priority=6)
+def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
+    """Block Serena tools until project is activated.
+
+    Allows activate_project through, blocks all other Serena MCP tools
+    until activation has occurred.
+    """
+    tool_name = data.get("tool_name", "")
+
+    # Always allow activation
+    if "activate_project" in tool_name:
+        return HookResult.approve()
+
+    # Check if Serena was activated this session
+    serena_activated = getattr(state, "serena_activated", False)
+    if serena_activated:
+        return HookResult.approve()
+
+    # Block with helpful message
+    serena_project = ""
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        if (parent / ".serena").is_dir():
+            serena_project = parent.name
+            break
+        if parent == Path.home():
+            break
+
+    return HookResult.deny(
+        f"🔮 **SERENA NOT ACTIVATED**: Call `mcp__serena__activate_project"
+        f'("{serena_project or "project"}")` first.\n'
+        f"Tool `{tool_name}` requires an active Serena session."
+    )
+
+
 @register_hook("recursion_guard", "Edit|Write|Bash", priority=5)
 def check_recursion_guard(data: dict, state: SessionState) -> HookResult:
     """Block catastrophic folder duplication."""

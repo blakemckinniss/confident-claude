@@ -872,14 +872,51 @@ def main():
     elif health_warning:
         output["message"] = f"🖥️ **SYSTEM**: {health_warning}"
 
-    # === SERENA AUTO-ACTIVATION (v3.11) ===
-    # If .serena/ exists in cwd, inject mandatory activation instruction
+    # === SERENA AUTO-ACTIVATION + MEMORY STATUS (v3.12) ===
+    # If .serena/ exists in cwd, inject activation + memory staleness info
     serena_dir = Path.cwd() / ".serena"
     if serena_dir.is_dir():
+        # Check memory staleness
+        memory_status = ""
+        memories_dir = serena_dir / "memories"
+        metadata_file = serena_dir / "memory_metadata.json"
+        if memories_dir.is_dir():
+            try:
+                import json as _json
+                from datetime import datetime
+
+                memories = list(memories_dir.glob("*.md"))
+                stale_count = 0
+
+                # Quick staleness check: files older than 7 days without validation
+                metadata = {}
+                if metadata_file.exists():
+                    metadata = _json.loads(metadata_file.read_text())
+
+                now = datetime.now()
+                for mem in memories:
+                    meta = metadata.get(mem.name, {})
+                    mtime = datetime.fromtimestamp(mem.stat().st_mtime)
+                    age_days = (now - mtime).days
+
+                    # Stale if >7 days old and not validated recently
+                    last_validated = meta.get("last_validated")
+                    if age_days > 7 and not last_validated:
+                        stale_count += 1
+                    elif last_validated:
+                        validated_date = datetime.fromisoformat(last_validated)
+                        if (now - validated_date).days > 7:
+                            stale_count += 1
+
+                if stale_count > 0:
+                    memory_status = f"\n⚠️ **{stale_count} stale memories** — run `/serena-mem status` for details"
+            except Exception:
+                pass  # Silent fail on staleness check
+
         serena_instruction = (
             "\n\n🔮 **SERENA PROJECT DETECTED**\n"
             "MANDATORY: Call `mcp__serena__activate_project` with current directory "
-            "NOW before any other action."
+            f"NOW before any other action.{memory_status}"
         )
         if output.get("message"):
             output["message"] += serena_instruction

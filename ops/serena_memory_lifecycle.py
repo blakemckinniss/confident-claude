@@ -97,7 +97,9 @@ def extract_file_references(memory_content: str) -> list[str]:
     return sorted(refs)
 
 
-def get_git_file_changed(project_root: Path, file_path: str, since_days: int = 7) -> bool:
+def get_git_file_changed(
+    project_root: Path, file_path: str, since_days: int = 7
+) -> bool:
     """Check if file changed in git since N days ago."""
     try:
         since = (datetime.now() - timedelta(days=since_days)).strftime("%Y-%m-%d")
@@ -241,7 +243,7 @@ def cmd_stale(args: argparse.Namespace) -> int:
         print(f"📄 {s['memory']}")
         print(f"   Age: {s['age_days']} days")
         if s["changed_refs"]:
-            print(f"   Changed files:")
+            print("   Changed files:")
             for ref in s["changed_refs"]:
                 print(f"     - {ref}")
         print()
@@ -250,7 +252,9 @@ def cmd_stale(args: argparse.Namespace) -> int:
     print("   - `mcp__serena__read_memory` to review content")
     print("   - `mcp__serena__edit_memory` to update specific sections")
     print("   - `mcp__serena__delete_memory` to remove if obsolete")
-    print("   - `serena_memory_lifecycle.py refresh --auto` to auto-update structural memories")
+    print(
+        "   - `serena_memory_lifecycle.py refresh --auto` to auto-update structural memories"
+    )
 
     return 0
 
@@ -263,7 +267,6 @@ def cmd_validate(args: argparse.Namespace) -> int:
         return 1
 
     memories_dir = project_root / ".serena" / "memories"
-    metadata = load_metadata(project_root)
 
     if args.memory:
         memories = [memories_dir / f"{args.memory}.md"]
@@ -291,11 +294,13 @@ def cmd_validate(args: argparse.Namespace) -> int:
                 missing_refs.append(ref)
 
         if missing_refs:
-            issues.append({
-                "memory": mem.name,
-                "issue": "Missing references",
-                "refs": missing_refs,
-            })
+            issues.append(
+                {
+                    "memory": mem.name,
+                    "issue": "Missing references",
+                    "refs": missing_refs,
+                }
+            )
 
         # Check for obvious outdated patterns
         outdated_patterns = [
@@ -344,20 +349,24 @@ def cmd_prune(args: argparse.Namespace) -> int:
         missing_refs = [r for r in refs if not (project_root / r).exists()]
 
         if len(refs) > 0 and len(missing_refs) == len(refs):
-            candidates.append({
-                "memory": mem.name,
-                "reason": "All referenced files missing",
-                "path": mem,
-            })
+            candidates.append(
+                {
+                    "memory": mem.name,
+                    "reason": "All referenced files missing",
+                    "path": mem,
+                }
+            )
         elif analysis.get("age_days", 0) > 60:
             meta = metadata.get(mem.name, {})
             last_validated = meta.get("last_validated")
             if not last_validated:
-                candidates.append({
-                    "memory": mem.name,
-                    "reason": f"Old ({analysis['age_days']}d) and never validated",
-                    "path": mem,
-                })
+                candidates.append(
+                    {
+                        "memory": mem.name,
+                        "reason": f"Old ({analysis['age_days']}d) and never validated",
+                        "path": mem,
+                    }
+                )
 
     if not candidates:
         print("✓ No memories need pruning")
@@ -392,6 +401,146 @@ def cmd_prune(args: argparse.Namespace) -> int:
     return 0
 
 
+def _generate_ops_tools_memory(project_root: Path) -> str:
+    """Generate ops_tools memory content."""
+    ops_dir = project_root / "ops"
+    if not ops_dir.is_dir():
+        return ""
+
+    scripts = sorted(ops_dir.glob("*.py"))
+    lines = [
+        "# Ops Tools Index",
+        "",
+        f"**{len(scripts)} operational scripts** in `ops/` directory.",
+        "",
+        "## Scripts",
+        "",
+        "| Script | Purpose |",
+        "|--------|---------|",
+    ]
+
+    for script in scripts:
+        # Extract docstring for purpose
+        content = script.read_text()
+        purpose = ""
+        if '"""' in content:
+            start = content.find('"""') + 3
+            end = content.find('"""', start)
+            if end > start:
+                doc = content[start:end].strip().split("\n")[0]
+                purpose = doc[:60] + "..." if len(doc) > 60 else doc
+        lines.append(f"| `{script.name}` | {purpose} |")
+
+    lines.extend(["", f"*Auto-generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*"])
+    return "\n".join(lines)
+
+
+def _generate_slash_commands_memory(project_root: Path) -> str:
+    """Generate slash_commands memory content."""
+    cmds_dir = project_root / "commands"
+    if not cmds_dir.is_dir():
+        return ""
+
+    commands = sorted(cmds_dir.glob("*.md"))
+    lines = [
+        "# Slash Commands Index",
+        "",
+        f"**{len(commands)} slash commands** in `commands/` directory.",
+        "",
+        "## Commands",
+        "",
+        "| Command | Description |",
+        "|---------|-------------|",
+    ]
+
+    for cmd in commands:
+        content = cmd.read_text()
+        desc = ""
+        # Extract description from frontmatter
+        if content.startswith("---"):
+            end = content.find("---", 3)
+            if end > 0:
+                frontmatter = content[3:end]
+                for line in frontmatter.split("\n"):
+                    if line.startswith("description:"):
+                        desc = line.split(":", 1)[1].strip().strip("\"'")[:50]
+                        break
+        lines.append(f"| `/{cmd.stem}` | {desc} |")
+
+    lines.extend(["", f"*Auto-generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*"])
+    return "\n".join(lines)
+
+
+def _generate_lib_modules_memory(project_root: Path) -> str:
+    """Generate lib_modules memory content."""
+    lib_dir = project_root / "lib"
+    if not lib_dir.is_dir():
+        return ""
+
+    modules = sorted(lib_dir.glob("*.py"))
+    lines = [
+        "# Library Modules Index",
+        "",
+        f"**{len(modules)} library modules** in `lib/` directory.",
+        "",
+        "## Modules",
+        "",
+        "| Module | Purpose |",
+        "|--------|---------|",
+    ]
+
+    for mod in modules:
+        content = mod.read_text()
+        purpose = ""
+        if '"""' in content:
+            start = content.find('"""') + 3
+            end = content.find('"""', start)
+            if end > start:
+                doc = content[start:end].strip().split("\n")[0]
+                purpose = doc[:60] + "..." if len(doc) > 60 else doc
+        lines.append(f"| `{mod.name}` | {purpose} |")
+
+    lines.extend(["", f"*Auto-generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*"])
+    return "\n".join(lines)
+
+
+def _generate_codebase_structure_memory(project_root: Path) -> str:
+    """Generate codebase_structure memory content."""
+    lines = [
+        "# Codebase Structure",
+        "",
+        f"Project root: `{project_root.name}/`",
+        "",
+        "## Directory Layout",
+        "",
+    ]
+
+    # Walk top-level directories
+    for item in sorted(project_root.iterdir()):
+        if item.name.startswith(".") and item.name not in [
+            ".claude",
+            ".serena",
+            ".beads",
+        ]:
+            continue
+        if item.is_dir():
+            file_count = len(list(item.rglob("*"))) if item.name != "__pycache__" else 0
+            lines.append(f"- `{item.name}/` ({file_count} files)")
+        else:
+            lines.append(f"- `{item.name}`")
+
+    lines.extend(["", f"*Auto-generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*"])
+    return "\n".join(lines)
+
+
+MEMORY_GENERATORS = {
+    "ops_tools": _generate_ops_tools_memory,
+    "slash_commands": _generate_slash_commands_memory,
+    "lib_modules": _generate_lib_modules_memory,
+    "codebase_structure": _generate_codebase_structure_memory,
+}
+
+
 def cmd_refresh(args: argparse.Namespace) -> int:
     """Auto-update structural memories."""
     project_root = find_serena_root(Path(args.project) if args.project else None)
@@ -400,9 +549,9 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         return 1
 
     metadata = load_metadata(project_root)
+    memories_dir = project_root / ".serena" / "memories"
 
     # Identify structural memories that can be auto-refreshed
-    # These typically contain file counts, directory listings, etc.
     refreshable = [
         "codebase_structure",
         "lib_modules",
@@ -416,7 +565,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     needs_refresh = []
     for mem_name in refreshable:
         meta = metadata.get(f"{mem_name}.md", {})
-        if meta.get("auto_refresh", True):  # Default to refreshable
+        if meta.get("auto_refresh", True):
             analysis = analyze_memory(project_root, f"{mem_name}.md", metadata)
             if analysis["status"] == "stale" or analysis.get("changed_refs"):
                 needs_refresh.append(mem_name)
@@ -428,29 +577,69 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         print("\n✓ All structural memories are current")
         return 0
 
-    if not args.auto:
+    if not args.auto and not args.regenerate:
         print(f"\n💡 {len(needs_refresh)} memories need refresh")
-        print("   Run with --auto to generate refresh instructions")
+        print("   --auto: Generate MCP instructions")
+        print("   --regenerate: Actually regenerate memories now")
         return 0
 
+    # Regenerate mode: actually update the memory files
+    if args.regenerate:
+        print(f"\n🔧 Regenerating {len(needs_refresh)} memories...\n")
+        regenerated = 0
+
+        for mem_name in needs_refresh:
+            generator = MEMORY_GENERATORS.get(mem_name)
+            if generator:
+                try:
+                    content = generator(project_root)
+                    if content:
+                        mem_path = memories_dir / f"{mem_name}.md"
+                        mem_path.write_text(content)
+                        print(f"   ✓ {mem_name}: regenerated")
+                        regenerated += 1
+
+                        # Update metadata
+                        key = f"{mem_name}.md"
+                        if key not in metadata:
+                            metadata[key] = {}
+                        metadata[key]["last_validated"] = datetime.now().isoformat()
+                        refs = extract_file_references(content)
+                        metadata[key]["references"] = refs
+                        checksums = {}
+                        for ref in refs:
+                            ref_path = project_root / ref
+                            if ref_path.exists():
+                                checksums[ref] = file_checksum(ref_path)
+                        metadata[key]["checksums"] = checksums
+                except Exception as e:
+                    print(f"   ✗ {mem_name}: failed ({e})")
+            else:
+                print(f"   ⚠ {mem_name}: no generator (use MCP)")
+
+        save_metadata(project_root, metadata)
+        print(f"\n✓ Regenerated {regenerated} memories")
+        return 0
+
+    # Auto mode: print MCP instructions
     print("\n📋 Refresh Instructions:\n")
     print("Run these MCP commands to refresh stale memories:\n")
 
     for mem_name in needs_refresh:
         print(f"# Refresh {mem_name}")
-        print(f"# 1. Get current state:")
+        print("# 1. Get current state:")
         if mem_name == "codebase_structure":
-            print(f"mcp__serena__list_dir(relative_path='.', recursive=True)")
+            print("mcp__serena__list_dir(relative_path='.', recursive=True)")
         elif mem_name == "lib_modules":
-            print(f"mcp__serena__list_dir(relative_path='lib', recursive=True)")
+            print("mcp__serena__list_dir(relative_path='lib', recursive=True)")
         elif mem_name == "ops_tools":
-            print(f"mcp__serena__list_dir(relative_path='ops', recursive=False)")
+            print("mcp__serena__list_dir(relative_path='ops', recursive=False)")
         elif mem_name == "slash_commands":
-            print(f"mcp__serena__list_dir(relative_path='commands', recursive=False)")
+            print("mcp__serena__list_dir(relative_path='commands', recursive=False)")
         elif mem_name == "hook_registry":
-            print(f"mcp__serena__find_symbol(name_path_pattern='register_*')")
+            print("mcp__serena__find_symbol(name_path_pattern='register_*')")
 
-        print(f"# 2. Update memory:")
+        print("# 2. Update memory:")
         print(f"mcp__serena__edit_memory(memory_file_name='{mem_name}.md', ...)")
         print()
 
@@ -500,7 +689,10 @@ def cmd_init(args: argparse.Namespace) -> int:
 
         # Determine memory type
         mem_type = "unknown"
-        if any(kw in mem.stem for kw in ["structure", "modules", "tools", "commands", "registry"]):
+        if any(
+            kw in mem.stem
+            for kw in ["structure", "modules", "tools", "commands", "registry"]
+        ):
             mem_type = "structural"
         elif any(kw in mem.stem for kw in ["system", "conventions", "overview"]):
             mem_type = "conceptual"
@@ -525,9 +717,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Serena memory lifecycle management"
-    )
+    parser = argparse.ArgumentParser(description="Serena memory lifecycle management")
     parser.add_argument("--project", "-p", help="Project path (default: auto-detect)")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
@@ -536,19 +726,32 @@ def main() -> int:
 
     # stale
     stale_parser = subparsers.add_parser("stale", help="Detect stale memories")
-    stale_parser.add_argument("--days", "-d", type=int, default=7, help="Days threshold")
+    stale_parser.add_argument(
+        "--days", "-d", type=int, default=7, help="Days threshold"
+    )
 
     # validate
     validate_parser = subparsers.add_parser("validate", help="Validate memory accuracy")
-    validate_parser.add_argument("memory", nargs="?", help="Specific memory to validate")
+    validate_parser.add_argument(
+        "memory", nargs="?", help="Specific memory to validate"
+    )
 
     # prune
     prune_parser = subparsers.add_parser("prune", help="Remove outdated memories")
-    prune_parser.add_argument("--dry-run", action="store_true", help="Don't actually delete")
+    prune_parser.add_argument(
+        "--dry-run", action="store_true", help="Don't actually delete"
+    )
 
     # refresh
-    refresh_parser = subparsers.add_parser("refresh", help="Auto-update structural memories")
-    refresh_parser.add_argument("--auto", action="store_true", help="Generate refresh instructions")
+    refresh_parser = subparsers.add_parser(
+        "refresh", help="Auto-update structural memories"
+    )
+    refresh_parser.add_argument(
+        "--auto", action="store_true", help="Generate MCP refresh instructions"
+    )
+    refresh_parser.add_argument(
+        "--regenerate", action="store_true", help="Actually regenerate memory files"
+    )
 
     # init
     subparsers.add_parser("init", help="Initialize memory metadata")
