@@ -7,6 +7,7 @@ This module exists to break circular import dependencies.
 
 import re
 from pathlib import Path
+from typing import Optional
 
 # =============================================================================
 # PATHS
@@ -15,10 +16,77 @@ from pathlib import Path
 LIB_DIR = Path(__file__).resolve().parent  # .claude/lib
 CLAUDE_DIR = LIB_DIR.parent  # .claude
 MEMORY_DIR = CLAUDE_DIR / "memory"
-STATE_FILE = MEMORY_DIR / "session_state_v3.json"
+STATE_FILE = MEMORY_DIR / "session_state_v3.json"  # Legacy global (fallback only)
 OPS_DIR = LIB_DIR.parent / "ops"  # .claude/ops
 OPS_USAGE_FILE = MEMORY_DIR / "tool_usage.json"
-STATE_LOCK_FILE = MEMORY_DIR / "session_state.lock"
+STATE_LOCK_FILE = MEMORY_DIR / "session_state.lock"  # Legacy global lock
+
+# =============================================================================
+# PROJECT-AWARE STATE PATHS (v3.13)
+# =============================================================================
+
+# Cache for current project context (avoids repeated detection)
+_CURRENT_PROJECT_ID: Optional[str] = None
+_CURRENT_PROJECT_ROOT: Optional[str] = None
+
+
+def get_project_state_file() -> Path:
+    """Get project-specific state file path.
+
+    Returns per-project state file if in a detected project,
+    otherwise falls back to global state file.
+
+    Layout:
+      ~/.claude/memory/projects/{project_id}/session_state.json  (per-project)
+      ~/.claude/memory/session_state_v3.json                     (global fallback)
+    """
+    global _CURRENT_PROJECT_ID, _CURRENT_PROJECT_ROOT
+
+    try:
+        # Ensure lib directory is on path for sibling module imports
+        import sys
+
+        lib_dir_str = str(LIB_DIR)
+        if lib_dir_str not in sys.path:
+            sys.path.insert(0, lib_dir_str)
+
+        from project_detector import detect_project
+
+        ctx = detect_project()
+
+        # Cache for performance
+        _CURRENT_PROJECT_ID = ctx.project_id
+        _CURRENT_PROJECT_ROOT = ctx.root_path
+
+        # Ephemeral contexts use global state
+        if ctx.project_type == "ephemeral":
+            return STATE_FILE
+
+        # Per-project state file
+        project_dir = MEMORY_DIR / "projects" / ctx.project_id
+        project_dir.mkdir(parents=True, exist_ok=True)
+        return project_dir / "session_state.json"
+
+    except Exception:
+        # Fallback to global on any detection failure
+        return STATE_FILE
+
+
+def get_project_lock_file() -> Path:
+    """Get project-specific lock file path."""
+    state_file = get_project_state_file()
+    return state_file.parent / "session_state.lock"
+
+
+def get_current_project_id() -> Optional[str]:
+    """Get cached current project ID (call get_project_state_file first)."""
+    return _CURRENT_PROJECT_ID
+
+
+def get_current_project_root() -> Optional[str]:
+    """Get cached current project root path."""
+    return _CURRENT_PROJECT_ROOT
+
 
 # =============================================================================
 # SESSION-SCOPED STATE CACHE (Performance optimization)
@@ -96,11 +164,30 @@ _DOMAIN_SIGNAL_PATTERNS = {
 # =============================================================================
 
 RESEARCH_REQUIRED_LIBS = {
-    "fastapi", "pydantic", "langchain", "llamaindex", "anthropic", "openai",
-    "polars", "duckdb", "streamlit", "gradio", "transformers", "torch",
-    "boto3", "playwright", "httpx", "aiohttp",
-    "next", "nuxt", "remix", "astro", "svelte",
-    "@google-cloud", "@aws-sdk", "@azure",
+    "fastapi",
+    "pydantic",
+    "langchain",
+    "llamaindex",
+    "anthropic",
+    "openai",
+    "polars",
+    "duckdb",
+    "streamlit",
+    "gradio",
+    "transformers",
+    "torch",
+    "boto3",
+    "playwright",
+    "httpx",
+    "aiohttp",
+    "next",
+    "nuxt",
+    "remix",
+    "astro",
+    "svelte",
+    "@google-cloud",
+    "@aws-sdk",
+    "@azure",
 }
 
 STDLIB_PATTERNS = [
