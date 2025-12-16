@@ -72,6 +72,9 @@ except ImportError:
 # Scope's punch list file
 PUNCH_LIST_FILE = MEMORY_DIR / "punch_list.json"
 
+# Cross-session FP history (Entity Model: immune memory)
+FP_HISTORY_FILE = Path.home() / ".claude" / "tmp" / "fp_history.jsonl"
+
 # Infrastructure manifest (prevents "create X" when X exists)
 INFRASTRUCTURE_FILE = MEMORY_DIR / "__infrastructure.md"
 
@@ -435,6 +438,65 @@ def get_confidence_fp_history(state) -> list[str]:
     return fp_warnings[:5]  # Limit to 5 most relevant
 
 
+def get_cross_session_fp_insights() -> list[str]:
+    """Analyze persistent FP history for cross-session patterns.
+
+    Entity Model: This is the "morning health check" - reviewing immune
+    memory for areas of inflammation that need attention.
+
+    Returns list of high-severity insights requiring attention.
+    """
+    if not FP_HISTORY_FILE.exists():
+        return []
+
+    try:
+        import json as _json
+        from collections import Counter
+        from datetime import datetime, timedelta
+
+        # Load recent entries (last 14 days)
+        cutoff = datetime.now() - timedelta(days=14)
+        entries = []
+
+        with FP_HISTORY_FILE.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = _json.loads(line)
+                    ts = datetime.fromisoformat(entry["timestamp"])
+                    if ts >= cutoff:
+                        entries.append(entry)
+                except (ValueError, KeyError, _json.JSONDecodeError):
+                    continue
+
+        if len(entries) < 3:
+            return []  # Not enough data for patterns
+
+        # Analyze patterns
+        reducer_counts = Counter(e["reducer"] for e in entries)
+        insights = []
+
+        # High-frequency reducers (likely broken)
+        total = len(entries)
+        for reducer, count in reducer_counts.most_common(3):
+            pct = (count / total) * 100
+            if count >= 3 and pct >= 30:
+                insights.append(
+                    f"🔴 {reducer}: {count} FPs ({pct:.0f}%) - investigate detection logic"
+                )
+            elif count >= 2 and pct >= 20:
+                insights.append(
+                    f"🟡 {reducer}: {count} FPs ({pct:.0f}%) - monitor for pattern"
+                )
+
+        return insights[:3]  # Limit to top 3
+
+    except (OSError, IOError):
+        return []
+
+
 def get_recent_block_lessons(limit: int = 3) -> list[str]:
     """Get recent block-reflection lessons for session injection.
 
@@ -561,19 +623,33 @@ def _build_lessons_context(state, project_context) -> list[str]:
         parts.append("⚠️ **RECENT LESSONS**:")
         parts.extend(f"  • {lesson}" for lesson in block_lessons)
 
-    # Confidence FP history
+    # Confidence FP history (session state)
     fp_warnings = get_confidence_fp_history(state)
     if fp_warnings:
         parts.append("🎯 **CONFIDENCE CALIBRATION** (reducers with high FP rates):")
         parts.extend(f"  {warning}" for warning in fp_warnings)
 
+    # Cross-session FP insights (Entity Model: immune memory)
+    cross_session_fps = get_cross_session_fp_insights()
+    if cross_session_fps:
+        parts.append("🧬 **IMMUNE MEMORY** (cross-session FP patterns):")
+        parts.extend(f"  {insight}" for insight in cross_session_fps)
+
     # Contextual lessons
-    if PROJECT_AWARE and project_context and project_context.project_type != "ephemeral":
-        keywords = [k for k in [
-            project_context.language,
-            project_context.framework,
-            project_context.project_name,
-        ] if k]
+    if (
+        PROJECT_AWARE
+        and project_context
+        and project_context.project_type != "ephemeral"
+    ):
+        keywords = [
+            k
+            for k in [
+                project_context.language,
+                project_context.framework,
+                project_context.project_name,
+            ]
+            if k
+        ]
         if keywords:
             lessons = get_contextual_lessons(keywords)
             if lessons:
