@@ -621,7 +621,12 @@ def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
     # Mark as triggered (will be set after user sees the block)
     state.nudge_history["context_resume_generated"] = True
 
-    return StopHookResult.block(_format_resume_template(state, pct * 100, used, total))
+    # Provide both: the template AND mention the command
+    template = _format_resume_template(state, pct * 100, used, total)
+    return StopHookResult.block(
+        template
+        + "\n\n💡 **TIP:** Run `/resume` to auto-generate this from session state."
+    )
 
 
 @register_hook("auto_commit", priority=10)
