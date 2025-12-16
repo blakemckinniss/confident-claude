@@ -1161,6 +1161,105 @@ def _detect_incomplete_refactor(
                     break
 
 
+def _detect_sequential_file_ops(
+    tool_name: str, state: SessionState, ctx: dict
+) -> None:
+    """Detect 3+ sequential file ops that could be parallelized."""
+    file_ops = {"Read", "Edit", "Write", "Glob", "Grep"}
+    if tool_name not in file_ops:
+        return
+
+    # Track recent file ops
+    recent_ops = getattr(state, "recent_file_ops", [])
+    recent_ops.append({"tool": tool_name, "turn": state.turn_count})
+    # Keep only last 5 turns
+    recent_ops = [op for op in recent_ops if state.turn_count - op["turn"] <= 3]
+    state.recent_file_ops = recent_ops
+
+    # Check for 3+ sequential file ops without other work
+    if len(recent_ops) >= 3:
+        ctx["sequential_file_ops"] = True
+
+
+def _detect_unbacked_verification(
+    tool_name: str, tool_result: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect 'verified' claims without actual verification evidence."""
+    # Only check after assistant output
+    output = str(tool_result.get("output", "")).lower()
+    verification_claims = ["verified", "confirmed", "validated", "checked and"]
+
+    if not any(claim in output for claim in verification_claims):
+        return
+
+    # Check for recent verification actions
+    recent_verifications = getattr(state, "verification_actions", [])
+    recent = [v for v in recent_verifications if state.turn_count - v <= 3]
+
+    if not recent:
+        ctx["unbacked_verification"] = True
+
+
+def _detect_fixed_without_chain(
+    tool_name: str, tool_result: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect 'fixed' claims without read→edit→verify chain."""
+    output = str(tool_result.get("output", "")).lower()
+    fix_claims = ["fixed", "resolved", "corrected the", "patched"]
+
+    if not any(claim in output for claim in fix_claims):
+        return
+
+    # Check for proper fix chain: read + edit + (test or lint)
+    recent_reads = len([f for f in state.files_read[-10:] if isinstance(f, str)])
+    recent_edits = len(state.files_edited[-5:]) if state.files_edited else 0
+
+    if recent_reads == 0 or recent_edits == 0:
+        ctx["fixed_without_chain"] = True
+
+
+def _detect_change_without_test(
+    tool_name: str, tool_input: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect production code changes without test coverage."""
+    if tool_name not in ("Edit", "Write"):
+        return
+
+    file_path = tool_input.get("file_path", "")
+    # Skip test files and non-code
+    if "test" in file_path.lower() or not file_path.endswith((".py", ".ts", ".js")):
+        return
+
+    # Track production edits
+    prod_edits = getattr(state, "production_edits_without_test", 0)
+    tests_run_since = getattr(state, "tests_run_since_edit", 0)
+
+    if tests_run_since == 0:
+        state.production_edits_without_test = prod_edits + 1
+        if state.production_edits_without_test >= 3:
+            ctx["change_without_test"] = True
+
+
+def _detect_contradiction(
+    tool_result: dict, state: SessionState, ctx: dict
+) -> None:
+    """Detect contradictory statements in output."""
+    output = str(tool_result.get("output", "")).lower()
+
+    # Simple contradiction patterns
+    contradictions = [
+        ("works correctly", "doesn't work"),
+        ("no issues", "found issues"),
+        ("passes", "fails"),
+        ("fixed", "still broken"),
+    ]
+
+    for pos, neg in contradictions:
+        if pos in output and neg in output:
+            ctx["contradiction_detected"] = True
+            break
+
+
 @register_hook("confidence_reducer", None, priority=12)
 def check_confidence_reducer(
     data: dict, state: SessionState, runner_state: dict
@@ -1182,6 +1281,12 @@ def check_confidence_reducer(
     _detect_repetition_patterns(tool_name, tool_input, state, context)
     _detect_time_wasters(tool_name, tool_input, tool_result, state, context)
     _detect_incomplete_refactor(tool_name, tool_input, tool_result, state, context)
+    # New context flag detections (v4.9)
+    _detect_sequential_file_ops(tool_name, state, context)
+    _detect_unbacked_verification(tool_name, tool_result, state, context)
+    _detect_fixed_without_chain(tool_name, tool_result, state, context)
+    _detect_change_without_test(tool_name, tool_input, state, context)
+    _detect_contradiction(tool_result, state, context)
 
     # Apply reducers
     triggered = apply_reducers(state, context)
