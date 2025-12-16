@@ -1788,12 +1788,22 @@ class FileReeditReducer(ConfidenceReducer):
 
     Creates immediate friction on any re-edit. Stacks with edit_oscillation
     for repeated patterns. Signal: couldn't get it right the first time.
+
+    EXEMPT: Framework DNA files (CLAUDE.md, /rules/) - iterative refinement expected.
+    These files get +15 boost via rules_update, so net effect is still positive.
     """
 
     name: str = "file_reedit"
     delta: int = -2
     description: str = "Re-editing file (get it right first time)"
     cooldown_turns: int = 0  # No cooldown - every re-edit counts
+
+    # Files exempt from re-edit penalty (iterative refinement expected)
+    exempt_patterns: tuple = (
+        "CLAUDE.md",
+        "/rules/",
+        "/.claude/rules/",
+    )
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -1804,6 +1814,10 @@ class FileReeditReducer(ConfidenceReducer):
 
         file_path = context.get("file_path", "")
         if not file_path:
+            return False
+
+        # Exempt framework DNA files - iterative refinement is expected
+        if any(pattern in file_path for pattern in self.exempt_patterns):
             return False
 
         # Check if file was edited before this turn

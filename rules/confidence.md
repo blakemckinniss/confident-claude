@@ -167,11 +167,25 @@ These fire **mechanically** based on signals - no self-judgment involved.
 
 ## False Positive Handling
 
-When a reducer fires incorrectly:
+**⚠️ FP = PRIORITY 0 (Hard Block #14)**
+
+When a reducer fires incorrectly, this is a **bug in framework DNA**. Do NOT dismiss and continue.
+
+**Correct Flow:**
+1. Identify why the reducer fired incorrectly
+2. Fix the detection logic in `_confidence_reducers.py` or hook
+3. Test that the fix works
+4. ONLY THEN resume original work
+
+**FORBIDDEN:** Running `fp.py` and immediately continuing without fixing root cause.
 
 **As Claude:**
 ```bash
+# Step 1: Record the FP (restores confidence)
 ~/.claude/ops/fp.py <reducer_name> "reason"
+
+# Step 2: STOP and fix (MANDATORY - do not skip)
+# Read the reducer, understand why it fired, fix the logic
 ```
 
 **As User:**
