@@ -1253,6 +1253,53 @@ class AgentDelegationIncreaser(ConfidenceIncreaser):
         return tool_name == "Task"
 
 
+@dataclass
+class FrameworkSelfHealIncreaser(ConfidenceIncreaser):
+    """Triggers when fixing framework bugs (reducers, hooks, confidence system).
+
+    ENTITY MODEL: The framework is my body. Fixing bugs in my regulatory
+    systems is self-surgery - a survival instinct. This creates positive
+    reinforcement for the anti-fragile improvement loop:
+
+        FP detected → STOP → fix root cause → better system → +10 reward
+
+    This increaser rewards completing the self-repair cycle, not just
+    identifying the problem. The fix must be in confidence/hook files.
+    """
+
+    name: str = "framework_self_heal"
+    delta: int = 10
+    description: str = "Self-surgery: fixed framework bug"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    # Files that indicate framework self-repair
+    heal_patterns: tuple = (
+        "_confidence_reducers.py",
+        "_confidence_increasers.py",
+        "_hooks_state.py",
+        "confidence.py",
+        "/hooks/",
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Edit":
+            return False
+
+        file_path = context.get("file_path", "")
+        if not file_path:
+            return False
+
+        # Check if editing framework regulatory files
+        return any(pattern in file_path for pattern in self.heal_patterns)
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1312,4 +1359,6 @@ INCREASERS: list[ConfidenceIncreaser] = [
     McpIntegrationIncreaser(),
     OpsToolIncreaser(),
     AgentDelegationIncreaser(),
+    # Entity model: self-surgery reward
+    FrameworkSelfHealIncreaser(),
 ]

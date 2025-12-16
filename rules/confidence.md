@@ -162,6 +162,7 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `mcp_integration` | +1 | PAL, Playwright, Filesystem, Serena MCPs |
 | `ops_tool` | +1 | ~/.claude/ops/* scripts |
 | `agent_delegation` | +1 | Task tool for delegation |
+| `framework_self_heal` | +10 | Self-surgery: fixing reducers/hooks/confidence |
 
 **Per-turn cap:** Maximum ±15 total change per turn normally. **When below 80% (stasis floor), positive cap raised to +30** to enable faster legitimate recovery.
 
