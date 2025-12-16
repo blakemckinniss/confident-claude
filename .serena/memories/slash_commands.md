@@ -121,6 +121,15 @@ allowed-tools: Bash
 | `/hooks` | hooks.py | Audit, test, and fix Claude Code hooks |
 | `/capabilities` | capabilities.py | Regenerate hook/ops functionality index |
 
+### 🔮 Integration Synergy (Serena + Beads)
+| Command | Tool | Purpose |
+|---------|------|---------|
+| `/new-project` | new_project.py | Create fully-integrated project (.beads, .claude, .serena) |
+| `/serena` | serena.py | Serena MCP wrapper (status, impact, validate, memories) |
+| `/si` | - | Symbol impact analysis shortcut |
+| `/sv` | - | File validation shortcut |
+| `/sm` | - | Project memories shortcut |
+
 ### 🚀 Advanced
 | Command | Tool | Purpose |
 |---------|------|---------|

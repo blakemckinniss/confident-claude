@@ -3,17 +3,30 @@ Bead (task tracking) helpers for hook runners.
 
 Provides caching and utility functions for interacting with the `bd` CLI.
 Extracted from pre_tool_use_runner.py to reduce file size and improve reusability.
+
+Integration Synergy:
+- Uses project_context for project-aware operations
+- Supports agent lifecycle tracking via agent_registry
+- Can fire observations to claude-mem
 """
 
 import json
 import os
+import sys
 import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
+
 from _logging import log_debug
 
 if TYPE_CHECKING:
     from session_state import SessionState
+
+# Add lib to path for imports
+LIB_DIR = Path(__file__).parent.parent / "lib"
+if str(LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(LIB_DIR))
 
 # Simple per-process cache (hooks run as subprocesses, so this resets each call)
 _BD_CACHE: list | None = None
@@ -146,3 +159,140 @@ def generate_parallel_task_calls(beads: list) -> str:
 
     lines.append("```")
     return "\n".join(lines)
+
+
+# =============================================================================
+# PROJECT-AWARE FUNCTIONS (Integration Synergy)
+# =============================================================================
+
+
+def get_project_root() -> Path | None:
+    """Get current project root using project_context detection."""
+    try:
+        from project_context import find_project_root
+
+        return find_project_root()
+    except Exception as e:
+        log_debug("_beads", f"Project detection failed: {e}")
+        return None
+
+
+def get_project_beads_dir() -> Path | None:
+    """Get .beads/ directory for current project."""
+    try:
+        from project_context import get_beads_dir
+
+        return get_beads_dir()
+    except Exception as e:
+        log_debug("_beads", f"Beads dir failed: {e}")
+        return None
+
+
+def claim_bead_for_agent(
+    bead_id: str,
+    agent_id: str | None = None,
+    prompt_snippet: str = "",
+) -> dict | None:
+    """
+    Claim a bead for an agent with lifecycle tracking.
+
+    Uses agent_registry to track the claim in project-local storage.
+    """
+    try:
+        from agent_registry import claim_bead
+
+        return claim_bead(
+            bead_id=bead_id,
+            agent_session_id=agent_id,
+            prompt_snippet=prompt_snippet,
+        )
+    except Exception as e:
+        log_debug("_beads", f"Claim failed: {e}")
+        return None
+
+
+def release_bead_for_agent(
+    bead_id: str,
+    agent_id: str | None = None,
+    status: str = "completed",
+) -> bool:
+    """
+    Release a bead from an agent.
+
+    Updates agent_registry to mark assignment complete.
+    """
+    try:
+        from agent_registry import release_bead
+
+        return release_bead(
+            bead_id=bead_id,
+            agent_session_id=agent_id,
+            status=status,
+        )
+    except Exception as e:
+        log_debug("_beads", f"Release failed: {e}")
+        return False
+
+
+def get_stale_bead_assignments(timeout_minutes: int = 30) -> list:
+    """Get stale agent assignments that may be orphaned."""
+    try:
+        from agent_registry import get_stale_assignments
+
+        return get_stale_assignments(timeout_minutes)
+    except Exception as e:
+        log_debug("_beads", f"Stale check failed: {e}")
+        return []
+
+
+def fire_bead_observation(
+    action: str,
+    bead_id: str,
+    title: str = "",
+    status: str = "",
+) -> bool:
+    """
+    Fire a bead action observation to claude-mem.
+
+    Actions: create, update, close, claim, release
+    """
+    try:
+        from _integration import fire_observation
+
+        return fire_observation(
+            tool_name=f"bd_{action}",
+            tool_input={"bead_id": bead_id, "title": title, "status": status},
+            tool_response=f"Bead {bead_id} {action}: {title or status}",
+        )
+    except Exception as e:
+        log_debug("_beads", f"Observation failed: {e}")
+        return False
+
+
+def format_bead_context(state: "SessionState") -> str:
+    """Format bead context with project awareness for injection."""
+    parts = []
+
+    # Get in-progress beads
+    in_progress = get_in_progress_beads(state)
+    if in_progress:
+        parts.append(f"📋 **Active beads**: {len(in_progress)} in progress")
+        for b in in_progress[:3]:
+            bead_id = b.get("id", "?")[:12]
+            title = b.get("title", "untitled")[:40]
+            parts.append(f"  • `{bead_id}`: {title}")
+
+    # Check for stale assignments (potential orphans)
+    stale = get_stale_bead_assignments(timeout_minutes=60)
+    if stale:
+        parts.append(f"⚠️ **Stale assignments**: {len(stale)} may be orphaned")
+
+    # Project context
+    root = get_project_root()
+    if root:
+        project_name = root.name
+        beads_dir = root / ".beads"
+        if beads_dir.is_dir():
+            parts.append(f"📁 **Project**: `{project_name}` (isolated beads)")
+
+    return "\n".join(parts) if parts else ""

@@ -38,3 +38,40 @@ bd stats                   # Project statistics
 bd doctor                  # Health check
 bd sync --from-main        # Pull from main branch
 ```
+
+## Project Isolation
+
+- **Beads database**: GLOBAL (`~/.claude/.beads/beads.db`) - tasks visible everywhere
+- **Agent assignments**: PER-PROJECT (`<project>/.beads/agent_assignments.jsonl`)
+
+Each project has its own `.beads/` directory for agent lifecycle tracking.
+
+## Agent Lifecycle (Task Agents)
+
+When spawning Task agents to work on beads:
+
+```bash
+# Agent claims bead (writes to project's agent_assignments.jsonl)
+~/.claude/.venv/bin/python ~/.claude/ops/bead_claim.py <bead_id>
+
+# Agent releases bead when done
+~/.claude/.venv/bin/python ~/.claude/ops/bead_release.py <bead_id>
+```
+
+### Orphan Recovery
+
+Beads claimed by crashed/stuck agents are auto-recovered:
+
+| Status | Threshold | Action |
+|--------|-----------|--------|
+| Stale | 30+ min | Warning |
+| Stalled | 60+ min | Alert |
+| Orphan | 120+ min | Auto-revert to open |
+
+```bash
+# Check for orphans across all projects
+~/.claude/.venv/bin/python ~/.claude/ops/bead_orphan_check.py --all
+
+# Run daemon for continuous monitoring
+~/.claude/.venv/bin/python ~/.claude/ops/bead_lifecycle_daemon.py --daemon
+```

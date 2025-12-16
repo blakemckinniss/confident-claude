@@ -99,6 +99,19 @@ if __name__ == "__main__":
 |------|---------|
 | `fp.py` | Record false positives for reducers |
 
+### Integration Synergy
+| Tool | Purpose |
+|------|---------|
+| `bd_bridge.py` | Beads→claude-mem observation bridge |
+| `bead_claim.py` | Agent claims bead with lifecycle tracking |
+| `bead_release.py` | Agent releases bead with status |
+| `bead_lifecycle_daemon.py` | Background orphan recovery (120min timeout) |
+| `bead_orphan_check.py` | Manual multi-project orphan diagnostic |
+| `serena.py` | Serena MCP workflow hints |
+| `unified_context.py` | Aggregates all context sources |
+| `integration_install.py` | One-shot installer (--check/--install) |
+| `new_project.py` | Project scaffolding with full integration |
+
 ### Code Review & Automation
 | Tool | Purpose |
 |------|---------|

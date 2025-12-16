@@ -67,6 +67,24 @@ See `confidence.md` for full reference.
 | API docs lookup | `mcp__pal__apilookup` |
 | External chat | `mcp__pal__chat` |
 
+## Integration Synergy
+
+| Need | Tool |
+|------|------|
+| New project | `/new-project <name> [--description DESC]` |
+| Serena status | `/serena status` |
+| Symbol impact | `/si <symbol>` |
+| File validation | `/sv <file>` |
+| Project memories | `/sm [search]` |
+| Unified context | `unified_context.py` |
+| Install check | `integration_install.py --check` |
+| Agent claim bead | `bead_claim.py <bead_id>` |
+| Agent release bead | `bead_release.py <bead_id>` |
+| Orphan check | `bead_orphan_check.py [--all]` |
+| Lifecycle daemon | `bead_lifecycle_daemon.py [--daemon]` |
+
+See `.claude/memory/__integration_synergy.md` for architecture details.
+
 ## Expensive Tools (Use Sparingly)
 
 | Tool | Cost |
