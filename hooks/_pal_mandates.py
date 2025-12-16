@@ -582,6 +582,146 @@ def check_repomix_mandate(prompt: str) -> Optional[Mandate]:
 
 
 # =============================================================================
+# CRAWL4AI MCP TRIGGERS (for web scraping and search)
+# =============================================================================
+
+_RE_URL_FETCH = re.compile(
+    r"(fetch|get|read|scrape|crawl|extract|pull)\s+(content\s+)?(from\s+)?"
+    r"(the\s+)?(url|page|site|website|link|article|blog|post)|"
+    r"https?://[^\s]+",
+    re.IGNORECASE,
+)
+
+_RE_WEB_SEARCH = re.compile(
+    r"(search|look\s+up|find)\s+(online|on\s+the\s+web|the\s+web|google|duckduckgo)|"
+    r"(web|online|internet)\s+search|"
+    r"search\s+(for|about)\s+.{10,}",
+    re.IGNORECASE,
+)
+
+_RE_DOCUMENTATION_FETCH = re.compile(
+    r"(get|fetch|read|check|look\s+at)\s+(the\s+)?(latest|official|current)?\s*"
+    r"(docs?|documentation|readme|guide|tutorial|reference)",
+    re.IGNORECASE,
+)
+
+_RE_CLOUDFLARE_BYPASS = re.compile(
+    r"(cloudflare|bot\s+detect|captcha|blocked|403|access\s+denied|"
+    r"javascript\s+render|dynamic\s+content|spa|single.?page)",
+    re.IGNORECASE,
+)
+
+_RE_ARTICLE_READ = re.compile(
+    r"(read|summarize|extract|get)\s+(the\s+)?(article|blog\s+post|post|news|content)\s+"
+    r"(from|at|on)|"
+    r"what\s+(does|is)\s+(this|that)\s+(article|page|site)\s+(say|about)",
+    re.IGNORECASE,
+)
+
+_RE_RESEARCH_WEB = re.compile(
+    r"(research|investigate|find\s+out|learn)\s+(about|how|what|why).{10,}(online|web)?|"
+    r"(current|latest|recent|new)\s+(info|information|news|updates?)\s+(on|about)",
+    re.IGNORECASE,
+)
+
+
+def check_crawl4ai_mandate(prompt: str) -> Optional[Mandate]:
+    """
+    Check for Crawl4AI MCP triggers in user prompt.
+
+    Crawl4AI is ideal for:
+    - Fetching web pages with JavaScript content
+    - Bypassing bot detection/Cloudflare
+    - Getting clean markdown from web pages
+    - Web research and search
+    - Reading documentation sites
+    - Extracting article content
+    """
+    if len(prompt) < 10 or prompt.startswith("/"):
+        return None
+
+    # URL present or explicit fetch request → crawl
+    if _RE_URL_FETCH.search(prompt):
+        return Mandate(
+            tool="mcp__crawl4ai__crawl",
+            directive=(
+                "🌐 **USE CRAWL4AI**: URL/fetch request detected. "
+                "Use `mcp__crawl4ai__crawl` for JavaScript-rendered content. "
+                "Crawl4AI bypasses bot detection and returns clean markdown."
+            ),
+            priority=P_HIGH,
+            reason="URL fetch request",
+        )
+
+    # Cloudflare/bot detection mention → crawl
+    if _RE_CLOUDFLARE_BYPASS.search(prompt):
+        return Mandate(
+            tool="mcp__crawl4ai__crawl",
+            directive=(
+                "🛡️ **USE CRAWL4AI**: Bot detection bypass needed. "
+                "Use `mcp__crawl4ai__crawl` - it handles Cloudflare/captchas. "
+                "More powerful than basic WebFetch."
+            ),
+            priority=P_HIGH,
+            reason="Bot detection bypass",
+        )
+
+    # Documentation fetch → crawl
+    if _RE_DOCUMENTATION_FETCH.search(prompt):
+        return Mandate(
+            tool="mcp__crawl4ai__crawl",
+            directive=(
+                "📚 **USE CRAWL4AI**: Documentation fetch detected. "
+                "Use `mcp__crawl4ai__crawl` for clean markdown extraction. "
+                "Better than WebFetch for docs sites with JS."
+            ),
+            priority=P_MEDIUM,
+            reason="Documentation fetch",
+        )
+
+    # Article/blog reading → crawl
+    if _RE_ARTICLE_READ.search(prompt):
+        return Mandate(
+            tool="mcp__crawl4ai__crawl",
+            directive=(
+                "📰 **USE CRAWL4AI**: Article extraction detected. "
+                "Use `mcp__crawl4ai__crawl` for clean content extraction. "
+                "Returns LLM-friendly markdown from articles."
+            ),
+            priority=P_MEDIUM,
+            reason="Article extraction",
+        )
+
+    # Web search → ddg_search
+    if _RE_WEB_SEARCH.search(prompt):
+        return Mandate(
+            tool="mcp__crawl4ai__ddg_search",
+            directive=(
+                "🔍 **USE CRAWL4AI**: Web search detected. "
+                "Use `mcp__crawl4ai__ddg_search` for DuckDuckGo results. "
+                "Then crawl individual URLs for full content."
+            ),
+            priority=P_MEDIUM,
+            reason="Web search",
+        )
+
+    # Research request → ddg_search first
+    if _RE_RESEARCH_WEB.search(prompt):
+        return Mandate(
+            tool="mcp__crawl4ai__ddg_search",
+            directive=(
+                "🔬 **USE CRAWL4AI**: Research request detected. "
+                "Use `mcp__crawl4ai__ddg_search` to find sources first. "
+                "Then crawl relevant URLs for detailed information."
+            ),
+            priority=P_LOW,
+            reason="Web research",
+        )
+
+    return None
+
+
+# =============================================================================
 # SERENA MCP TRIGGERS (for semantic code analysis)
 # =============================================================================
 

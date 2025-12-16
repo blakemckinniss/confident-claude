@@ -81,6 +81,7 @@ try:
         check_keyword_mandate,
         check_repomix_mandate,
         check_serena_mandate,
+        check_crawl4ai_mandate,
     )
 
     PAL_MANDATES_AVAILABLE = True
@@ -90,6 +91,7 @@ except ImportError:
     check_keyword_mandate = None
     check_repomix_mandate = None
     check_serena_mandate = None
+    check_crawl4ai_mandate = None
 
 # Try to import ops tool stats
 try:
@@ -1860,6 +1862,10 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     # Check for Serena triggers (symbol lookup, references, semantic edits)
     if mandate is None and check_serena_mandate is not None:
         mandate = check_serena_mandate(prompt)
+
+    # Check for Crawl4AI triggers (web scraping, search, documentation)
+    if mandate is None and check_crawl4ai_mandate is not None:
+        mandate = check_crawl4ai_mandate(prompt)
 
     if mandate is None:
         return HookResult.allow()
