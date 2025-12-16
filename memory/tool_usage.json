@@ -24,11 +24,11 @@
     "sessions": 0
   },
   "fp": {
-    "total_uses": 48,
-    "successes": 48,
+    "total_uses": 51,
+    "successes": 51,
     "failures": 0,
     "first_used": "2025-12-13",
-    "last_used": "2025-12-16 10:19",
+    "last_used": "2025-12-16 10:59",
     "sessions": 0
   },
   "housekeeping": {
@@ -48,27 +48,27 @@
     "sessions": 0
   },
   "bd_bridge": {
+    "total_uses": 4,
+    "successes": 4,
+    "failures": 0,
+    "first_used": "2025-12-16",
+    "last_used": "2025-12-16 11:00",
+    "sessions": 0
+  },
+  "bead_claim": {
     "total_uses": 3,
     "successes": 3,
     "failures": 0,
     "first_used": "2025-12-16",
-    "last_used": "2025-12-16 10:39",
+    "last_used": "2025-12-16 10:54",
     "sessions": 0
   },
-  "bead_claim": {
+  "bead_release": {
     "total_uses": 2,
     "successes": 2,
     "failures": 0,
     "first_used": "2025-12-16",
-    "last_used": "2025-12-16 10:35",
-    "sessions": 0
-  },
-  "bead_release": {
-    "total_uses": 1,
-    "successes": 1,
-    "failures": 0,
-    "first_used": "2025-12-16",
-    "last_used": "2025-12-16 10:35",
+    "last_used": "2025-12-16 10:54",
     "sessions": 0
   },
   "bead_lifecycle_daemon": {
@@ -80,11 +80,11 @@
     "sessions": 0
   },
   "bead_orphan_check": {
-    "total_uses": 1,
-    "successes": 1,
+    "total_uses": 3,
+    "successes": 3,
     "failures": 0,
     "first_used": "2025-12-16",
-    "last_used": "2025-12-16 10:41",
+    "last_used": "2025-12-16 10:53",
     "sessions": 0
   },
   "serena": {

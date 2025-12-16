@@ -3,10 +3,11 @@
 Bead Orphan Check
 
 Manual utility to check for and optionally fix orphaned bead assignments.
-Useful for quick diagnostics without running the full daemon.
+Scans current project or all discovered projects.
 
 Usage:
-    bead_orphan_check.py              # Show orphan status
+    bead_orphan_check.py              # Check current project
+    bead_orphan_check.py --all        # Check all projects
     bead_orphan_check.py --auto-fix   # Auto-revert orphaned beads
     bead_orphan_check.py --verbose    # Show all assignments
 """
@@ -26,6 +27,12 @@ from agent_registry import (
     release_bead,
     cleanup_old_assignments,
 )
+from project_context import (
+    find_project_root,
+    get_all_project_roots,
+    get_project_name,
+    ProjectNotFoundError,
+)
 
 # Thresholds (same as daemon)
 STALE_THRESHOLD_MINUTES = 30
@@ -33,14 +40,14 @@ STALLED_THRESHOLD_MINUTES = 60
 ORPHAN_THRESHOLD_MINUTES = 120
 
 
-def run_bd(*args: str) -> subprocess.CompletedProcess:
+def run_bd(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run bd command."""
-    return subprocess.run(["bd", *args], capture_output=True, text=True)
+    return subprocess.run(["bd", *args], capture_output=True, text=True, cwd=cwd)
 
 
-def revert_bead_to_open(bead_id: str) -> bool:
+def revert_bead_to_open(bead_id: str, project_root: Path | None = None) -> bool:
     """Revert a bead to open status."""
-    result = run_bd("update", bead_id, "--status=open")
+    result = run_bd("update", bead_id, "--status=open", cwd=project_root)
     return result.returncode == 0
 
 
@@ -95,15 +102,86 @@ def format_assignment(a: dict, verbose: bool = False) -> str:
     return base
 
 
+def check_project(
+    project_root: Path,
+    auto_fix: bool = False,
+    verbose: bool = False,
+) -> dict[str, int]:
+    """Check a single project for orphaned assignments."""
+    stats = {"healthy": 0, "stale": 0, "stalled": 0, "orphan": 0, "fixed": 0}
+    project_name = get_project_name(project_root)
+
+    active = get_active_assignments(project_root)
+    if not active:
+        return stats
+
+    categories = categorize_assignments(active)
+
+    print(f"\n📁 {project_name} ({project_root})")
+    print(f"   Active assignments: {len(active)}")
+
+    if categories["healthy"]:
+        stats["healthy"] = len(categories["healthy"])
+        print(f"   ✓ Healthy: {len(categories['healthy'])}")
+        if verbose:
+            for a in categories["healthy"]:
+                print(f"     {format_assignment(a, verbose)}")
+
+    if categories["stale"]:
+        stats["stale"] = len(categories["stale"])
+        print(
+            f"   ⚠ Stale ({STALE_THRESHOLD_MINUTES}+ min): {len(categories['stale'])}"
+        )
+        for a in categories["stale"]:
+            print(f"     {format_assignment(a, verbose)}")
+
+    if categories["stalled"]:
+        stats["stalled"] = len(categories["stalled"])
+        print(
+            f"   ⚠ Stalled ({STALLED_THRESHOLD_MINUTES}+ min): {len(categories['stalled'])}"
+        )
+        for a in categories["stalled"]:
+            print(f"     {format_assignment(a, verbose)}")
+
+    if categories["orphan"]:
+        stats["orphan"] = len(categories["orphan"])
+        print(
+            f"   ✗ Orphaned ({ORPHAN_THRESHOLD_MINUTES}+ min): {len(categories['orphan'])}"
+        )
+        for a in categories["orphan"]:
+            print(f"     {format_assignment(a, verbose)}")
+
+        if auto_fix:
+            for a in categories["orphan"]:
+                bead_id = a.get("bead_id", "")
+                if bead_id and revert_bead_to_open(bead_id, project_root):
+                    release_bead(bead_id, status="timed_out", project_root=project_root)
+                    print(f"     → Reverted {bead_id} to open")
+                    stats["fixed"] += 1
+                else:
+                    print(f"     → Failed to revert {bead_id}")
+
+    return stats
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check for orphaned bead assignments")
+    parser.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="Check all discovered projects",
+    )
     parser.add_argument(
         "--auto-fix",
         action="store_true",
         help="Automatically revert orphaned beads to open status",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show detailed assignment info"
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed assignment info",
     )
     parser.add_argument(
         "--cleanup",
@@ -111,75 +189,73 @@ def main() -> int:
         metavar="DAYS",
         help="Clean up assignments older than N days",
     )
+    parser.add_argument(
+        "--project",
+        "-p",
+        type=Path,
+        help="Check specific project path",
+    )
 
     args = parser.parse_args()
 
+    # Determine which projects to check
+    if args.project:
+        projects = [args.project]
+    elif args.all:
+        projects = get_all_project_roots()
+    else:
+        # Current project only
+        try:
+            projects = [find_project_root()]
+        except ProjectNotFoundError:
+            print("✗ No project found in current directory")
+            print(
+                "  Use --all to scan all projects, or --project PATH for specific project"
+            )
+            return 1
+
+    if not projects:
+        print("No projects found")
+        return 0
+
     # Handle cleanup
     if args.cleanup:
-        removed = cleanup_old_assignments(args.cleanup)
-        print(f"Removed {removed} assignments older than {args.cleanup} days")
+        total_removed = 0
+        for project_root in projects:
+            removed = cleanup_old_assignments(args.cleanup, project_root)
+            if removed > 0:
+                print(
+                    f"Removed {removed} old assignments from {get_project_name(project_root)}"
+                )
+            total_removed += removed
+        print(
+            f"Total removed: {total_removed} assignments older than {args.cleanup} days"
+        )
         return 0
 
-    # Get and categorize assignments
-    active = get_active_assignments()
+    # Check each project
+    totals = {"healthy": 0, "stale": 0, "stalled": 0, "orphan": 0, "fixed": 0}
 
-    if not active:
-        print("✓ No active assignments")
-        return 0
+    print(f"Checking {len(projects)} project(s)...")
 
-    categories = categorize_assignments(active)
+    for project_root in projects:
+        stats = check_project(project_root, args.auto_fix, args.verbose)
+        for key in totals:
+            totals[key] += stats[key]
 
-    # Display results
-    print(f"Active assignments: {len(active)}\n")
+    # Summary
+    print(f"\n{'─' * 40}")
+    print(
+        f"Summary: {totals['healthy']} healthy, {totals['stale']} stale, "
+        f"{totals['stalled']} stalled, {totals['orphan']} orphan"
+    )
 
-    if categories["healthy"]:
-        print(f"✓ Healthy ({len(categories['healthy'])})")
-        if args.verbose:
-            for a in categories["healthy"]:
-                print(f"  {format_assignment(a, args.verbose)}")
-        print()
+    if totals["fixed"]:
+        print(f"Fixed: {totals['fixed']} orphans reverted to open")
+    elif totals["orphan"] and not args.auto_fix:
+        print("\nRun with --auto-fix to revert orphans to open status")
 
-    if categories["stale"]:
-        print(
-            f"⚠ Stale ({len(categories['stale'])} - no heartbeat for {STALE_THRESHOLD_MINUTES}+ min)"
-        )
-        for a in categories["stale"]:
-            print(f"  {format_assignment(a, args.verbose)}")
-        print()
-
-    if categories["stalled"]:
-        print(
-            f"⚠ Stalled ({len(categories['stalled'])} - idle for {STALLED_THRESHOLD_MINUTES}+ min)"
-        )
-        for a in categories["stalled"]:
-            print(f"  {format_assignment(a, args.verbose)}")
-        print()
-
-    if categories["orphan"]:
-        print(
-            f"✗ Orphaned ({len(categories['orphan'])} - idle for {ORPHAN_THRESHOLD_MINUTES}+ min)"
-        )
-        for a in categories["orphan"]:
-            print(f"  {format_assignment(a, args.verbose)}")
-        print()
-
-        if args.auto_fix:
-            print("Auto-fixing orphans...")
-            fixed = 0
-            for a in categories["orphan"]:
-                bead_id = a.get("bead_id", "")
-                if bead_id and revert_bead_to_open(bead_id):
-                    release_bead(bead_id, status="timed_out")
-                    print(f"  ✓ Reverted {bead_id} to open")
-                    fixed += 1
-                else:
-                    print(f"  ✗ Failed to revert {bead_id}")
-            print(f"\nFixed {fixed}/{len(categories['orphan'])} orphans")
-        else:
-            print("Run with --auto-fix to revert orphans to open status")
-
-    # Return status based on orphans
-    return 1 if categories["orphan"] else 0
+    return 1 if totals["orphan"] > totals["fixed"] else 0
 
 
 if __name__ == "__main__":

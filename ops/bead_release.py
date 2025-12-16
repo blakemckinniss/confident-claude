@@ -3,12 +3,13 @@
 Bead Release: Wrapper for Task agents to release beads with lifecycle tracking.
 
 Usage:
-    bead_release.py <bead_id> [--status completed|abandoned]
+    bead_release.py <bead_id> [--status completed|abandoned] [--project PATH]
 
 This script:
-1. Runs: bd close <bead_id>
-2. Updates the agent_registry to mark assignment complete
-3. Fires observation to claude-mem (via bd_bridge)
+1. Detects project context (or uses explicit --project)
+2. Runs: bd close <bead_id>
+3. Updates the project-local agent_registry
+4. Fires observation to claude-mem (via bd_bridge)
 
 Task agents should use this instead of raw `bd close`.
 """
@@ -25,14 +26,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 from agent_registry import release_bead, get_assignment_for_bead
+from project_context import find_project_root, get_project_name, ProjectNotFoundError
 
 
-def get_bead_details(bead_id: str) -> dict | None:
+def get_bead_details(bead_id: str, project_root: Path | None = None) -> dict | None:
     """Get bead details from bd show."""
     result = subprocess.run(
         ["bd", "show", bead_id, "--json"],
         capture_output=True,
         text=True,
+        cwd=project_root,
     )
     if result.returncode == 0 and result.stdout.strip():
         try:
@@ -69,7 +72,7 @@ def fire_observation_to_mem(bead_id: str, bead: dict, status: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Release a bead with lifecycle tracking"
+        description="Release a bead with lifecycle tracking (project-aware)"
     )
     parser.add_argument("bead_id", help="Bead ID to release")
     parser.add_argument(
@@ -82,23 +85,40 @@ def main() -> int:
     parser.add_argument(
         "--reason", "-r", default="", help="Reason for abandonment (if abandoned)"
     )
+    parser.add_argument(
+        "--project", type=Path, help="Project root (auto-detected if omitted)"
+    )
 
     args = parser.parse_args()
 
+    # 0. Detect project context
+    try:
+        project_root = args.project or find_project_root()
+        project_name = get_project_name(project_root)
+    except ProjectNotFoundError:
+        print(
+            "❌ No project found. Run from project directory or use --project",
+            file=sys.stderr,
+        )
+        return 1
+
     # 1. Check if we have an assignment for this bead
-    assignment = get_assignment_for_bead(args.bead_id)
+    assignment = get_assignment_for_bead(args.bead_id, project_root)
     agent_id = assignment.get("agent_session_id") if assignment else None
 
     # 2. Get bead details before closing
-    bead = get_bead_details(args.bead_id)
+    bead = get_bead_details(args.bead_id, project_root)
     if not bead:
-        print(f"⚠️ Bead not found (may already be closed): {args.bead_id}", file=sys.stderr)
+        print(
+            f"⚠️ Bead not found (may already be closed): {args.bead_id}", file=sys.stderr
+        )
 
-    # 3. Run bd close
+    # 3. Run bd close (in project directory)
     result = subprocess.run(
         ["bd", "close", args.bead_id],
         capture_output=True,
         text=True,
+        cwd=project_root,
     )
 
     # Output bd result
@@ -107,15 +127,16 @@ def main() -> int:
     if result.stderr:
         print(result.stderr, end="", file=sys.stderr)
 
-    # 4. Update registry even if bd close failed (bead might already be closed)
+    # 4. Update project-local registry
     released = release_bead(
         bead_id=args.bead_id,
         agent_session_id=agent_id,
         status=args.status,
+        project_root=project_root,
     )
 
     if released:
-        print(f"  Registry updated: {args.status}")
+        print(f"  Registry updated: {args.status} (project: {project_name})")
     elif assignment:
         print("  Registry: assignment already released")
 
