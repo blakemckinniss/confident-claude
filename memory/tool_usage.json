@@ -24,11 +24,11 @@
     "sessions": 0
   },
   "fp": {
-    "total_uses": 57,
-    "successes": 57,
+    "total_uses": 58,
+    "successes": 58,
     "failures": 0,
     "first_used": "2025-12-13",
-    "last_used": "2025-12-16 12:39",
+    "last_used": "2025-12-16 12:53",
     "sessions": 0
   },
   "housekeeping": {
@@ -133,6 +133,14 @@
     "failures": 0,
     "first_used": "2025-12-16",
     "last_used": "2025-12-16 12:39",
+    "sessions": 0
+  },
+  "health": {
+    "total_uses": 2,
+    "successes": 2,
+    "failures": 0,
+    "first_used": "2025-12-16",
+    "last_used": "2025-12-16 12:56",
     "sessions": 0
   }
 }
