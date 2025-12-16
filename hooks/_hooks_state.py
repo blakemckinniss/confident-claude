@@ -1260,6 +1260,40 @@ def _detect_contradiction(
             break
 
 
+def _detect_trivial_question(
+    state: SessionState, ctx: dict
+) -> None:
+    """Detect questions that could be answered by reading code.
+
+    Triggers when asking obvious questions about code that's already been read
+    or could be answered with a simple search.
+    """
+    prompt = getattr(state, "last_user_prompt", "").lower()
+    if not prompt:
+        return
+
+    # Trivial question patterns
+    trivial_patterns = [
+        "what does this do",
+        "what is this",
+        "how does this work",
+        "what's in this file",
+        "can you explain",
+        "what are the",
+    ]
+
+    # Check if asking about something already read
+    is_trivial = any(pattern in prompt for pattern in trivial_patterns)
+    if not is_trivial:
+        return
+
+    # Check if we've already read relevant files (should know the answer)
+    recent_reads = len(state.files_read[-5:]) if state.files_read else 0
+    if recent_reads >= 2:
+        # Already read files but asking trivial questions = should know
+        ctx["trivial_question"] = True
+
+
 @register_hook("confidence_reducer", None, priority=12)
 def check_confidence_reducer(
     data: dict, state: SessionState, runner_state: dict
@@ -1287,6 +1321,7 @@ def check_confidence_reducer(
     _detect_fixed_without_chain(tool_name, tool_result, state, context)
     _detect_change_without_test(tool_name, tool_input, state, context)
     _detect_contradiction(tool_result, state, context)
+    _detect_trivial_question(state, context)
 
     # Apply reducers
     triggered = apply_reducers(state, context)
