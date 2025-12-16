@@ -8,27 +8,27 @@
     "sessions": 0
   },
   "audit": {
+    "total_uses": 9,
+    "successes": 9,
+    "failures": 0,
+    "first_used": "2025-12-13",
+    "last_used": "2025-12-16 12:38",
+    "sessions": 0
+  },
+  "void": {
     "total_uses": 8,
     "successes": 8,
     "failures": 0,
     "first_used": "2025-12-13",
-    "last_used": "2025-12-14 15:01",
-    "sessions": 0
-  },
-  "void": {
-    "total_uses": 7,
-    "successes": 7,
-    "failures": 0,
-    "first_used": "2025-12-13",
-    "last_used": "2025-12-14 15:01",
+    "last_used": "2025-12-16 12:39",
     "sessions": 0
   },
   "fp": {
-    "total_uses": 56,
-    "successes": 56,
+    "total_uses": 57,
+    "successes": 57,
     "failures": 0,
     "first_used": "2025-12-13",
-    "last_used": "2025-12-16 11:48",
+    "last_used": "2025-12-16 12:39",
     "sessions": 0
   },
   "housekeeping": {
@@ -125,6 +125,14 @@
     "failures": 0,
     "first_used": "2025-12-16",
     "last_used": "2025-12-16 11:51",
+    "sessions": 0
+  },
+  "fp_analyze": {
+    "total_uses": 1,
+    "successes": 1,
+    "failures": 0,
+    "first_used": "2025-12-16",
+    "last_used": "2025-12-16 12:39",
     "sessions": 0
   }
 }
