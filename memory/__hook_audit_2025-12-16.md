@@ -121,7 +121,7 @@ ImportError while importing test module 'tests/test_confidence.py'
 | P1 | Tests broken | Fix imports | ✅ FIXED |
 | P2 | ls-before-create missing | Extend gap_detector | ✅ FIXED |
 | P3 | Cooldown persistence | Persist to file | ⏳ DEFERRED |
-| P2 | Dead context flags | Wire up detectors | ✅ FIXED (5/6) |
+| P2 | Dead context flags | Wire up detectors | ✅ FIXED (6/6) |
 
 ---
 
@@ -150,7 +150,11 @@ ImportError while importing test module 'tests/test_confidence.py'
 8. Exported `_PROJECT_WEIGHTS_CACHE` and `_PROJECT_WEIGHTS_MTIME` from confidence.py
 9. Fixed test module global resets to use `_confidence_engine` directly
 
-**Remaining**: P3 cooldown persistence (low priority), `trivial_question` flag (needs prompt analysis)
+**Commit 4**: 2c6e060 - feat: Implement trivial_question context flag (6/6)
+
+10. **_hooks_state.py**: Added `_detect_trivial_question` - detects obvious questions about code already read
+
+**Remaining**: P3 cooldown persistence only (low priority)
 
 ---
 
