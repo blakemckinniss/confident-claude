@@ -1103,7 +1103,149 @@ class ConfigExternalizationIncreaser(ConfidenceIncreaser):
         return context.get("config_externalization", False)
 
 
-# Registry of all increasers
+# =============================================================================
+# FRAMEWORK ALIGNMENT INCREASERS (v4.8) - Micro-signals for framework adoption
+# =============================================================================
+
+
+@dataclass
+class Crawl4aiUsedIncreaser(ConfidenceIncreaser):
+    """Triggers when using crawl4ai tools.
+
+    crawl4ai is the preferred web scraping tool - bypasses bots, renders JS.
+    """
+
+    name: str = "crawl4ai_used"
+    delta: int = 1
+    description: str = "Used crawl4ai (preferred web tool)"
+    requires_approval: bool = False
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        return tool_name.startswith("mcp__crawl4ai__")
+
+
+@dataclass
+class SerenaSymbolicIncreaser(ConfidenceIncreaser):
+    """Triggers when using serena symbolic tools.
+
+    Serena provides semantic code understanding - better than raw reads.
+    """
+
+    name: str = "serena_symbolic"
+    delta: int = 1
+    description: str = "Used serena symbolic tool"
+    requires_approval: bool = False
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        symbolic_tools = (
+            "mcp__serena__find_symbol",
+            "mcp__serena__get_symbols_overview",
+            "mcp__serena__find_referencing_symbols",
+            "mcp__serena__search_for_pattern",
+        )
+        return tool_name in symbolic_tools
+
+
+@dataclass
+class BeadsTouchIncreaser(ConfidenceIncreaser):
+    """Triggers when using beads commands.
+
+    Beads is the task tracking system - using it shows good workflow.
+    """
+
+    name: str = "beads_touch"
+    delta: int = 1
+    description: str = "Used beads task tracking"
+    requires_approval: bool = False
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+        command = context.get("bash_command", "")
+        return command.strip().startswith("bd ")
+
+
+@dataclass
+class McpIntegrationIncreaser(ConfidenceIncreaser):
+    """Triggers when using framework MCP tools.
+
+    PAL, Playwright, Filesystem MCPs are part of the integrated framework.
+    """
+
+    name: str = "mcp_integration"
+    delta: int = 1
+    description: str = "Used framework MCP tool"
+    requires_approval: bool = False
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        framework_mcps = (
+            "mcp__pal__",
+            "mcp__playwright__",
+            "mcp__filesystem__",
+            "mcp__serena__",
+            "mcp__crawl4ai__",
+        )
+        return any(tool_name.startswith(prefix) for prefix in framework_mcps)
+
+
+@dataclass
+class OpsToolIncreaser(ConfidenceIncreaser):
+    """Triggers when using custom ops tools.
+
+    ~/.claude/ops/ scripts are purpose-built tools for the framework.
+    """
+
+    name: str = "ops_tool"
+    delta: int = 1
+    description: str = "Used custom ops tool"
+    requires_approval: bool = False
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+        command = context.get("bash_command", "")
+        return ".claude/ops/" in command
+
+
+@dataclass
+class AgentDelegationIncreaser(ConfidenceIncreaser):
+    """Triggers when delegating to Task agents.
+
+    Using agents for complex tasks shows good orchestration.
+    """
+
+    name: str = "agent_delegation"
+    delta: int = 1
+    description: str = "Delegated to Task agent"
+    requires_approval: bool = False
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        return tool_name == "Task"
+
 
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
@@ -1157,4 +1299,11 @@ INCREASERS: list[ConfidenceIncreaser] = [
     SecurityFixIncreaser(),
     DependencyRemovalIncreaser(),
     ConfigExternalizationIncreaser(),
+    # Framework alignment increasers (v4.8)
+    Crawl4aiUsedIncreaser(),
+    SerenaSymbolicIncreaser(),
+    BeadsTouchIncreaser(),
+    McpIntegrationIncreaser(),
+    OpsToolIncreaser(),
+    AgentDelegationIncreaser(),
 ]

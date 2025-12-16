@@ -96,6 +96,18 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `test_ignored` | -5 | Modified test files without running tests | 5 turns |
 | `change_without_test` | -3 | Production code changed without test coverage | 5 turns |
 
+**Framework alignment reducers (v4.8) - micro-signals for framework drift:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `webfetch_over_crawl` | -1 | WebFetch used (prefer crawl4ai) | None |
+| `websearch_basic` | -1 | WebSearch used (prefer crawl4ai.ddg_search) | None |
+| `todowrite_bypass` | -2 | TodoWrite used (beads required) | None |
+| `raw_symbol_hunt` | -1 | Reading code file without serena activation | None |
+| `grep_over_serena` | -1 | Grep on code when serena is active | None |
+| `file_reedit` | -2 | Re-editing file already edited this session | None |
+| `sequential_file_ops` | -1 | 3+ Read/Edit/Write without batching | 3 turns |
+
 ## Increasers (Automatic Rewards)
 
 **Due diligence rewards balance natural decay:**
@@ -139,6 +151,17 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `review_addressed` | +5 | PR review comments resolved/addressed |
 | `ci_pass` | +5 | `gh run`/`gh pr checks` shows passing CI |
 | `merge_complete` | +5 | `gh pr merge` succeeds (work accepted) |
+
+**Framework alignment increasers (v4.8) - micro-signals for framework adoption:**
+
+| Increaser | Delta | Trigger |
+|-----------|-------|---------|
+| `crawl4ai_used` | +1 | mcp__crawl4ai__* tools (preferred web scraping) |
+| `serena_symbolic` | +1 | serena find_symbol, get_symbols_overview |
+| `beads_touch` | +1 | Any `bd` command (task tracking) |
+| `mcp_integration` | +1 | PAL, Playwright, Filesystem, Serena MCPs |
+| `ops_tool` | +1 | ~/.claude/ops/* scripts |
+| `agent_delegation` | +1 | Task tool for delegation |
 
 **Per-turn cap:** Maximum ±15 total change per turn normally. **When below 80% (stasis floor), positive cap raised to +30** to enable faster legitimate recovery.
 

@@ -1656,6 +1656,192 @@ class CommentedCodeReducer(ConfidenceReducer):
         return False
 
 
+# =============================================================================
+# FRAMEWORK ALIGNMENT REDUCERS (v4.8) - Micro-signals for framework drift
+# =============================================================================
+
+
+@dataclass
+class WebFetchOverCrawlReducer(ConfidenceReducer):
+    """Triggers when using WebFetch instead of crawl4ai.
+
+    crawl4ai bypasses bot detection and renders JavaScript.
+    WebFetch is inferior for web scraping.
+    """
+
+    name: str = "webfetch_over_crawl"
+    delta: int = -1
+    description: str = "WebFetch used (prefer crawl4ai)"
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        return tool_name == "WebFetch"
+
+
+@dataclass
+class WebSearchBasicReducer(ConfidenceReducer):
+    """Triggers when using basic WebSearch.
+
+    crawl4ai.ddg_search is generally better for comprehensive results.
+    """
+
+    name: str = "websearch_basic"
+    delta: int = -1
+    description: str = "WebSearch used (prefer crawl4ai.ddg_search)"
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        return tool_name == "WebSearch"
+
+
+@dataclass
+class TodoWriteBypassReducer(ConfidenceReducer):
+    """Triggers when using TodoWrite instead of beads.
+
+    Beads persists across sessions and enables context recovery.
+    TodoWrite is ephemeral and violates the beads rule.
+    """
+
+    name: str = "todowrite_bypass"
+    delta: int = -2
+    description: str = "TodoWrite used (beads required)"
+    cooldown_turns: int = 0  # No cooldown - every use is a violation
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        return tool_name == "TodoWrite"
+
+
+@dataclass
+class RawSymbolHuntReducer(ConfidenceReducer):
+    """Triggers when reading code files without serena activation.
+
+    When .serena/ exists, symbolic tools should be used for code navigation.
+    Reading entire files to find symbols is inefficient.
+    """
+
+    name: str = "raw_symbol_hunt"
+    delta: int = -1
+    description: str = "Reading code file without serena (use symbolic tools)"
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        # Check if serena is available but not activated
+        if not context.get("serena_available", False):
+            return False
+        if context.get("serena_activated", False):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        file_path = context.get("file_path", "")
+
+        if tool_name != "Read":
+            return False
+
+        # Only for code files
+        code_extensions = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java")
+        return file_path.endswith(code_extensions)
+
+
+@dataclass
+class GrepOverSerenaReducer(ConfidenceReducer):
+    """Triggers when using Grep on code when serena is active.
+
+    Serena's search_for_pattern and find_symbol are more semantic.
+    """
+
+    name: str = "grep_over_serena"
+    delta: int = -1
+    description: str = "Grep on code (serena has semantic search)"
+    cooldown_turns: int = 0  # No cooldown - frequency is the point
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        # Only if serena is activated
+        if not context.get("serena_activated", False):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Grep":
+            return False
+
+        # Check if searching in code-heavy areas
+        path = context.get("grep_path", "")
+        code_indicators = ("/src/", "/lib/", ".py", ".ts", ".js", "/hooks/", "/ops/")
+        return any(ind in path for ind in code_indicators)
+
+
+@dataclass
+class FileReeditReducer(ConfidenceReducer):
+    """Triggers when re-editing a file already edited this session.
+
+    Creates immediate friction on any re-edit. Stacks with edit_oscillation
+    for repeated patterns. Signal: couldn't get it right the first time.
+    """
+
+    name: str = "file_reedit"
+    delta: int = -2
+    description: str = "Re-editing file (get it right first time)"
+    cooldown_turns: int = 0  # No cooldown - every re-edit counts
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Edit", "Write"):
+            return False
+
+        file_path = context.get("file_path", "")
+        if not file_path:
+            return False
+
+        # Check if file was edited before this turn
+        files_edited = getattr(state, "files_edited", [])
+        edit_count = 0
+        for entry in files_edited:
+            if isinstance(entry, dict):
+                if entry.get("path") == file_path:
+                    edit_count += 1
+            elif isinstance(entry, str) and entry == file_path:
+                edit_count += 1
+
+        # Trigger if this is 2nd+ edit
+        return edit_count >= 1
+
+
+@dataclass
+class SequentialFileOpsReducer(ConfidenceReducer):
+    """Triggers when doing 3+ file operations that could be parallelized.
+
+    Sequential Read/Edit/Write calls waste round trips.
+    Should batch or parallelize file operations.
+    """
+
+    name: str = "sequential_file_ops"
+    delta: int = -1
+    description: str = "Sequential file ops (batch or parallelize)"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        # Context-based: hook sets this when detecting sequential pattern
+        return context.get("sequential_file_ops", False)
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 
@@ -1713,4 +1899,12 @@ REDUCERS: list[ConfidenceReducer] = [
     CommentedCodeReducer(),
     # Verification bundling
     UnverifiedEditsReducer(),
+    # Framework alignment reducers (v4.8)
+    WebFetchOverCrawlReducer(),
+    WebSearchBasicReducer(),
+    TodoWriteBypassReducer(),
+    RawSymbolHuntReducer(),
+    GrepOverSerenaReducer(),
+    FileReeditReducer(),
+    SequentialFileOpsReducer(),
 ]

@@ -966,6 +966,16 @@ def _build_reducer_context(
     elif tool_name == "Write":
         context["content"] = tool_input.get("content", "")
 
+    # Framework alignment context (v4.8)
+    # Serena availability and activation status
+    context["serena_activated"] = getattr(state, "serena_activated", False)
+    # Check if .serena/ exists in cwd (indicates serena is available)
+    context["serena_available"] = Path(".serena").exists()
+
+    # Grep path for GrepOverSerenaReducer
+    if tool_name == "Grep":
+        context["grep_path"] = tool_input.get("path", "")
+
     return context
 
 
