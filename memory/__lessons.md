@@ -295,3 +295,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-16 10:57
 - [abandoned_stubs] ⚠️ ABANDONED WORK: bead_lifecycle_daemon.py, bead_orphan_check.py contain stubs/TODOs
+
+### 2025-12-16 11:20
+- [abandoned_stubs] ⚠️ ABANDONED WORK: bead_lifecycle_daemon.py, bead_orphan_check.py, unified_context.py, integration_install.py, new_project.py contain stubs/TODOs

@@ -13,7 +13,7 @@
       "repo": "yamadashy/repomix"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/repomix",
-    "lastUpdated": "2025-12-16T16:09:15.751Z"
+    "lastUpdated": "2025-12-16T16:22:52.382Z"
   },
   "claude-code-plugins": {
     "source": {
@@ -21,7 +21,7 @@
       "repo": "anthropics/claude-code"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-plugins",
-    "lastUpdated": "2025-12-16T16:01:00.601Z"
+    "lastUpdated": "2025-12-16T16:21:28.315Z"
   },
   "claude-plugins-official": {
     "source": {
@@ -29,6 +29,6 @@
       "repo": "anthropics/claude-plugins-official"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-plugins-official",
-    "lastUpdated": "2025-12-16T16:20:01.551Z"
+    "lastUpdated": "2025-12-16T16:23:19.934Z"
   }
 }
