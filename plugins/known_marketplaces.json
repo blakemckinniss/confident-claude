@@ -5,7 +5,7 @@
       "repo": "thedotmack/claude-mem"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/thedotmack",
-    "lastUpdated": "2025-12-16T17:47:24.998Z"
+    "lastUpdated": "2025-12-16T18:12:04.434Z"
   },
   "repomix": {
     "source": {
@@ -13,7 +13,7 @@
       "repo": "yamadashy/repomix"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/repomix",
-    "lastUpdated": "2025-12-16T17:57:38.592Z"
+    "lastUpdated": "2025-12-16T18:11:27.967Z"
   },
   "claude-code-plugins": {
     "source": {
@@ -21,7 +21,7 @@
       "repo": "anthropics/claude-code"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-plugins",
-    "lastUpdated": "2025-12-16T18:06:22.241Z"
+    "lastUpdated": "2025-12-16T18:13:16.108Z"
   },
   "claude-plugins-official": {
     "source": {

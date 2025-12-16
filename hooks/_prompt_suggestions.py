@@ -240,6 +240,83 @@ def check_advisor_context(data: dict, state: SessionState) -> HookResult:
 
 
 # =============================================================================
+# QUESTION TRIGGER (priority 73) - Proactive question suggestions
+# =============================================================================
+
+# Try to import question trigger library
+try:
+    from _question_triggers import (
+        detect_question_opportunities,
+        format_question_suggestion,
+        should_force_question,
+    )
+
+    QUESTION_TRIGGERS_AVAILABLE = True
+except ImportError:
+    QUESTION_TRIGGERS_AVAILABLE = False
+
+
+@register_hook("question_trigger", priority=73)
+def check_question_trigger(data: dict, state: SessionState) -> HookResult:
+    """
+    Detect situations where proactive questioning adds value.
+
+    Triggers for:
+    - Vague/ambiguous prompts
+    - Multiple valid implementation paths
+    - Build vs buy decisions
+    - Low confidence + non-trivial task
+
+    Philosophy: Questions are a feature, not overhead. They demonstrate
+    epistemic humility and ensure alignment with user's underlying interests.
+    """
+    if not QUESTION_TRIGGERS_AVAILABLE:
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt or len(prompt) < 25:
+        return HookResult.allow()
+
+    # Skip trivial/command prompts
+    if re.match(r"^(yes|no|ok|hi|hello|thanks|commit|push|/\w+)\b", prompt.lower()):
+        return HookResult.allow()
+
+    # Get confidence from state
+    confidence = getattr(state, "confidence", 70)
+    turn_count = getattr(state, "turn_count", 0)
+
+    # Check for question opportunities
+    opportunities = detect_question_opportunities(
+        prompt,
+        confidence_level=confidence,
+        turn_count=turn_count,
+    )
+
+    if not opportunities:
+        return HookResult.allow()
+
+    # Check if we should force a question (blocking)
+    should_force, force_reason = should_force_question(
+        prompt,
+        confidence,
+        consecutive_actions=getattr(state, "consecutive_actions", 0),
+    )
+
+    # Format the suggestion
+    suggestion = format_question_suggestion(opportunities)
+
+    if should_force and suggestion:
+        # At very low confidence, make it more prominent
+        msg = f"⚠️ **CLARIFICATION RECOMMENDED** ({force_reason})\n\n{suggestion}"
+        return HookResult.allow(msg)
+
+    if suggestion:
+        return HookResult.allow(suggestion)
+
+    return HookResult.allow()
+
+
+# =============================================================================
 # SELF-HEAL DIAGNOSTIC (priority 72)
 # =============================================================================
 

@@ -26,7 +26,28 @@ This "stasis zone" represents balanced operation where:
 3. Consulting `~/.claude/memory/` files (+10)
 4. Creating beads with `bd create` (+10)
 5. Running lints/tests (+3/+5)
-6. Asking clarifying questions (+20)
+6. **Asking clarifying questions (+20)** ← Most effective single recovery action
+
+## Question-Asking Thresholds
+
+**Questions are a confidence multiplier.** The `AskUserQuestion` tool provides +20 confidence because it demonstrates epistemic humility and ensures alignment.
+
+| Confidence | Question Behavior |
+|------------|-------------------|
+| 95-100% | Questions optional (expert mode) |
+| 80-94% | Questions encouraged for scope/priority |
+| 70-79% | Questions RECOMMENDED before major actions |
+| 50-69% | Questions STRONGLY RECOMMENDED |
+| < 50% | Questions effectively MANDATORY for non-trivial work |
+
+**Question-worthy situations (always ask):**
+1. **Vague prompts**: "make it better", "fix this", "something like X"
+2. **Scope ambiguity**: Multiple valid interpretations exist
+3. **Build vs buy**: Before creating new functionality
+4. **Implementation choices**: When user might have preferences
+5. **10+ actions**: Extended autonomous work without check-in
+
+**Question format**: Use `AskUserQuestion` with 2-4 structured options. Users can always select "Other" for custom input. This is faster for users than open-ended questions and earns +20 confidence.
 
 **Do NOT spam SUDO** - use the increasers to earn confidence back legitimately.
 
