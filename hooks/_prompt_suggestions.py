@@ -76,7 +76,12 @@ except ImportError:
 
 # Try to import PAL/tool mandates
 try:
-    from _pal_mandates import get_mandate, check_keyword_mandate, check_repomix_mandate
+    from _pal_mandates import (
+        get_mandate,
+        check_keyword_mandate,
+        check_repomix_mandate,
+        check_serena_mandate,
+    )
 
     PAL_MANDATES_AVAILABLE = True
 except ImportError:
@@ -84,6 +89,7 @@ except ImportError:
     get_mandate = None
     check_keyword_mandate = None
     check_repomix_mandate = None
+    check_serena_mandate = None
 
 # Try to import ops tool stats
 try:
@@ -1850,6 +1856,10 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     # Check for Repomix triggers (codebase analysis, GitHub repos, etc.)
     if mandate is None and check_repomix_mandate is not None:
         mandate = check_repomix_mandate(prompt)
+
+    # Check for Serena triggers (symbol lookup, references, semantic edits)
+    if mandate is None and check_serena_mandate is not None:
+        mandate = check_serena_mandate(prompt)
 
     if mandate is None:
         return HookResult.allow()

@@ -582,6 +582,163 @@ def check_repomix_mandate(prompt: str) -> Optional[Mandate]:
 
 
 # =============================================================================
+# SERENA MCP TRIGGERS (for semantic code analysis)
+# =============================================================================
+
+_RE_FIND_SYMBOL = re.compile(
+    r"(find|where\s+is|locate|look\s+for)\s+(the\s+)?(class|function|method|def|symbol|"
+    r"definition|implementation)\s+[`'\"]?(\w+)",
+    re.IGNORECASE,
+)
+
+_RE_FIND_REFERENCES = re.compile(
+    r"(who|what)\s+(calls?|uses?|references?|imports?)|"
+    r"(find|show|list)\s+(all\s+)?(callers?|references?|usages?|uses)|"
+    r"(where\s+is\s+.+\s+(called|used|referenced))|"
+    r"(impact|affected)\s+(of|by)\s+(chang|modif)",
+    re.IGNORECASE,
+)
+
+_RE_SYMBOL_OVERVIEW = re.compile(
+    r"(what.?s\s+in|overview\s+of|structure\s+of|symbols?\s+in|"
+    r"classes?\s+in|functions?\s+in|methods?\s+in)\s+.+\.(py|ts|js|java|go|rs)",
+    re.IGNORECASE,
+)
+
+_RE_REFACTOR_SYMBOL = re.compile(
+    r"(rename|refactor|change\s+name|update\s+name)\s+(the\s+)?"
+    r"(class|function|method|variable|symbol|def)",
+    re.IGNORECASE,
+)
+
+_RE_CODE_NAVIGATION = re.compile(
+    r"(go\s+to|jump\s+to|navigate\s+to|show\s+me)\s+(the\s+)?"
+    r"(definition|implementation|declaration|source)",
+    re.IGNORECASE,
+)
+
+_RE_SEMANTIC_EDIT = re.compile(
+    r"(add|insert|put)\s+(a\s+)?(method|function|class|import)\s+(to|in|into|before|after)",
+    re.IGNORECASE,
+)
+
+_RE_IMPACT_ANALYSIS = re.compile(
+    r"(impact|affect|break|change)\s+.*(if\s+I|when\s+I|by)\s+(chang|modif|renam|delet)|"
+    r"(what\s+will\s+break|safe\s+to\s+(change|modify|rename|delete))",
+    re.IGNORECASE,
+)
+
+
+def check_serena_mandate(prompt: str) -> Optional[Mandate]:
+    """
+    Check for Serena MCP triggers in user prompt.
+
+    Serena is ideal for:
+    - Symbol lookup (classes, functions, methods)
+    - Finding references/callers
+    - Understanding code structure
+    - Semantic editing (symbol-level operations)
+    - Impact analysis
+    - Safe refactoring
+    """
+    if len(prompt) < 10 or prompt.startswith("/"):
+        return None
+
+    # Find references/callers → find_referencing_symbols
+    if _RE_FIND_REFERENCES.search(prompt):
+        return Mandate(
+            tool="mcp__serena__find_referencing_symbols",
+            directive=(
+                "🔗 **USE SERENA**: Reference lookup detected. "
+                "Use `mcp__serena__find_referencing_symbols` to find all callers/usages. "
+                "Serena provides semantic reference tracking."
+            ),
+            priority=P_HIGH,
+            reason="Reference lookup",
+        )
+
+    # Impact analysis → find_referencing_symbols
+    if _RE_IMPACT_ANALYSIS.search(prompt):
+        return Mandate(
+            tool="mcp__serena__find_referencing_symbols",
+            directive=(
+                "⚡ **USE SERENA**: Impact analysis detected. "
+                "Use `mcp__serena__find_referencing_symbols` to see what will be affected. "
+                "Always check references before changing symbols."
+            ),
+            priority=P_HIGH,
+            reason="Impact analysis",
+        )
+
+    # Find symbol/definition → find_symbol
+    if _RE_FIND_SYMBOL.search(prompt):
+        return Mandate(
+            tool="mcp__serena__find_symbol",
+            directive=(
+                "🔍 **USE SERENA**: Symbol lookup detected. "
+                "Use `mcp__serena__find_symbol` with name_path_pattern. "
+                "Serena finds symbols semantically, not just text search."
+            ),
+            priority=P_MEDIUM,
+            reason="Symbol lookup",
+        )
+
+    # Symbol overview → get_symbols_overview
+    if _RE_SYMBOL_OVERVIEW.search(prompt):
+        return Mandate(
+            tool="mcp__serena__get_symbols_overview",
+            directive=(
+                "📋 **USE SERENA**: File structure request detected. "
+                "Use `mcp__serena__get_symbols_overview` for symbol listing. "
+                "Shows classes, functions, methods without reading entire file."
+            ),
+            priority=P_MEDIUM,
+            reason="Symbol overview",
+        )
+
+    # Refactor/rename → rename_symbol
+    if _RE_REFACTOR_SYMBOL.search(prompt):
+        return Mandate(
+            tool="mcp__serena__rename_symbol",
+            directive=(
+                "♻️ **USE SERENA**: Symbol rename detected. "
+                "Use `mcp__serena__rename_symbol` for safe refactoring. "
+                "Serena renames across entire codebase with reference updates."
+            ),
+            priority=P_HIGH,
+            reason="Symbol rename",
+        )
+
+    # Code navigation → find_symbol with include_body
+    if _RE_CODE_NAVIGATION.search(prompt):
+        return Mandate(
+            tool="mcp__serena__find_symbol",
+            directive=(
+                "🧭 **USE SERENA**: Code navigation detected. "
+                "Use `mcp__serena__find_symbol` with `include_body=True`. "
+                "Serena locates definitions precisely."
+            ),
+            priority=P_MEDIUM,
+            reason="Code navigation",
+        )
+
+    # Semantic editing → insert_before/after_symbol
+    if _RE_SEMANTIC_EDIT.search(prompt):
+        return Mandate(
+            tool="mcp__serena__insert_after_symbol",
+            directive=(
+                "✏️ **USE SERENA**: Semantic edit detected. "
+                "Use `mcp__serena__insert_after_symbol` or `insert_before_symbol`. "
+                "Serena inserts code at precise symbol boundaries."
+            ),
+            priority=P_MEDIUM,
+            reason="Semantic edit",
+        )
+
+    return None
+
+
+# =============================================================================
 # SUMMARY: Mandate Thresholds (v2.0 - AGGRESSIVE)
 # =============================================================================
 #
