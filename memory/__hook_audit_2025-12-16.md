@@ -121,6 +121,7 @@ ImportError while importing test module 'tests/test_confidence.py'
 | P1 | Tests broken | Fix imports | ✅ FIXED |
 | P2 | ls-before-create missing | Extend gap_detector | ✅ FIXED |
 | P3 | Cooldown persistence | Persist to file | ⏳ DEFERRED |
+| P2 | Dead context flags | Wire up detectors | ✅ FIXED (5/6) |
 
 ---
 
@@ -134,7 +135,22 @@ ImportError while importing test module 'tests/test_confidence.py'
 4. **_session_state_class.py**: Added `dirs_listed` and `globs_run` fields
 5. **_hooks_state.py**: Track `ls` commands and `Glob` patterns for gap_detector
 
-**Remaining**: P3 cooldown persistence (low priority), ~10 context flags still missing population hooks
+**Commit 2**: 1cf1bb6 - feat: Wire up 5 dead context flags for reducers
+
+6. **_hooks_state.py**: Added 5 new context flag detectors:
+   - `_detect_sequential_file_ops` - tracks 3+ file ops without batching
+   - `_detect_unbacked_verification` - claims without evidence
+   - `_detect_fixed_without_chain` - fix claims without read→edit chain
+   - `_detect_change_without_test` - production edits without tests
+   - `_detect_contradiction` - contradictory statements in output
+
+**Commit 3**: 5bc9b9e - fix: Fix 9 failing confidence tests
+
+7. Updated diminishing returns test expectations (0.75, 0.5 gradual curve)
+8. Exported `_PROJECT_WEIGHTS_CACHE` and `_PROJECT_WEIGHTS_MTIME` from confidence.py
+9. Fixed test module global resets to use `_confidence_engine` directly
+
+**Remaining**: P3 cooldown persistence (low priority), `trivial_question` flag (needs prompt analysis)
 
 ---
 
