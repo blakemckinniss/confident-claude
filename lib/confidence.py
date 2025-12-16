@@ -77,6 +77,8 @@ from _confidence_engine import (
     apply_increasers,
     get_project_weights,
     get_adjusted_delta,
+    _PROJECT_WEIGHTS_CACHE,
+    _PROJECT_WEIGHTS_MTIME,
 )
 
 # =============================================================================
@@ -249,6 +251,8 @@ __all__ = [
     "apply_increasers",
     "get_project_weights",
     "get_adjusted_delta",
+    "_PROJECT_WEIGHTS_CACHE",
+    "_PROJECT_WEIGHTS_MTIME",
     # Tier system
     "get_tier_info",
     "format_confidence_change",
