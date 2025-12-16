@@ -480,6 +480,39 @@ def get_session_age(started_at: float) -> str:
         return ""
 
 
+def format_token_budget(used: int, total: int) -> str:
+    """Format remaining tokens as money - triggers loss aversion.
+
+    Entity Model: Framing context as $200,000 budget creates visceral
+    resource awareness. Watching money drain feels worse than watching
+    a percentage grow.
+    """
+    remaining = total - used
+    # Scale to make numbers feel significant (1 token = $1)
+    dollars = remaining
+
+    if dollars > 150_000:
+        emoji = "💰"  # Wealthy
+        color = C.GREEN
+    elif dollars > 100_000:
+        emoji = "💵"  # Comfortable
+        color = C.GREEN
+    elif dollars > 50_000:
+        emoji = "💸"  # Spending freely
+        color = C.YELLOW
+    elif dollars > 20_000:
+        emoji = "⚠️"  # Getting tight
+        color = C.YELLOW
+    else:
+        emoji = "🔥"  # Burning through it
+        color = C.RED
+
+    # Format with K suffix for readability
+    if dollars >= 1000:
+        return f"{color}{emoji}${dollars // 1000}K{C.RESET}"
+    return f"{color}{emoji}${dollars}{C.RESET}"
+
+
 def get_context_usage(transcript_path: str, context_window: int) -> tuple[int, int, float]:
     """Calculate context window usage from transcript. Returns (used, total, pct)."""
     if not transcript_path or not Path(transcript_path).exists():
@@ -534,16 +567,17 @@ def main() -> None:
     else:
         model_short = f"{C.DIM}{model_name[:6]}{C.RESET}"
 
-    # Context with warning
+    # Context with warning + money framing (Entity Model: loss aversion)
     transcript = input_data.get("transcript_path", "")
     context_window = model.get("context_window", get_magic_number("default_context_window", 200000))
     used, total, pct = get_context_usage(transcript, context_window)
     if used > 0 and total > 0:
-        ctx_color = C.RED if pct > Thresholds.CTX_RED else C.YELLOW if pct > Thresholds.CTX_YELLOW else C.GREEN
         warn = "🚨" if pct >= Thresholds.CTX_WARN else ""
-        context_str = f"{ctx_color}{pct:.0f}%{C.RESET}{warn}"
+        # Money framing: show remaining budget instead of % used
+        budget_str = format_token_budget(used, total)
+        context_str = f"{budget_str}{warn}"
     else:
-        context_str = f"{C.DIM}0%{C.RESET}"
+        context_str = f"{C.GREEN}💰$200K{C.RESET}"
 
     # Fast system stats
     cpu = get_cpu_load()
