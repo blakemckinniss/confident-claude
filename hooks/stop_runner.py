@@ -1312,7 +1312,12 @@ def _has_evidence(state: SessionState, evidence_key: str) -> bool:
 
 @register_hook("verification_theater_detector", priority=48)
 def check_verification_theater(data: dict, state: SessionState) -> StopHookResult:
-    """Detect verification claims without tool evidence."""
+    """Detect verification claims without tool evidence.
+
+    Hard Block #3: Cannot claim "fixed" without verify passing.
+    - Below 70% confidence: BLOCKS (not just warns)
+    - Above 70%: Warns with penalty
+    """
     from confidence import apply_rate_limit, get_tier_info, set_confidence
 
     content = _read_tail_content(data.get("transcript_path", ""))
@@ -1338,6 +1343,19 @@ def check_verification_theater(data: dict, state: SessionState) -> StopHookResul
     new_conf = max(0, min(100, state.confidence + total_delta))
     set_confidence(state, new_conf, "verification theater")
     _, emoji, desc = get_tier_info(new_conf)
+
+    # Hard Block #3: "fixed_claim" below 70% confidence = BLOCK, not warn
+    has_fixed_claim = any(ct == "fixed_claim" for ct, _ in triggered)
+    if has_fixed_claim and new_conf < 70:
+        claim_types = ", ".join(ct for ct, _ in triggered)
+        return StopHookResult.block(
+            f"🚫 **VERIFICATION THEATER BLOCKED** (Hard Block #3)\n\n"
+            f"{emoji} {new_conf}% - Cannot claim 'fixed' without evidence.\n"
+            f"Triggered: {claim_types}\n\n"
+            f"**Required:** Run verification (test, lint, or manual check) BEFORE claiming fixed.\n"
+            f"Or: 'SUDO' to bypass"
+        )
+
     return StopHookResult.warn(
         f"📉 VERIFICATION THEATER: {emoji} {new_conf}% | Claims without evidence"
     )

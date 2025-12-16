@@ -470,6 +470,24 @@ def _handle_bash_tool(tool_input: dict, result: dict, state: SessionState) -> No
                 if not part.startswith("-") and ("/" in part or "." in part):
                     track_file_read(state, part)
 
+    # Track directories listed via ls (for gap_detector ls-before-create check)
+    if success:
+        ls_patterns = ["ls ", "ls\t"]
+        if command.startswith("ls") or any(f" {p}" in command for p in ls_patterns):
+            # Extract directory argument from ls command
+            parts = command.split()
+            for i, part in enumerate(parts):
+                if part == "ls" and i + 1 < len(parts):
+                    next_part = parts[i + 1]
+                    if not next_part.startswith("-"):
+                        if next_part not in state.dirs_listed:
+                            state.dirs_listed.append(next_part)
+                            state.dirs_listed = state.dirs_listed[-50:]
+                elif part == "ls" and (i + 1 >= len(parts) or parts[i + 1].startswith("-")):
+                    # ls with no dir or only flags = current dir
+                    if "." not in state.dirs_listed:
+                        state.dirs_listed.append(".")
+
     if success:
         _track_bash_git_commit(command, output, state)
 
@@ -489,11 +507,18 @@ def _handle_bash_tool(tool_input: dict, result: dict, state: SessionState) -> No
 def _handle_search_tool(tool_name: str, tool_input: dict, state: SessionState) -> None:
     """Handle Grep/Glob search tools."""
     pattern = tool_input.get("pattern", "")
+    path = tool_input.get("path", "")
     add_domain_signal(state, pattern)
     if pattern:
         clear_pending_search(state, pattern)
         if tool_name == "Grep":
             clear_integration_grep(state, pattern)
+        elif tool_name == "Glob":
+            # Track glob patterns for gap_detector (ls-before-create check)
+            glob_entry = f"{path}:{pattern}" if path else pattern
+            if glob_entry not in state.globs_run:
+                state.globs_run.append(glob_entry)
+                state.globs_run = state.globs_run[-50:]  # Keep last 50
 
 
 def _normalize_result(result: any) -> dict:

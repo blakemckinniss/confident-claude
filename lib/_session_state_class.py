@@ -27,6 +27,8 @@ class SessionState:
     files_read: list = field(default_factory=list)
     files_edited: list = field(default_factory=list)
     files_created: list = field(default_factory=list)
+    dirs_listed: list = field(default_factory=list)  # Directories explored via ls/Bash
+    globs_run: list = field(default_factory=list)  # Glob patterns executed
 
     # Library tracking
     libraries_used: list = field(default_factory=list)

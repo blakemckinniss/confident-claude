@@ -1586,17 +1586,19 @@ def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("gap_detector", "Edit|Write", priority=50)
 def check_gap_detector(data: dict, state: SessionState) -> HookResult:
-    """Block editing file without reading it first + verify old_string is current."""
+    """Block editing file without reading first + verify old_string is current.
+
+    Hard Block #2: "MUST read file before editing. MUST ls before creating."
+    - Edit: Requires prior Read of the file
+    - Write (new file): Requires prior ls/Glob of parent directory
+    """
     from session_state import was_file_read
     from pathlib import Path
 
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
-
-    if tool_name != "Edit":
-        return HookResult.approve()
-
     file_path = tool_input.get("file_path", "")
+
     if not file_path:
         return HookResult.approve()
 
@@ -1605,7 +1607,57 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
     if is_scratch:
         return HookResult.approve()
 
-    file_exists = Path(file_path).exists() if file_path else False
+    path_obj = Path(file_path)
+
+    # === WRITE TOOL: Check "ls before create" ===
+    if tool_name == "Write":
+        file_exists = path_obj.exists()
+        if file_exists:
+            # Overwriting existing file - check if read first
+            file_seen = was_file_read(state, file_path) or file_path in state.files_edited
+            if not file_seen:
+                filename = path_obj.name
+                return HookResult.deny(
+                    f"**GAP DETECTED**: Overwriting `{filename}` without reading first.\n"
+                    f"Use Read tool first to understand what you're replacing."
+                )
+            return HookResult.approve()
+
+        # New file creation - check parent directory was explored
+        parent_dir = str(path_obj.parent)
+        parent_explored = any(
+            parent_dir in f or str(path_obj.parent.name) in f
+            for f in getattr(state, "dirs_listed", [])
+        )
+        # Also accept if parent was read via Glob
+        glob_explored = any(
+            parent_dir in p or file_path.rsplit("/", 1)[0] in p
+            for p in getattr(state, "globs_run", [])
+        )
+        # Also accept if any file in parent was read
+        files_in_parent = any(
+            str(Path(f).parent) == parent_dir for f in state.files_read
+        )
+
+        if parent_explored or glob_explored or files_in_parent:
+            return HookResult.approve()
+
+        # Allow if parent directory doesn't exist (will be created)
+        if not path_obj.parent.exists():
+            return HookResult.approve()
+
+        filename = path_obj.name
+        parent_name = path_obj.parent.name
+        return HookResult.deny(
+            f"**GAP DETECTED**: Creating `{filename}` without exploring `{parent_name}/` first.\n"
+            f"Use `ls {parent_dir}` or Glob to verify location before creating new files."
+        )
+
+    # === EDIT TOOL: Check "read before edit" ===
+    if tool_name != "Edit":
+        return HookResult.approve()
+
+    file_exists = path_obj.exists()
     if not file_exists:
         return HookResult.approve()
 
@@ -1618,7 +1670,7 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
             with open(file_path, "r", encoding="utf-8", errors="replace") as f:
                 current_content = f.read()
             if old_string not in current_content:
-                filename = Path(file_path).name
+                filename = path_obj.name
                 # Show a snippet of what we're looking for
                 snippet = old_string[:60].replace("\n", "\\n")
                 return HookResult.deny(
@@ -1636,7 +1688,7 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
     if file_seen:
         return HookResult.approve()
 
-    filename = Path(file_path).name
+    filename = path_obj.name
     return HookResult.deny(
         f"**GAP DETECTED**: Editing `{filename}` without reading first.\n"
         f"Use Read tool first to understand the file structure."

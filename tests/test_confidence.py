@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "hooks"))
 
+# Core confidence functions from main module
 from confidence import (
     # Thresholds
     THRESHOLD_ROCK_BOTTOM,
@@ -27,7 +28,12 @@ from confidence import (
     apply_increasers,
     format_confidence_change,
     is_rock_bottom,
-    # Reducer classes
+    # Re-exported
+    UserCorrectionReducer,
+)
+
+# Reducer classes from dedicated module
+from _confidence_reducers import (
     ToolFailureReducer,
     CascadeBlockReducer,
     SunkCostReducer,
@@ -35,7 +41,6 @@ from confidence import (
     GoalDriftReducer,
     BackupFileReducer,
     VersionFileReducer,
-    UserCorrectionReducer,
     ContradictionReducer,
     DeferralReducer,
     ApologeticReducer,
@@ -55,7 +60,10 @@ from confidence import (
     HugeOutputDumpReducer,
     TrivialQuestionReducer,
     ObviousNextStepsReducer,
-    # Increaser classes
+)
+
+# Increaser classes from dedicated module
+from _confidence_increasers import (
     PassedTestsIncreaser,
     BuildSuccessIncreaser,
     LintPassIncreaser,
@@ -2762,6 +2770,7 @@ class TestThresholdConstants:
 # =============================================================================
 
 
+# Additional confidence functions for v4.6+ tests
 from confidence import (
     get_streak_multiplier,
     get_diminishing_multiplier,
@@ -2772,10 +2781,9 @@ from confidence import (
     get_adjusted_delta,
     FARMABLE_INCREASERS,
     DIMINISHING_CAP,
-    SequentialWhenParallelReducer,
-    TargetedReadIncreaser,
-    SubagentDelegationIncreaser,
 )
+from _confidence_reducers import SequentialWhenParallelReducer
+from _confidence_increasers import TargetedReadIncreaser, SubagentDelegationIncreaser
 
 
 class TestGetStreakMultiplier:
@@ -3229,7 +3237,8 @@ class TestFarmableIncreasersConstant:
 # AST-BASED REDUCER TESTS (v4.7)
 # =============================================================================
 
-from confidence import (
+# AST-based reducers from dedicated module
+from _confidence_reducers import (
     DeepNestingReducer,
     LongFunctionReducer,
     MutableDefaultArgReducer,
