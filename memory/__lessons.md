@@ -289,3 +289,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-14 16:58
 - [abandoned_stubs] ⚠️ ABANDONED WORK: _session_goals.py, _session_workflow.py contain stubs/TODOs
+
+### 2025-12-16 10:15
+- [abandoned_stubs] ⚠️ ABANDONED WORK: logger.ts, filterUtils.ts, gacha-animations.ts contain stubs/TODOs
