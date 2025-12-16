@@ -258,13 +258,19 @@ class AskUserIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class RulesUpdateIncreaser(ConfidenceIncreaser):
-    """Triggers when updating CLAUDE.md or /rules - improving the system."""
+    """Triggers when updating CLAUDE.md or /rules - improving the system.
+
+    HUGE boost because these files are the "DNA" of the framework:
+    - CLAUDE.md defines behavior, principles, and hard blocks
+    - /rules/ contains confidence system, beads, hooks, etc.
+    Improving these files has outsized impact across all future sessions.
+    """
 
     name: str = "rules_update"
-    delta: int = 3
-    description: str = "Updated system rules/documentation"
+    delta: int = 15  # Boosted from 3 - these files are critical
+    description: str = "Updated framework DNA (CLAUDE.md or /rules/)"
     requires_approval: bool = False
-    cooldown_turns: int = 2
+    cooldown_turns: int = 1  # Reduced - encourage frequent rule improvements
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int

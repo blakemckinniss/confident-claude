@@ -118,7 +118,7 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `productive_bash` | +1 | ls, pwd, which, tree, stat (inspection) |
 | `research` | +2 | WebSearch, WebFetch, crawl4ai |
 | `search_tool` | +2 | Grep, Glob, Task (understanding) |
-| `rules_update` | +3 | Edit CLAUDE.md or /rules/ |
+| `rules_update` | +15 | Edit CLAUDE.md or /rules/ (framework DNA) |
 | `lint_pass` | +3 | ruff check, eslint, cargo clippy passes |
 | `small_diff` | +3 | Diffs under 400 LOC (focused changes) |
 | `custom_script` | +5 | ~/.claude/ops/* scripts (audit, void, etc.) |
