@@ -207,23 +207,58 @@ def check_prompt_disclaimer(data: dict, state: SessionState) -> HookResult:
 
 
 # =============================================================================
-# SERENA & FILESYSTEM MCP (priority 31)
+# INTEGRATION SYNERGY (priority 31)
 # =============================================================================
 
+# Try to import integration helpers
+try:
+    from _integration import (
+        is_serena_available,
+        get_serena_root,
+        has_project_beads,
+        get_project_name,
+        is_claudemem_available,
+    )
 
-@register_hook("serena_filesystem_reminder", priority=31)
-def check_serena_filesystem(data: dict, state: SessionState) -> HookResult:
-    """Remind about serena activation and filesystem MCP usage."""
-    cwd = Path.cwd()
+    _INTEGRATION_AVAILABLE = True
+except ImportError:
+    _INTEGRATION_AVAILABLE = False
+
+
+@register_hook("integration_synergy", priority=31)
+def check_integration_synergy(data: dict, state: SessionState) -> HookResult:
+    """Inject Integration Synergy context (serena, beads, claude-mem)."""
     parts = []
 
-    # Check for .serena directory
-    serena_dir = cwd / ".serena"
-    if serena_dir.is_dir():
-        parts.append(
-            "🔮 **SERENA AVAILABLE**: `.serena/` detected — "
-            "activate with `mcp__serena__*` tools for semantic code analysis"
-        )
+    if _INTEGRATION_AVAILABLE:
+        # Use integration helpers for comprehensive status
+        if is_serena_available():
+            serena_root = get_serena_root()
+            project = serena_root.name if serena_root else "project"
+            parts.append(
+                f"🔮 **SERENA AVAILABLE**: `.serena/` detected — "
+                f'activate with `mcp__serena__activate_project("{project}")`'
+            )
+
+        # Project beads isolation
+        if has_project_beads():
+            project_name = get_project_name() or "project"
+            parts.append(
+                f"📋 **BEADS ISOLATED**: Project `{project_name}` has local task tracking"
+            )
+
+        # Claude-mem warning (only when unavailable)
+        if not is_claudemem_available():
+            parts.append("⚠️ **CLAUDE-MEM**: API offline (observations not persisted)")
+    else:
+        # Fallback: basic serena check
+        cwd = Path.cwd()
+        serena_dir = cwd / ".serena"
+        if serena_dir.is_dir():
+            parts.append(
+                "🔮 **SERENA AVAILABLE**: `.serena/` detected — "
+                "activate with `mcp__serena__*` tools for semantic code analysis"
+            )
 
     # Always recommend filesystem MCP for file operations
     parts.append(
