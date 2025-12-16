@@ -61,6 +61,24 @@ Special detection for **edit_oscillation** risk (3+ edits to same file triggers 
 
 This is the "danger sense" - anticipating threats before they materialize.
 
+### Fatigue Signals
+
+The entity "gets tired" as sessions progress - **decay accelerates with session length**:
+
+| Tier | Turns | Multiplier | Emoji | Effect |
+|------|-------|------------|-------|--------|
+| Fresh | 0-29 | 1.0x | 💚 | Normal decay rate |
+| Warming | 30-59 | 1.25x | 🟢 | Slight fatigue |
+| Working | 60-99 | 1.5x | 🟡 | Noticeable fatigue |
+| Tired | 100-149 | 2.0x | 🟠 | Significant fatigue |
+| Exhausted | 150+ | 2.5x | 🔴 | Maximum fatigue |
+
+This creates **natural session boundaries** - long sessions become increasingly difficult to maintain high confidence in. Recovery actions become more important as fatigue increases.
+
+When fatigued, trajectory predictions suggest `/compact` or fresh sessions as recovery options.
+
+Check fatigue status: `~/.claude/ops/health.py --quick`
+
 ## Confidence Zones
 
 | Zone | Range | Emoji | Allowed Actions |

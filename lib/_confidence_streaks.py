@@ -166,15 +166,22 @@ def predict_trajectory(
     Returns:
         Dict with projected confidence, warnings, and recovery suggestions
     """
+    from _fatigue import get_fatigue_multiplier, get_fatigue_tier
+
     current = state.confidence
     projected = current
 
-    # Apply expected decay
-    projected -= turns_ahead  # -1 decay per turn
+    # Apply expected decay with fatigue multiplier (v4.9)
+    # Entity gets tired - decay accelerates with session length
+    fatigue_mult = get_fatigue_multiplier(state.turn_count)
+    projected -= int(turns_ahead * fatigue_mult)  # Fatigued decay
 
-    # Apply risk penalties for planned actions
-    projected -= planned_edits  # -1 per edit
-    projected -= planned_bash  # -1 per bash
+    # Apply risk penalties for planned actions (also fatigued)
+    projected -= int(planned_edits * fatigue_mult)  # -1 per edit (fatigued)
+    projected -= int(planned_bash * fatigue_mult)  # -1 per bash (fatigued)
+
+    # Get fatigue tier for warning
+    fatigue_tier, fatigue_emoji, _ = get_fatigue_tier(state.turn_count)
 
     # Determine if we'll hit any gates
     warnings = []
@@ -197,6 +204,10 @@ def predict_trajectory(
         recovery.append(f"Run tests (+5 each) - need ~{(deficit // 5) + 1} passes")
         recovery.append("git status/diff (+10)")
         recovery.append("Read relevant files (+1 each)")
+        if fatigue_mult >= 1.5:
+            recovery.append(
+                f"Consider `/compact` or fresh session ({fatigue_emoji} {fatigue_tier})"
+            )
 
     return {
         "current": current,
@@ -206,6 +217,8 @@ def predict_trajectory(
         "warnings": warnings,
         "recovery_suggestions": recovery,
         "will_gate": projected < STASIS_FLOOR,
+        "fatigue_multiplier": fatigue_mult,
+        "fatigue_tier": fatigue_tier,
     }
 
 

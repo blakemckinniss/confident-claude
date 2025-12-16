@@ -833,14 +833,21 @@ def check_confidence_decay(
 
     See _calculate_decay_boost() and _calculate_decay_penalty() for details.
     Shows 🆘 indicator when survival boost is active.
+
+    Entity Model v4.9: Fatigue system - decay accelerates with session length.
+    The entity "gets tired" in long sessions, creating natural session boundaries.
     """
+    from _fatigue import get_fatigue_multiplier
+
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
 
     # Base decay per tool call (moderate: actions have cost but not punishing)
-    base_decay = 0.4
+    # v4.9: Apply fatigue multiplier - entity gets tired in long sessions
+    fatigue_mult = get_fatigue_multiplier(state.turn_count)
+    base_decay = 0.4 * fatigue_mult
     if state.confidence >= 85:
-        base_decay += 0.3  # High confidence tax
+        base_decay += 0.3 * fatigue_mult  # High confidence tax (also fatigued)
 
     state._decay_accumulator += base_decay
 

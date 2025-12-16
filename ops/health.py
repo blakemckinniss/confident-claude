@@ -79,6 +79,7 @@ def check_hooks() -> dict:
     try:
         sys.path.insert(0, str(hooks_dir))
         import ast
+
         for runner in runners:
             runner_path = hooks_dir / runner
             if runner_path.exists():
@@ -189,12 +190,60 @@ def check_fp_history() -> dict:
                     result["issues"].append(f"High FP rate: {reducer} ({count} FPs)")
                     result["status"] = "warning"
                 elif count >= 3:
-                    result["issues"].append(f"Elevated FP rate: {reducer} ({count} FPs)")
+                    result["issues"].append(
+                        f"Elevated FP rate: {reducer} ({count} FPs)"
+                    )
                     if result["status"] == "healthy":
                         result["status"] = "degraded"
 
     except Exception as e:
         result["issues"].append(f"Cannot analyze FP history: {e}")
+        result["status"] = "unknown"
+
+    return result
+
+
+def check_fatigue() -> dict:
+    """Check session fatigue level (v4.9)."""
+    result = {"status": "healthy", "issues": [], "metrics": {}}
+
+    state_file = get_state_file()
+    if not state_file.exists():
+        result["status"] = "unknown"
+        result["issues"].append("No session state for fatigue check")
+        return result
+
+    try:
+        state = json.loads(state_file.read_text())
+        turn_count = state.get("turn_count", 0)
+
+        # Import fatigue module
+        sys.path.insert(0, str(CLAUDE_DIR / "lib"))
+        from _fatigue import get_fatigue_tier, format_fatigue_status
+
+        tier_name, tier_emoji, multiplier = get_fatigue_tier(turn_count)
+        result["metrics"]["turn_count"] = turn_count
+        result["metrics"]["fatigue_tier"] = tier_name
+        result["metrics"]["decay_multiplier"] = f"{multiplier:.1f}x"
+        result["metrics"]["status_display"] = format_fatigue_status(turn_count)
+
+        # Status based on fatigue tier
+        if tier_name == "exhausted":
+            result["status"] = "critical"
+            result["issues"].append(
+                "🔴 EXHAUSTED: 150+ turns - strongly recommend fresh session"
+            )
+        elif tier_name == "tired":
+            result["status"] = "warning"
+            result["issues"].append(
+                "🟠 TIRED: 100+ turns - consider `/compact` or session break"
+            )
+        elif tier_name == "working":
+            result["status"] = "degraded"
+            result["issues"].append("🟡 WORKING HARD: 60+ turns - decay at 1.5x rate")
+
+    except Exception as e:
+        result["issues"].append(f"Cannot check fatigue: {e}")
         result["status"] = "unknown"
 
     return result
@@ -223,7 +272,7 @@ def check_session_state() -> dict:
         result["metrics"]["state_size_kb"] = round(state_size / 1024, 1)
 
         if state_size > 100_000:
-            result["issues"].append(f"State file bloated: {state_size/1024:.0f}KB")
+            result["issues"].append(f"State file bloated: {state_size / 1024:.0f}KB")
             result["status"] = "warning"
 
         files_read = len(state.get("files_read", []))
@@ -252,6 +301,7 @@ def run_health_check(quick: bool = False) -> dict:
 
     results["checks"]["hooks"] = check_hooks()
     results["checks"]["confidence"] = check_confidence_system()
+    results["checks"]["fatigue"] = check_fatigue()
 
     if not quick:
         results["checks"]["fp_history"] = check_fp_history()
