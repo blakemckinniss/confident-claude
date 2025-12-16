@@ -1092,6 +1092,109 @@ def check_recursion_guard(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 
+# =============================================================================
+# HOMEOSTATIC DRIVE (Priority 16) - Active recovery nudges below stasis
+# =============================================================================
+
+
+@register_hook("homeostatic_drive", None, priority=16)
+def check_homeostatic_drive(data: dict, state: SessionState) -> HookResult:
+    """
+    Active pull toward stasis zone (80-90%) - the Entity Model's self-regulation.
+
+    When below stasis floor, proactively suggest recovery actions.
+    This is the "healing instinct" - the system actively seeks equilibrium.
+    """
+    from _confidence_constants import STASIS_FLOOR
+
+    # Skip if confidence not initialized or in healthy zone
+    if state.confidence == 0 or state.confidence >= STASIS_FLOOR:
+        return HookResult.approve()
+
+    # Calculate deficit
+    deficit = STASIS_FLOOR - state.confidence
+    _, emoji, _ = get_tier_info(state.confidence)
+
+    # Don't spam - track nudge frequency
+    nudge_key = "_homeostatic_nudge_turn"
+    last_nudge = state.nudge_history.get(nudge_key, 0)
+    if state.turn_count - last_nudge < 3:  # Max once per 3 turns
+        return HookResult.approve()
+
+    state.nudge_history[nudge_key] = state.turn_count
+
+    # Build contextual recovery suggestions based on what's cheap/available
+    suggestions = []
+    suggestions.append("📊 git status/diff (+10)")
+    suggestions.append("📖 Read relevant files (+1 each)")
+    if deficit >= 10:
+        suggestions.append("🧪 Run tests (+5 each)")
+        suggestions.append("❓ AskUserQuestion (+20)")
+
+    recovery_str = " | ".join(suggestions[:3])
+
+    return HookResult.approve(
+        f"{emoji} **BELOW STASIS** ({state.confidence}% < {STASIS_FLOOR}%) - "
+        f"Gap: {deficit}\n"
+        f"💚 Recovery: {recovery_str}"
+    )
+
+
+# =============================================================================
+# THREAT ANTICIPATION (Priority 17) - Pre-action confidence warnings
+# =============================================================================
+
+
+@register_hook("threat_anticipation", "Edit|Write|Bash", priority=17)
+def check_threat_anticipation(data: dict, state: SessionState) -> HookResult:
+    """
+    Proactive trajectory prediction before risky actions.
+
+    Warns BEFORE actions that would crash confidence below stasis floor.
+    This is the "danger sense" - the system anticipates and warns of threats.
+    """
+    from _confidence_streaks import predict_trajectory, format_trajectory_warning
+    from _confidence_constants import STASIS_FLOOR
+
+    # Skip if confidence not initialized
+    if state.confidence == 0:
+        return HookResult.approve()
+
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Calculate planned impact
+    planned_edits = 1 if tool_name in ("Edit", "Write") else 0
+    planned_bash = 1 if tool_name == "Bash" else 0
+
+    # Check for edit oscillation risk (same file edited multiple times)
+    if tool_name in ("Edit", "Write"):
+        file_path = tool_input.get("file_path", "")
+        edit_count = state.files_edited.count(file_path) if file_path else 0
+        if edit_count >= 2:
+            # About to trigger edit_oscillation (-12)
+            planned_edits += 12  # Account for the penalty
+
+    # Predict trajectory
+    trajectory = predict_trajectory(
+        state,
+        planned_edits=planned_edits,
+        planned_bash=planned_bash,
+        turns_ahead=2,
+    )
+
+    # Only warn if trajectory is concerning
+    if not trajectory["warnings"] and trajectory["projected"] >= STASIS_FLOOR:
+        return HookResult.approve()
+
+    # Format warning
+    warning = format_trajectory_warning(trajectory)
+    if warning:
+        return HookResult.approve(warning)
+
+    return HookResult.approve()
+
+
 @register_hook("confidence_tool_gate", None, priority=18)
 def check_confidence_tool_gate(data: dict, state: SessionState) -> HookResult:
     """Gate tool usage based on confidence level."""

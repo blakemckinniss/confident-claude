@@ -30,6 +30,37 @@ This "stasis zone" represents balanced operation where:
 
 **Do NOT spam SUDO** - use the increasers to earn confidence back legitimately.
 
+## Entity Model Self-Regulation (v4.9)
+
+The confidence system embodies the **Entity Model** - treating the framework as a living entity with self-survival instincts.
+
+### Homeostatic Drive
+
+When confidence drops below 80% (stasis floor), the system **actively suggests recovery actions**:
+
+```
+💚 BELOW STASIS (75% < 80%) - Gap: 5
+💚 Recovery: 📊 git status/diff (+10) | 📖 Read relevant files (+1 each) | 🧪 Run tests (+5 each)
+```
+
+This is the "healing instinct" - the system doesn't just penalize drift, it actively pulls toward equilibrium.
+
+### Threat Anticipation
+
+Before risky actions (Edit, Write, Bash), the system **predicts trajectory** and warns of impending crashes:
+
+```
+⚠️ Trajectory: 85% → 71% in 2 turns
+  • Will drop below stasis floor (80%)
+  Recovery options:
+    - Run tests (+5 each) - need ~2 passes
+    - git status/diff (+10)
+```
+
+Special detection for **edit_oscillation** risk (3+ edits to same file triggers -12 penalty).
+
+This is the "danger sense" - anticipating threats before they materialize.
+
 ## Confidence Zones
 
 | Zone | Range | Emoji | Allowed Actions |
