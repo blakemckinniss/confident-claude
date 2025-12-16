@@ -381,7 +381,6 @@ def get_beads_status() -> str:
 def get_project_info() -> tuple[str, str]:
     """Get project name and ID from project detector."""
     try:
-        from _session_constants import get_project_state_file, get_current_project_id
         from project_detector import detect_project
 
         ctx = detect_project()
@@ -421,13 +420,25 @@ def get_confidence_status() -> str:
         elif streak >= 2:
             streak_str = f" ⚡{streak}"
 
-        # Trajectory prediction (3 turns decay)
-        projected = confidence - 3
+        # Fatigue indicator (v4.9) - show when not fresh
+        fatigue_str = ""
+        fatigue_mult = 1.0
+        turn_count = data.get("turn_count", 0)
+        try:
+            from _fatigue import get_fatigue_tier
+            tier, fatigue_emoji, fatigue_mult = get_fatigue_tier(turn_count)
+            if tier != "fresh":  # Only show if fatigued
+                fatigue_str = f" {fatigue_emoji}{fatigue_mult:.1f}x"
+        except ImportError:
+            fatigue_mult = 1.0  # Fallback if fatigue module not available
+
+        # Trajectory prediction (3 turns decay, adjusted for fatigue)
+        projected = confidence - int(3 * fatigue_mult)
         trajectory = ""
         if projected < STASIS_FLOOR and confidence >= STASIS_FLOOR:
-            trajectory = f" 📉"
+            trajectory = " 📉"
 
-        return f"{emoji}{confidence}%{streak_str}{trajectory}"
+        return f"{emoji}{confidence}%{streak_str}{fatigue_str}{trajectory}"
     except Exception:
         return ""
 
