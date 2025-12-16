@@ -1,86 +1,92 @@
-# Resume Prompt Generator
+# Resume Previous Session
 
-Generate a comprehensive resume prompt for continuing work in a new session.
-
----
-
-Read the current session state from `~/.claude/memory/session_state_v3.json` and the transcript to gather context.
-
-Generate a **complete, copy-paste ready** resume prompt containing:
-
-## 1. Context Snapshot
-- Current context usage (check statusline or transcript for token count)
-- Session duration and turn count
-
-## 2. Original Goal
-From `session_state.original_goal` or infer from conversation history.
-
-## 3. Progress Summary
-From `session_state.progress_log` or summarize what was accomplished.
-
-## 4. Files Modified
-List from `session_state.files_edited` and `session_state.files_created`.
-
-## 5. Key Decisions Made
-Document important choices and their rationale from this session.
-
-## 6. Current Blockers
-From `session_state.errors_unresolved` and `session_state.handoff_blockers`.
-
-## 7. Beads Status
-Run `bd list --status=open` and `bd list --status=in_progress` to capture task state.
-
-## 8. Git State
-Run `git status --short` and `git diff --stat` to capture uncommitted work.
-
-## 9. Memory Files Consulted
-Filter `session_state.files_read` for paths containing `/.claude/memory/`.
-
-## 10. Evidence Gathered
-From `session_state.evidence_ledger`.
-
-## 11. Approaches Tried
-From `session_state.approach_history` - what worked and what failed.
-
-## 12. Work Queue
-From `session_state.work_queue` - discovered work items.
-
-## 13. Next Steps (Priority Order)
-From `session_state.handoff_next_steps` or derive from current state.
-
-## 14. Critical Context
-Any information the next session MUST know:
-- Environment variables or config needed
-- Ports/services that should be running
-- API keys location or auth setup
-- Workarounds or gotchas discovered
-
-## 15. Session Continuity Resources
-Include these references for the new session:
-
-**Full Transcript Location:**
-- `~/.claude/projects/{project_name}/` contains session transcripts by session ID
-- Current session ID is in `session_state.session_id`
-
-**Memory Systems to Consult:**
-- `~/.claude/memory/` - Framework memories (lessons, decisions, capabilities)
-- `~/.claude/.serena/memories/` - Serena project memories (if Serena is active)
-
-**Serena Activation:**
-- If working in a directory with `.serena/`, the new session should activate Serena:
-  `mcp__serena__activate_project` or check `mcp__serena__get_current_config`
-- Serena provides semantic code analysis via `mcp__serena__*` tools
+**Purpose:** Recover context from a previous near-saturated session into this fresh session.
 
 ---
 
-**Output Format:**
+## Instructions
 
-Output the resume prompt in a clearly marked block:
+Read the previous session's state and present it to continue work seamlessly.
+
+### Step 1: Load Previous Session State
+
+Read `~/.claude/memory/session_state_v3.json` and extract:
+- `original_goal` - What the user was trying to accomplish
+- `progress_log` - Work completed
+- `files_edited` and `files_created` - Files touched
+- `errors_unresolved` - Outstanding issues
+- `handoff_blockers` - Known blockers
+- `handoff_next_steps` - Planned next actions
+- `work_queue` - Discovered work items
+- `evidence_ledger` - Evidence gathered
+- `approach_history` - What was tried
+- `session_id` - For transcript lookup
+
+### Step 2: Check Beads Status
+
+Run these commands to see current task state:
+```bash
+bd list --status=open
+bd list --status=in_progress
+```
+
+### Step 3: Check Git State
+
+Run to see uncommitted work from previous session:
+```bash
+git status --short
+git diff --stat
+```
+
+### Step 4: Check Serena
+
+If `.serena/` exists in the working directory, activate Serena:
+```
+mcp__serena__activate_project
+```
+
+Also check Serena memories at `~/.claude/.serena/memories/` if relevant.
+
+### Step 5: Present Recovery Summary
+
+Output a structured summary:
 
 ```
----BEGIN RESUME PROMPT---
-[Full resume content here, ready to paste into new session]
----END RESUME PROMPT---
+## 🔄 SESSION RECOVERED
+
+### Original Goal
+[From session_state.original_goal]
+
+### Progress Made (Previous Session)
+[From progress_log]
+
+### Files Modified
+[From files_edited + files_created]
+
+### Outstanding Issues
+[From errors_unresolved + handoff_blockers]
+
+### Next Steps (From Previous Session)
+[From handoff_next_steps or work_queue]
+
+### Current Beads
+[From bd list output]
+
+### Git Status
+[From git status output]
+
+---
+
+**Ready to continue.** What would you like me to work on?
 ```
 
-Make it comprehensive but not redundant. The goal is for the next session to pick up exactly where this one left off.
+### Step 6: Consult Memory Systems
+
+If additional context needed, check:
+- `~/.claude/memory/` - Framework memories (lessons, decisions)
+- `~/.claude/.serena/memories/` - Serena project memories
+- Previous transcript at `~/.claude/projects/{project}/` by session ID
+
+---
+
+**The goal is to bring this new session up to speed on everything the previous session knew.**
