@@ -430,6 +430,158 @@ def check_keyword_mandate(prompt: str, confidence: int) -> Optional[Mandate]:
 
 
 # =============================================================================
+# REPOMIX MCP TRIGGERS (for codebase analysis)
+# =============================================================================
+
+_RE_CODEBASE_ANALYSIS = re.compile(
+    r"(analyz|understand|explor|overview|structure|architectur)\s*.*(codebase|repo|project|code)",
+    re.IGNORECASE,
+)
+
+_RE_GITHUB_REPO = re.compile(
+    r"(github\.com/|analyze\s+.+repo|check\s+.+repo|look\s+at\s+.+repo|"
+    r"review\s+.+repo|understand\s+.+repo|explore\s+.+repo)",
+    re.IGNORECASE,
+)
+
+_RE_MULTI_FILE = re.compile(
+    r"(all\s+files|entire\s+(codebase|project|repo)|"
+    r"across\s+(the\s+)?(codebase|project|files)|"
+    r"whole\s+(codebase|project)|every\s+file|"
+    r"project.?wide|codebase.?wide|repo.?wide)",
+    re.IGNORECASE,
+)
+
+_RE_CODE_REVIEW_BROAD = re.compile(
+    r"(review|audit|check)\s+(the\s+)?(entire|whole|full|all)\s*(code|project|repo|codebase)",
+    re.IGNORECASE,
+)
+
+_RE_DOCUMENTATION = re.compile(
+    r"(document|generate\s+docs?|create\s+docs?|write\s+docs?)\s*.*(codebase|project|repo|code)",
+    re.IGNORECASE,
+)
+
+_RE_BUG_HUNT = re.compile(
+    r"(find|hunt|search|look\s+for)\s*.*(bug|issue|problem|error)\s*.*(across|in\s+the|throughout)",
+    re.IGNORECASE,
+)
+
+_RE_SKILL_GENERATE = re.compile(
+    r"(create|generate|make|build)\s*.*(skill|reference|knowledge)\s*.*(from|for|about)",
+    re.IGNORECASE,
+)
+
+
+def check_repomix_mandate(prompt: str) -> Optional[Mandate]:
+    """
+    Check for Repomix MCP triggers in user prompt.
+
+    Repomix is ideal for:
+    - Codebase analysis and understanding
+    - GitHub repository exploration
+    - Multi-file operations
+    - Documentation generation
+    - Broad code reviews
+    """
+    if len(prompt) < 10 or prompt.startswith("/"):
+        return None
+
+    # GitHub URL or repo analysis → pack_remote_repository
+    if _RE_GITHUB_REPO.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_repomix-mcp_repomix__pack_remote_repository",
+            directive=(
+                "🔗 **USE REPOMIX**: GitHub repository detected. "
+                "Use `mcp__plugin_repomix-mcp_repomix__pack_remote_repository` to analyze it. "
+                "Repomix consolidates repos into AI-optimized format."
+            ),
+            priority=P_HIGH,
+            reason="GitHub repo analysis",
+        )
+
+    # Codebase analysis/understanding → pack_codebase
+    if _RE_CODEBASE_ANALYSIS.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_repomix-mcp_repomix__pack_codebase",
+            directive=(
+                "📦 **USE REPOMIX**: Codebase analysis detected. "
+                "Use `mcp__plugin_repomix-mcp_repomix__pack_codebase` for comprehensive view. "
+                "Repomix provides structure, metrics, and consolidated code."
+            ),
+            priority=P_MEDIUM,
+            reason="Codebase analysis",
+        )
+
+    # Multi-file operations → pack_codebase
+    if _RE_MULTI_FILE.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_repomix-mcp_repomix__pack_codebase",
+            directive=(
+                "📂 **USE REPOMIX**: Multi-file operation detected. "
+                "Use `mcp__plugin_repomix-mcp_repomix__pack_codebase` to see all files. "
+                "Repomix consolidates for efficient analysis."
+            ),
+            priority=P_MEDIUM,
+            reason="Multi-file operation",
+        )
+
+    # Broad code review → pack_codebase
+    if _RE_CODE_REVIEW_BROAD.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_repomix-mcp_repomix__pack_codebase",
+            directive=(
+                "🔍 **USE REPOMIX**: Broad code review detected. "
+                "Use `mcp__plugin_repomix-mcp_repomix__pack_codebase` first. "
+                "Then use `mcp__pal__codereview` on the packed output."
+            ),
+            priority=P_HIGH,
+            reason="Broad code review",
+        )
+
+    # Documentation generation → pack_codebase
+    if _RE_DOCUMENTATION.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_repomix-mcp_repomix__pack_codebase",
+            directive=(
+                "📚 **USE REPOMIX**: Documentation task detected. "
+                "Use `mcp__plugin_repomix-mcp_repomix__pack_codebase` to gather all code. "
+                "Repomix output is ideal for documentation generation."
+            ),
+            priority=P_MEDIUM,
+            reason="Documentation generation",
+        )
+
+    # Bug hunting across codebase → pack_codebase
+    if _RE_BUG_HUNT.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_repomix-mcp_repomix__pack_codebase",
+            directive=(
+                "🐛 **USE REPOMIX**: Bug hunt across codebase detected. "
+                "Use `mcp__plugin_repomix-mcp_repomix__pack_codebase` for full visibility. "
+                "Then grep the packed output for patterns."
+            ),
+            priority=P_MEDIUM,
+            reason="Codebase bug hunt",
+        )
+
+    # Skill generation → generate_skill
+    if _RE_SKILL_GENERATE.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_repomix-mcp_repomix__generate_skill",
+            directive=(
+                "🎯 **USE REPOMIX**: Skill generation detected. "
+                "Use `mcp__plugin_repomix-mcp_repomix__generate_skill` to create reference. "
+                "Creates SKILL.md with project knowledge."
+            ),
+            priority=P_MEDIUM,
+            reason="Skill generation",
+        )
+
+    return None
+
+
+# =============================================================================
 # SUMMARY: Mandate Thresholds (v2.0 - AGGRESSIVE)
 # =============================================================================
 #
