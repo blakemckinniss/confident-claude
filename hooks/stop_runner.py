@@ -5,7 +5,11 @@ Composite Stop Runner: Runs all Stop hooks in a single process.
 PERFORMANCE: ~100ms for all hooks vs ~300ms for individual processes
 
 HOOKS INDEX (by priority):
-  PERSISTENCE (0-20):
+  CONTEXT MANAGEMENT (0-5):
+    3 context_warning     - Warn at 75% context usage
+    4 context_exhaustion  - Force resume prompt at 85%
+
+  PERSISTENCE (6-20):
     10 auto_commit        - Commit all changes (semantic backup)
 
   VALIDATION (30-60):
@@ -117,6 +121,11 @@ DISMISSAL_SCAN_BYTES = 20000
 # Limits
 MAX_CREATED_FILES_SCAN = 10
 
+# Context exhaustion thresholds
+CONTEXT_WARNING_THRESHOLD = 0.75  # 75% - soft warning
+CONTEXT_EXHAUSTION_THRESHOLD = 0.85  # 85% - hard block
+DEFAULT_CONTEXT_WINDOW = 200000  # Default if model info unavailable
+
 # Dismissal patterns
 DISMISSAL_PATTERNS = [
     (r"(this|that|it)('s| is) a false positive", "false_positive"),
@@ -198,7 +207,13 @@ def _categorize_files(files: list[str]) -> dict[str, list[str]]:
         "ops": [f for f in files if "ops/" in f],
         "commands": [f for f in files if "commands/" in f],
         "lib": [f for f in files if "lib/" in f],
-        "config": [f for f in files if any(c in f for c in ["settings.json", "config/", ".json", ".yaml", ".yml"])],
+        "config": [
+            f
+            for f in files
+            if any(
+                c in f for c in ["settings.json", "config/", ".json", ".yaml", ".yml"]
+            )
+        ],
         "memory": [f for f in files if "memory/" in f],
         "projects": [f for f in files if "projects/" in f],
     }
@@ -216,15 +231,26 @@ def _build_summary_parts(categories: dict[str, list[str]]) -> list[str]:
     if categories["projects"]:
         parts.append("projects")
     if categories["other"]:
-        other_dirs = {Path(f).parts[0] for f in categories["other"][:5] if len(Path(f).parts) > 1}
-        parts.append(", ".join(list(other_dirs)[:3]) if other_dirs else f"{len(categories['other'])} files")
+        other_dirs = {
+            Path(f).parts[0] for f in categories["other"][:5] if len(Path(f).parts) > 1
+        }
+        parts.append(
+            ", ".join(list(other_dirs)[:3])
+            if other_dirs
+            else f"{len(categories['other'])} files"
+        )
     return parts
 
 
 def _build_stats_line(changes: dict) -> str:
     """Build stats line from changes dict."""
     stats = []
-    for key, label in [("modified", "modified"), ("added", "added"), ("deleted", "deleted"), ("renamed", "renamed")]:
+    for key, label in [
+        ("modified", "modified"),
+        ("added", "added"),
+        ("deleted", "deleted"),
+        ("renamed", "renamed"),
+    ]:
         if changes[key]:
             stats.append(f"{len(changes[key])} {label}")
     return ", ".join(stats) if stats else "no changes"
@@ -232,7 +258,9 @@ def _build_stats_line(changes: dict) -> str:
 
 def generate_commit_message(changes: dict) -> str:
     """Generate semantic commit message from changes."""
-    all_files = changes["modified"] + changes["added"] + changes["deleted"] + changes["renamed"]
+    all_files = (
+        changes["modified"] + changes["added"] + changes["deleted"] + changes["renamed"]
+    )
     if not all_files:
         return ""
     categories = _categorize_files(all_files)
@@ -333,8 +361,267 @@ def check_dismissals_in_transcript(transcript_path: str) -> list[str]:
 
 
 # =============================================================================
+# CONTEXT USAGE CALCULATION (ported from statusline.py)
+# =============================================================================
+
+
+def get_context_usage(transcript_path: str, context_window: int) -> tuple[int, int]:
+    """Calculate context window usage from transcript.
+
+    Parses the transcript JSONL to find the most recent assistant message
+    with usage data, then sums all token types.
+
+    Returns: (used_tokens, context_window)
+    """
+    if not transcript_path or not Path(transcript_path).exists():
+        return 0, context_window
+
+    try:
+        with open(transcript_path, "r") as f:
+            lines = f.readlines()
+
+        # Search backwards for most recent assistant message with usage
+        for line in reversed(lines):
+            try:
+                data = json.loads(line.strip())
+                if data.get("message", {}).get("role") != "assistant":
+                    continue
+                # Skip synthetic messages
+                model = str(data.get("message", {}).get("model", "")).lower()
+                if "synthetic" in model:
+                    continue
+                usage = data.get("message", {}).get("usage")
+                if usage:
+                    used = (
+                        usage.get("input_tokens", 0)
+                        + usage.get("output_tokens", 0)
+                        + usage.get("cache_read_input_tokens", 0)
+                        + usage.get("cache_creation_input_tokens", 0)
+                    )
+                    return used, context_window
+            except (json.JSONDecodeError, KeyError):
+                continue
+        return 0, context_window
+    except (OSError, PermissionError):
+        return 0, context_window
+
+
+def _format_resume_template(
+    state: SessionState, pct: float, used: int, total: int
+) -> str:
+    """Format the comprehensive resume prompt template with session state."""
+    # Gather files modified
+    files_modified = list(set(state.files_edited + state.files_created))[:20]
+    files_str = (
+        "\n".join(f"- {f}" for f in files_modified)
+        if files_modified
+        else "- None tracked"
+    )
+
+    # Memory files consulted
+    memory_files = [
+        f for f in state.files_read if "/.claude/memory/" in f or "/memory/" in f
+    ][:10]
+    memory_str = (
+        "\n".join(f"- {Path(f).name}" for f in memory_files)
+        if memory_files
+        else "- None"
+    )
+
+    # Evidence ledger
+    evidence = state.evidence_ledger[-10:] if state.evidence_ledger else []
+    evidence_str = (
+        "\n".join(f"- {e.get('summary', str(e))[:100]}" for e in evidence)
+        if evidence
+        else "- None recorded"
+    )
+
+    # Approach history
+    approaches = state.approach_history[-5:] if state.approach_history else []
+    approach_str = (
+        "\n".join(
+            f"- {a.get('approach', 'unknown')}: {a.get('failures', 0)} failures"
+            for a in approaches
+        )
+        if approaches
+        else "- None tracked"
+    )
+
+    # Errors unresolved
+    errors = state.errors_unresolved[-5:] if state.errors_unresolved else []
+    errors_str = (
+        "\n".join(
+            f"- {e.get('type', 'error')}: {e.get('message', str(e))[:80]}"
+            for e in errors
+        )
+        if errors
+        else "- None"
+    )
+
+    # Blockers
+    blockers = state.handoff_blockers[-5:] if state.handoff_blockers else []
+    blockers_str = (
+        "\n".join(f"- {b}" for b in blockers) if blockers else "- None identified"
+    )
+
+    # Next steps from state
+    next_steps = state.handoff_next_steps[-5:] if state.handoff_next_steps else []
+    next_str = (
+        "\n".join(f"- {s}" for s in next_steps)
+        if next_steps
+        else "[Fill in priority next actions]"
+    )
+
+    # Work queue items
+    work_items = [w for w in state.work_queue if w.get("status") != "done"][:5]
+    work_str = (
+        "\n".join(
+            f"- [{w.get('type', 'task')}] {w.get('description', str(w))[:60]}"
+            for w in work_items
+        )
+        if work_items
+        else ""
+    )
+
+    # Progress log
+    progress = state.progress_log[-5:] if state.progress_log else []
+    progress_str = (
+        "\n".join(f"- {p.get('description', str(p))[:80]}" for p in progress)
+        if progress
+        else "[Describe what was accomplished]"
+    )
+
+    return f"""## 🔄 CONTEXT EXHAUSTION ({pct:.0f}%) - Resume Prompt Required
+
+**Context usage: {used:,} / {total:,} tokens**
+
+You MUST generate a comprehensive resume prompt before this session ends.
+Fill in the bracketed sections with specific details from this session.
+
+---
+
+# Resume Prompt for New Session
+
+## Original Goal
+{state.original_goal or "[Describe what the user originally asked for]"}
+
+## Progress Summary
+{progress_str}
+
+## Files Modified
+{files_str}
+
+## Key Decisions Made
+[Document important architectural/implementation choices and their rationale]
+
+## Current Blockers
+{errors_str}
+{blockers_str}
+
+## Beads Status
+Run these commands to see current task state:
+```bash
+bd list --status=open
+bd list --status=in_progress
+```
+
+## Git State
+Run to capture uncommitted work:
+```bash
+git status --short
+git diff --stat
+```
+
+## Memory Files Consulted
+{memory_str}
+
+## Evidence Gathered
+{evidence_str}
+
+## Approaches Tried
+{approach_str}
+
+## Work Queue
+{work_str if work_str else "[Any discovered work items]"}
+
+## Next Steps (Priority Order)
+{next_str}
+
+## Critical Context
+[Information the next session MUST know:
+- Environment variables or config needed
+- Ports/services that should be running
+- API keys location or auth setup
+- Any workarounds or gotchas discovered]
+
+---
+
+**Copy everything between the --- markers to start a new session.**
+"""
+
+
+# =============================================================================
 # HOOK IMPLEMENTATIONS
 # =============================================================================
+
+
+@register_hook("context_warning", priority=3)
+def check_context_warning(data: dict, state: SessionState) -> StopHookResult:
+    """Warn when context reaches 75% - non-blocking heads up."""
+    # Skip if already warned this session
+    if state.nudge_history.get("context_warning_shown"):
+        return StopHookResult.ok()
+
+    transcript_path = data.get("transcript_path", "")
+    context_window = data.get("model", {}).get("context_window", DEFAULT_CONTEXT_WINDOW)
+
+    used, total = get_context_usage(transcript_path, context_window)
+    if total == 0:
+        return StopHookResult.ok()
+
+    pct = used / total
+    if pct < CONTEXT_WARNING_THRESHOLD:
+        return StopHookResult.ok()
+
+    # Don't warn if we're already at exhaustion threshold (let that hook handle it)
+    if pct >= CONTEXT_EXHAUSTION_THRESHOLD:
+        return StopHookResult.ok()
+
+    # Mark as warned
+    state.nudge_history["context_warning_shown"] = True
+
+    return StopHookResult.warn(
+        f"⚠️ **CONTEXT WARNING** - {pct:.0%} used ({used:,} / {total:,} tokens)\n\n"
+        "Consider:\n"
+        "- Wrapping up current task\n"
+        "- Running `bd sync` to save bead state\n"
+        "- Committing work in progress\n\n"
+        f"**Hard cutoff at {CONTEXT_EXHAUSTION_THRESHOLD:.0%} will require resume prompt generation.**"
+    )
+
+
+@register_hook("context_exhaustion", priority=4)
+def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
+    """Force resume prompt generation at 85% context usage."""
+    # Skip if resume already generated
+    if state.nudge_history.get("context_resume_generated"):
+        return StopHookResult.ok()
+
+    transcript_path = data.get("transcript_path", "")
+    context_window = data.get("model", {}).get("context_window", DEFAULT_CONTEXT_WINDOW)
+
+    used, total = get_context_usage(transcript_path, context_window)
+    if total == 0:
+        return StopHookResult.ok()
+
+    pct = used / total
+    if pct < CONTEXT_EXHAUSTION_THRESHOLD:
+        return StopHookResult.ok()
+
+    # Mark as triggered (will be set after user sees the block)
+    state.nudge_history["context_resume_generated"] = True
+
+    return StopHookResult.block(_format_resume_template(state, pct * 100, used, total))
 
 
 @register_hook("auto_commit", priority=10)
@@ -745,8 +1032,11 @@ def _get_violation_multiplier(num_violations: int) -> float:
 def check_bad_language(data: dict, state: SessionState) -> StopHookResult:
     """Detect and penalize bad language patterns in assistant output."""
     from confidence import (
-        apply_rate_limit, format_confidence_change,
-        format_dispute_instructions, get_tier_info, set_confidence,
+        apply_rate_limit,
+        format_confidence_change,
+        format_dispute_instructions,
+        get_tier_info,
+        set_confidence,
     )
 
     transcript_path = data.get("transcript_path", "")
@@ -766,7 +1056,9 @@ def check_bad_language(data: dict, state: SessionState) -> StopHookResult:
         return StopHookResult.ok()
 
     old_confidence = state.confidence
-    total_delta = int(sum(d for _, d in triggered) * _get_violation_multiplier(len(triggered)))
+    total_delta = int(
+        sum(d for _, d in triggered) * _get_violation_multiplier(len(triggered))
+    )
 
     has_surrender = any(name == "surrender_pivot" for name, _ in triggered)
     if not has_surrender:
@@ -776,7 +1068,9 @@ def check_bad_language(data: dict, state: SessionState) -> StopHookResult:
     set_confidence(state, new_confidence, "bad language detected")
 
     reasons = [f"{name}: {delta}" for name, delta in triggered]
-    change_msg = format_confidence_change(old_confidence, new_confidence, ", ".join(reasons))
+    change_msg = format_confidence_change(
+        old_confidence, new_confidence, ", ".join(reasons)
+    )
     _, emoji, desc = get_tier_info(new_confidence)
     dispute_hint = format_dispute_instructions([n for n, _ in triggered])
 
@@ -979,9 +1273,17 @@ def _has_evidence(state: SessionState, evidence_key: str) -> bool:
     """Check if evidence exists for a verification claim."""
     if evidence_key == "tests_run":
         recent = state.commands_succeeded[-5:] + state.commands_failed[-5:]
-        return any(t in cmd for cmd in recent for t in ["pytest", "npm test", "jest", "cargo test", "go test"])
+        return any(
+            t in cmd
+            for cmd in recent
+            for t in ["pytest", "npm test", "jest", "cargo test", "go test"]
+        )
     elif evidence_key == "lint_run":
-        return any(lc in cmd for cmd in state.commands_succeeded[-5:] for lc in ["ruff check", "eslint", "clippy", "pylint"])
+        return any(
+            lc in cmd
+            for cmd in state.commands_succeeded[-5:]
+            for lc in ["ruff check", "eslint", "clippy", "pylint"]
+        )
     elif evidence_key == "recent_write":
         return len(state.files_edited) > 0
     return False
@@ -1015,7 +1317,9 @@ def check_verification_theater(data: dict, state: SessionState) -> StopHookResul
     new_conf = max(0, min(100, state.confidence + total_delta))
     set_confidence(state, new_conf, "verification theater")
     _, emoji, desc = get_tier_info(new_conf)
-    return StopHookResult.warn(f"📉 VERIFICATION THEATER: {emoji} {new_conf}% | Claims without evidence")
+    return StopHookResult.warn(
+        f"📉 VERIFICATION THEATER: {emoji} {new_conf}% | Claims without evidence"
+    )
 
 
 @register_hook("stub_detector", priority=50)
@@ -1072,7 +1376,9 @@ def check_unresolved_errors(data: dict, state: SessionState) -> StopHookResult:
 _TODO_PATTERNS = [b"TODO", b"FIXME", b"HACK", b"XXX"]
 
 
-def _scan_file_for_debt(filepath: str, check_todos: bool = False) -> tuple[list[str], int]:
+def _scan_file_for_debt(
+    filepath: str, check_todos: bool = False
+) -> tuple[list[str], int]:
     """Scan a file for stubs and optionally TODOs. Returns (items, score)."""
     path = Path(filepath)
     if not path.exists() or path.suffix not in CODE_EXTENSIONS:
@@ -1133,7 +1439,9 @@ def check_session_debt(data: dict, state: SessionState) -> StopHookResult:
 
     if debt_score >= 15 or new_confidence < 70:
         return StopHookResult.block(f"🚫 SESSION DEBT: {debt_list} | Fix or SUDO")
-    return StopHookResult.warn(f"⚠️ SESSION DEBT: {emoji} {new_confidence}% | {debt_list}")
+    return StopHookResult.warn(
+        f"⚠️ SESSION DEBT: {emoji} {new_confidence}% | {debt_list}"
+    )
 
 
 # =============================================================================
