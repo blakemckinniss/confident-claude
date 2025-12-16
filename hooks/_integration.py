@@ -89,6 +89,36 @@ def get_serena_root() -> Path | None:
     return _INTEGRATION_CACHE.get("serena_root")
 
 
+def is_serena_activated() -> bool:
+    """Check if Serena has been activated this session (from session state)."""
+    if "serena_activated" in _INTEGRATION_CACHE:
+        return _INTEGRATION_CACHE["serena_activated"]
+
+    try:
+        from session_state import load_state
+
+        state = load_state()
+        activated = getattr(state, "serena_activated", False)
+        _INTEGRATION_CACHE["serena_activated"] = activated
+        return activated
+    except Exception:
+        return False
+
+
+def mark_serena_activated(project: str) -> None:
+    """Mark Serena as activated (called from post_tool_use)."""
+    try:
+        from session_state import load_state, save_state
+
+        state = load_state()
+        state.serena_activated = True
+        state.serena_project = project
+        save_state(state)
+        _INTEGRATION_CACHE["serena_activated"] = True
+    except Exception as e:
+        log_debug("_integration", f"Failed to mark Serena activated: {e}")
+
+
 def is_claudemem_available() -> bool:
     """Check if claude-mem API is reachable."""
     if "claudemem_available" in _INTEGRATION_CACHE:
@@ -131,6 +161,7 @@ def get_integration_status() -> dict:
         "project_name": get_project_name(),
         "serena_available": is_serena_available(),
         "serena_root": get_serena_root(),
+        "serena_activated": is_serena_activated(),
         "claudemem_available": is_claudemem_available(),
         "has_beads": has_project_beads(),
     }
@@ -141,13 +172,17 @@ def format_integration_hints(state: "SessionState") -> str:
     parts = []
     status = get_integration_status()
 
-    # Serena hint (enhanced from existing hook)
+    # Serena hint - different message based on activation status
     if status["serena_available"]:
         serena_root = status["serena_root"]
         project = serena_root.name if serena_root else "project"
-        parts.append(
-            f'🔮 **SERENA**: `.serena/` detected — `mcp__serena__activate_project("{project}")`'
-        )
+        if status["serena_activated"]:
+            parts.append(f"🔮 **SERENA ACTIVE**: Project `{project}` ready")
+        else:
+            parts.append(
+                f"🔮 **SERENA AVAILABLE**: `.serena/` detected — "
+                f'activate with `mcp__serena__activate_project("{project}")`'
+            )
 
     # Project beads hint
     if status["has_beads"]:

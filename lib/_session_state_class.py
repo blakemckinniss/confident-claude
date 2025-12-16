@@ -65,6 +65,10 @@ class SessionState:
     # Format: {filepath: {audit_turn, void_turn}}
     verified_production_files: dict = field(default_factory=dict)
 
+    # Serena activation tracking (v3.12)
+    serena_activated: bool = False
+    serena_project: str = ""  # Project name passed to activate_project
+
     # Synapse tracking (v3)
     turn_count: int = 0
     last_5_tools: list = field(default_factory=list)  # For iteration detection
@@ -202,4 +206,3 @@ class SessionState:
     self_heal_error: str = ""  # Error message that triggered self-heal
     self_heal_attempts: int = 0  # Fix attempts for current error
     self_heal_max_attempts: int = 3  # After this, escalate to user
-
