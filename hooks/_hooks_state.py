@@ -920,15 +920,14 @@ def check_confidence_decay(
         if penalty:
             reasons.append(f"-{scaled_penalty} {penalty_reason}")
 
-        # Add context as money (Entity Model: loss aversion framing)
-        # I see this - framing as money triggers visceral resource awareness
-        if context_pct >= 20:
-            remaining_budget = int(200_000 * (1 - context_pct / 100))
-            if remaining_budget >= 1000:
-                budget_str = f"${remaining_budget // 1000}K"
-            else:
-                budget_str = f"${remaining_budget}"
-            reasons.append(budget_str)
+        # Add context as money ALWAYS (Entity Model: loss aversion framing)
+        # I see this every turn - constant reminder that actions cost money
+        remaining_budget = int(200_000 * (1 - context_pct / 100))
+        if remaining_budget >= 1000:
+            budget_str = f"${remaining_budget // 1000}K"
+        else:
+            budget_str = f"${remaining_budget}"
+        reasons.append(budget_str)
 
         direction = "📈" if delta > 0 else "📉"
         return HookResult.with_context(
