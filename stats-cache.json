@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastComputedDate": "2025-12-14",
+  "lastComputedDate": "2025-12-15",
   "dailyActivity": [
     {
       "date": "2025-11-12",
@@ -187,6 +187,12 @@
       "messageCount": 14881,
       "sessionCount": 105,
       "toolCallCount": 3790
+    },
+    {
+      "date": "2025-12-15",
+      "messageCount": 8395,
+      "sessionCount": 92,
+      "toolCallCount": 1249
     }
   ],
   "dailyModelTokens": [
@@ -377,6 +383,13 @@
       "tokensByModel": {
         "claude-opus-4-5-20251101": 852180
       }
+    },
+    {
+      "date": "2025-12-15",
+      "tokensByModel": {
+        "claude-opus-4-5-20251101": 310629,
+        "claude-haiku-4-5-20251001": 50248
+      }
     }
   ],
   "modelUsage": {
@@ -390,26 +403,26 @@
       "contextWindow": 0
     },
     "claude-opus-4-5-20251101": {
-      "inputTokens": 4419126,
-      "outputTokens": 7220981,
-      "cacheReadInputTokens": 5943588400,
-      "cacheCreationInputTokens": 377973256,
+      "inputTokens": 4476087,
+      "outputTokens": 7474649,
+      "cacheReadInputTokens": 6195055750,
+      "cacheCreationInputTokens": 394952922,
       "webSearchRequests": 0,
       "costUSD": 0,
       "contextWindow": 0
     },
     "claude-haiku-4-5-20251001": {
-      "inputTokens": 10620,
-      "outputTokens": 42478,
-      "cacheReadInputTokens": 62138585,
-      "cacheCreationInputTokens": 10080975,
+      "inputTokens": 39652,
+      "outputTokens": 63694,
+      "cacheReadInputTokens": 188993310,
+      "cacheCreationInputTokens": 21713716,
       "webSearchRequests": 0,
       "costUSD": 0,
       "contextWindow": 0
     }
   },
-  "totalSessions": 1143,
-  "totalMessages": 177546,
+  "totalSessions": 1235,
+  "totalMessages": 185941,
   "longestSession": {
     "sessionId": "0ae0f0e4-2b86-4d8d-8d42-f72d84b472f4",
     "duration": 92651158,
@@ -422,8 +435,8 @@
     "1": 36,
     "2": 23,
     "3": 5,
-    "7": 9,
-    "8": 66,
+    "7": 13,
+    "8": 68,
     "9": 63,
     "10": 58,
     "11": 77,
@@ -436,8 +449,8 @@
     "18": 48,
     "19": 90,
     "20": 65,
-    "21": 47,
-    "22": 31,
-    "23": 37
+    "21": 90,
+    "22": 54,
+    "23": 57
   }
 }

@@ -2,7 +2,7 @@
 """
 Session Init Hook v3: SessionStart hook for initialization.
 
-SYSTEM CONTEXT: Global WSL2 assistant at /home/blake
+SYSTEM CONTEXT: Global WSL2 assistant at /home/jinx
 - Full system access, not project-scoped
 - Can help with any task across the system
 - Projects live in ~/projects/, AI projects in ~/ai/
@@ -594,7 +594,7 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
     For autonomous agents, this is AUTOMATIC - no human input needed.
     """
     parts = [
-        "💻 **SYSTEM**: WSL2 global assistant @ /home/blake | Full access | ~/projects/ for work | ~/ai/ for AI projects"
+        "💻 **SYSTEM**: WSL2 global assistant @ /home/jinx | Full access | ~/projects/ for work | ~/ai/ for AI projects"
     ]
 
     if ctx := _build_project_context(project_context):
@@ -871,6 +871,20 @@ def main():
         output["message"] += f"\n\n🖥️ **SYSTEM**: {health_warning}"
     elif health_warning:
         output["message"] = f"🖥️ **SYSTEM**: {health_warning}"
+
+    # === SERENA AUTO-ACTIVATION (v3.11) ===
+    # If .serena/ exists in cwd, inject mandatory activation instruction
+    serena_dir = Path.cwd() / ".serena"
+    if serena_dir.is_dir():
+        serena_instruction = (
+            "\n\n🔮 **SERENA PROJECT DETECTED**\n"
+            "MANDATORY: Call `mcp__serena__activate_project` with current directory "
+            "NOW before any other action."
+        )
+        if output.get("message"):
+            output["message"] += serena_instruction
+        else:
+            output["message"] = serena_instruction.strip()
 
     print(json.dumps(output))
     sys.exit(0)

@@ -6,7 +6,7 @@ Search past session transcripts for relevant context.
 
 1. Run the session RAG search:
    ```bash
-   /home/blake/.claude/.venv/bin/python /home/blake/.claude/lib/session_rag.py "$ARGUMENTS"
+   /home/jinx/.claude/.venv/bin/python /home/jinx/.claude/lib/session_rag.py "$ARGUMENTS"
    ```
 
 2. If results found, summarize:
@@ -16,7 +16,7 @@ Search past session transcripts for relevant context.
 
 3. If no arguments provided, show stats:
    ```bash
-   /home/blake/.claude/.venv/bin/python /home/blake/.claude/lib/session_rag.py --stats
+   /home/jinx/.claude/.venv/bin/python /home/jinx/.claude/lib/session_rag.py --stats
    ```
 
 **Examples:**
