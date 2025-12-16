@@ -4,9 +4,15 @@ Confidence Disputes - False positive handling and adaptive cooldowns.
 
 Allows disputing incorrect reducer triggers and adjusts cooldowns
 based on false positive history.
+
+Cross-session learning: FPs are persisted to ~/.claude/tmp/fp_history.jsonl
+for pattern analysis across sessions.
 """
 
+import json
 import re
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,6 +21,9 @@ if TYPE_CHECKING:
 from _confidence_reducers import REDUCERS
 from epistemology import TIER_PRIVILEGES
 from _confidence_tiers import get_tier_info
+
+# Persistent FP history for cross-session learning
+FP_HISTORY_FILE = Path.home() / ".claude" / "tmp" / "fp_history.jsonl"
 
 # =============================================================================
 
@@ -53,10 +62,27 @@ def get_adaptive_cooldown(state: "SessionState", reducer_name: str) -> int:
     return int(base_cooldown * multiplier)
 
 
+def _persist_fp_to_history(reducer_name: str, reason: str, confidence_before: int = 0):
+    """Append FP to persistent history file for cross-session pattern analysis."""
+    try:
+        FP_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "reducer": reducer_name,
+            "reason": reason[:200] if reason else "",
+            "confidence_before": confidence_before,
+        }
+        with FP_HISTORY_FILE.open("a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError:
+        return  # Silent fail - don't break FP recording if persistence fails
+
+
 def record_false_positive(state: "SessionState", reducer_name: str, reason: str = ""):
     """Record a false positive for adaptive learning.
 
     This increases future cooldowns for this reducer.
+    Also persists to cross-session history for pattern analysis.
     """
     fp_key = f"reducer_fp_{reducer_name}"
     if fp_key not in state.nudge_history:
@@ -73,6 +99,9 @@ def record_false_positive(state: "SessionState", reducer_name: str, reason: str 
         state.nudge_history[fp_key]["reasons"] = reasons[-5:]
 
     state.nudge_history[fp_key]["last_turn"] = state.turn_count
+
+    # Persist to cross-session history
+    _persist_fp_to_history(reducer_name, reason, state.confidence)
 
 
 def dispute_reducer(
