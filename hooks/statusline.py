@@ -306,8 +306,9 @@ def get_comfyui_status():
 def get_confidence_status():
     """Get confidence level from session state - reads directly from file."""
     try:
-        # Read directly from JSON to avoid any module-level caching
-        state_file = Path(__file__).parent.parent / "memory" / "session_state_v3.json"
+        # Use project-aware state file (v3.13 isolation)
+        from _session_constants import get_project_state_file
+        state_file = get_project_state_file()
         if not state_file.exists():
             return ""
         with open(state_file) as f:
