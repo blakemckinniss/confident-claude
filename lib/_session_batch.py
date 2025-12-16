@@ -41,6 +41,9 @@ _RE_JS_COMMENT = re.compile(r"//.*$", re.MULTILINE)
 def track_batch_tool(state: "SessionState", tool_name: str, tools_in_message: int):
     """Track batch/sequential tool usage patterns."""
     if tool_name not in BATCHABLE_TOOLS:
+        # Non-batchable tools (AskUserQuestion, Edit, etc.) break the sequence
+        # Reset counter to avoid false positives on stale counts
+        state.consecutive_single_reads = 0
         return
 
     state.last_message_tool_count = tools_in_message

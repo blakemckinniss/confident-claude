@@ -46,11 +46,28 @@ def main():
 
     if restore_amount > 0:
         update_confidence(state, restore_amount, f"FP:{reducer_name}")
+
+        # SET BLOCKING STATE - fp.py is NOT a dismiss button
+        # This MUST be cleared by editing the reducer or saying SUDO
+        state.fp_pending_fix = {
+            "reducer": reducer_name,
+            "turn": state.turn_count,
+            "reason": reason,
+        }
+
         save_state(state)
         change_msg = format_confidence_change(
             old_confidence, state.confidence, f"(FP: {reducer_name})"
         )
         print(f"{message}\n{change_msg}")
+
+        # CRITICAL WARNING - this is the behavioral change
+        print(
+            "\n🚨 **FP PENDING FIX** - You MUST fix this reducer before continuing other work."
+        )
+        print("   Target: lib/_confidence_reducers.py or the hook that fired")
+        print("   Bypass: User says SUDO or edit the reducer file")
+        print("   Hard Block #14: FP = Priority 0")
     else:
         print(message)
         sys.exit(1)

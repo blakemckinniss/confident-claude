@@ -6,6 +6,7 @@ PERFORMANCE: ~35ms for 24 hooks vs ~400ms for individual processes (10x faster)
 
 HOOKS INDEX (by priority):
   ORCHESTRATION (0-5):
+    1  fp_fix_enforcer     - HARD BLOCK until false positive is fixed (Hard Block #14)
     2  self_heal_enforcer  - Block unrelated work until framework errors fixed
     3  exploration_cache   - Return cached exploration results
     3  parallel_bead_delegation - Force parallel Task agents for multiple open beads
@@ -566,6 +567,74 @@ def check_read_cache(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 # SELF-HEAL ENFORCER (Priority 2) - Framework must fix itself first
 # =============================================================================
+
+
+@register_hook("fp_fix_enforcer", None, priority=1)
+def check_fp_fix_enforcer(data: dict, state: SessionState) -> HookResult:
+    """
+    HARD BLOCK: Enforce fixing false positives before continuing work.
+
+    When fp.py is run, it sets state.fp_pending_fix. This hook blocks ALL
+    non-diagnostic work until either:
+    1. The reducer/hook file is edited (fix attempt)
+    2. User says SUDO (bypass)
+    3. 15 turns pass (timeout - probably session context lost)
+
+    This implements Hard Block #14: FP = Priority 0.
+    """
+    pending = getattr(state, "fp_pending_fix", None)
+    if not pending:
+        return HookResult.approve()
+
+    # SUDO bypass
+    if data.get("_sudo_bypass"):
+        state.fp_pending_fix = None
+        return HookResult.approve()
+
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Always allow investigation tools
+    if tool_name in ("Read", "Grep", "Glob", "LS", "WebSearch", "WebFetch"):
+        return HookResult.approve()
+
+    # Check if editing the fix targets (reducer or hook files)
+    if tool_name in ("Edit", "Write"):
+        file_path = tool_input.get("file_path", "")
+        fix_targets = [
+            "_confidence_reducers.py",
+            "_confidence_increasers.py",
+            "pre_tool_use_runner.py",
+            "post_tool_use_runner.py",
+            "_hooks_state.py",
+        ]
+        if any(t in file_path for t in fix_targets):
+            # This is a fix attempt - clear the pending state
+            state.fp_pending_fix = None
+            return HookResult.approve(
+                "✅ **FP FIX ATTEMPT** - Editing reducer/hook file. Pending fix cleared."
+            )
+
+    # Timeout after 15 turns (context probably lost)
+    turns_since = state.turn_count - pending.get("turn", 0)
+    if turns_since > 15:
+        state.fp_pending_fix = None
+        return HookResult.approve(
+            "⚠️ FP fix timeout (15 turns) - clearing pending state"
+        )
+
+    # BLOCK everything else
+    reducer = pending.get("reducer", "unknown")
+    reason = pending.get("reason", "")
+
+    return HookResult.deny(
+        f"🚨 **FP FIX REQUIRED** (Hard Block #14)\n"
+        f"Reducer: `{reducer}`\n"
+        f"Reason: {reason[:80] if reason else 'Not specified'}\n\n"
+        f"**You ran fp.py but didn't fix the root cause.**\n"
+        f"Edit `lib/_confidence_reducers.py` or the hook that fired.\n"
+        f"User: Say SUDO to bypass."
+    )
 
 
 @register_hook("self_heal_enforcer", None, priority=2)
