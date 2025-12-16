@@ -554,6 +554,22 @@ git diff --stat
 - API keys location or auth setup
 - Any workarounds or gotchas discovered]
 
+## Session Continuity Resources
+
+**Full Transcript:**
+- Location: `~/.claude/projects/` (by project/session ID)
+- Session ID: `{state.session_id or "[check session_state.json]"}`
+
+**Memory Systems:**
+- Framework: `~/.claude/memory/` (lessons, decisions, capabilities)
+- Serena: `~/.claude/.serena/memories/` (project-specific if Serena active)
+
+**Serena Activation:**
+If `.serena/` exists in working directory, activate with:
+```
+mcp__serena__activate_project
+```
+
 ---
 
 **Copy everything between the --- markers to start a new session.**

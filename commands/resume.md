@@ -55,6 +55,22 @@ Any information the next session MUST know:
 - API keys location or auth setup
 - Workarounds or gotchas discovered
 
+## 15. Session Continuity Resources
+Include these references for the new session:
+
+**Full Transcript Location:**
+- `~/.claude/projects/{project_name}/` contains session transcripts by session ID
+- Current session ID is in `session_state.session_id`
+
+**Memory Systems to Consult:**
+- `~/.claude/memory/` - Framework memories (lessons, decisions, capabilities)
+- `~/.claude/.serena/memories/` - Serena project memories (if Serena is active)
+
+**Serena Activation:**
+- If working in a directory with `.serena/`, the new session should activate Serena:
+  `mcp__serena__activate_project` or check `mcp__serena__get_current_config`
+- Serena provides semantic code analysis via `mcp__serena__*` tools
+
 ---
 
 **Output Format:**
