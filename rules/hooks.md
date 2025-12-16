@@ -11,7 +11,7 @@ Rules for developing and maintaining the Whitebox hook system.
 ```
 ~/.claude/hooks/
 ├── pre_tool_use_runner.py       # PreToolUse orchestrator (gates)
-├── post_tool_use_runner.py      # PostToolUse orchestrator (~60 hooks)
+├── post_tool_use_runner.py      # PostToolUse orchestrator
 ├── user_prompt_submit_runner.py # UserPromptSubmit orchestrator (injection)
 ├── stop_runner.py               # Stop orchestrator (completion gate)
 ├── session_init.py              # SessionStart handler

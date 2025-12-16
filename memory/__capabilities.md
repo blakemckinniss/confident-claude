@@ -33,6 +33,29 @@
 
 ---
 
+## 📋 Session & Context Management
+
+### Context Exhaustion System (Dec 2025)
+
+Automatic detection and handling of context window limits:
+
+| Threshold | Hook | Action |
+|-----------|------|--------|
+| 75% | `context_warning` | Non-blocking warning to wrap up |
+| 85% | `context_exhaustion` | **Blocks** until resume prompt generated |
+
+**Resume Prompt Command:** `/resume`
+- Generates comprehensive handoff prompt from session state
+- Includes: goal, progress, files, decisions, blockers, beads, git state
+- References: transcript location, memory systems, Serena activation
+
+**Session Continuity Resources:**
+- Transcripts: `~/.claude/projects/{project}/` by session ID
+- Framework memories: `~/.claude/memory/`
+- Serena memories: `~/.claude/.serena/memories/`
+
+---
+
 ## 🏗️ Architecture Notes
 
 ### Hook Runner Complexity (Dec 2025)

@@ -30,6 +30,14 @@ Quick reference for framework tools. Use when you need tool syntax.
 
 See `confidence.md` for full reference.
 
+## Context & Session Management
+
+| Need | Tool |
+|------|------|
+| Session handoff | `/resume` - Generate comprehensive resume prompt |
+| Context warning | Auto at 75% - Non-blocking heads up |
+| Context exhaustion | Auto at 85% - Forces resume prompt generation |
+
 ## Memory & Evidence
 
 | Need | Tool |
