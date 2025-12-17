@@ -364,15 +364,22 @@ def check_inline_server_background(data: dict, state: SessionState) -> HookResul
     ]
 
     # Check if command has server backgrounded with &
+    # Must distinguish backgrounding & from redirects like 2>&1, >&, &>, &&
     has_backgrounded_server = False
     server_name = ""
     for pattern in SERVER_PATTERNS:
-        # Look for pattern followed by & (with optional stuff in between)
-        if re.search(rf"{pattern}[^&]*&", cmd_to_check, re.IGNORECASE):
+        # First check if pattern exists in command
+        match = re.search(pattern, cmd_to_check, re.IGNORECASE)
+        if not match:
+            continue
+        # Get text after the match to check for backgrounding &
+        after_match = cmd_to_check[match.end():]
+        # Look for standalone & (backgrounding), not redirect syntax
+        # Backgrounding &: preceded by space/digit, followed by space/EOL/;
+        # Redirects: 2>&1, >&, &>, &&
+        if re.search(r"(?<![>&])&(?![>&0-9])", after_match):
             has_backgrounded_server = True
-            match = re.search(pattern, cmd_to_check, re.IGNORECASE)
-            if match:
-                server_name = match.group(0)
+            server_name = match.group(0)
             break
 
     if not has_backgrounded_server:
