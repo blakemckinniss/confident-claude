@@ -2,6 +2,30 @@
 
 Quick reference for framework tools. Use when you need tool syntax.
 
+## Mastermind (Multi-Model Routing)
+
+| Need | Tool/Action |
+|------|-------------|
+| Force complex planning | Prefix prompt with `^` |
+| Check current phase | `cat ~/.claude/config/mastermind.json \| jq .rollout_phase` |
+| Change rollout phase | `~/.claude/ops/mastermind_rollout.py --phase N` |
+| Regenerate capability index | `~/.claude/ops/capability_inventory.py` |
+| View capability registry | `~/.claude/capabilities/registry.yaml` |
+
+### PAL Tool Suggestions (from Mastermind)
+
+| Task Type | Suggested Tool |
+|-----------|----------------|
+| Debugging | `mcp__pal__debug` |
+| Planning | `mcp__pal__planner` |
+| Code review | `mcp__pal__codereview` |
+| Architecture | `mcp__pal__consensus` |
+| API/docs lookup | `mcp__pal__apilookup` |
+| Pre-commit | `mcp__pal__precommit` |
+| General | `mcp__pal__chat` |
+
+See `mastermind.md` for full reference.
+
 ## Core Tools
 
 | Need | Tool |

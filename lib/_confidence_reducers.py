@@ -488,6 +488,7 @@ class MarkdownCreationReducer(ConfidenceReducer):
             r"\.claude/memory/",  # Memory files OK
             r"\.claude/skills/",  # Skills OK
             r"\.claude/commands/",  # Slash commands OK
+            r"\.claude/rules/",  # Rules files OK (framework DNA)
             r"\.claude/tmp/",  # Scratch files OK (symlink)
             r"/tmp/\.claude-scratch/",  # Scratch files OK (actual)
             r"\.serena/memories/",  # Serena memories OK
