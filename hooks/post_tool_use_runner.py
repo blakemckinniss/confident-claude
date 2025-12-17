@@ -23,7 +23,7 @@ HOOKS INDEX (by priority):
     48 crawl4ai_promo      - Promote crawl4ai over WebFetch for web content
     50 tool_awareness      - Remind about Playwright, Zen MCP, WebSearch, Task agents
 
-  TRACKERS (55-80):
+  TRACKERS (55-77):
     55 scratch_enforcer    - Detect repetitive patterns, suggest scripts
     60 auto_learn          - Capture lessons from errors, quality hints
     65 velocity_tracker    - Detect oscillation/spinning patterns
@@ -32,6 +32,14 @@ HOOKS INDEX (by priority):
     75 pattern_curiosity   - Pattern recognition prompts after 5+ file reads
     76 failure_curiosity   - Alternative approach prompts after tool failures
     77 low_confidence_curiosity - Uncertainty exploration at <70% confidence
+
+  STUCK LOOP DETECTION (78-83):
+    78 fix_attempt_tracker  - Track edit attempts during debugging sessions
+    79 symptom_tracker      - Track recurring symptoms/errors
+    80 research_tracker     - Track when research is performed
+    81 verification_prompt  - Prompt for verification after fix attempts
+    82 circuit_breaker      - Block edits until research done
+    83 debug_session_reset  - Reset debug session on clear success
 
 ARCHITECTURE:
   - Hooks register via @register_hook(name, matcher, priority)
@@ -81,6 +89,7 @@ import _hooks_cache  # noqa: F401 - Cache hooks (priority 5-6)
 import _hooks_state  # noqa: F401 - State hooks (priority 10-16)
 import _hooks_quality  # noqa: F401 - Quality hooks (priority 22-50)
 import _hooks_tracking  # noqa: F401 - Tracking hooks (priority 55-72)
+import _hooks_stuck_loop  # noqa: F401 - Stuck loop detection (priority 78-83)
 from _hooks_tracking import SCRATCH_STATE_FILE, INFO_GAIN_STATE_FILE
 
 # =============================================================================

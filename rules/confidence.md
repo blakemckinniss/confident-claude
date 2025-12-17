@@ -178,6 +178,28 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `file_reedit` | -2 | Re-editing file already edited this session | None |
 | `sequential_file_ops` | -1 | 3+ Read/Edit/Write without batching | 3 turns |
 
+**Stuck loop reducers (v4.9) - detect debugging without progress:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `stuck_loop` | -15 | Same file edited 4+ times without research | 5 turns |
+| `no_research_debug` | -10 | Extended debugging without web search/external LLM | 8 turns |
+
+**Stuck Loop Detection (v4.9)**
+
+The stuck loop system detects when Claude is trapped in a debugging cycle without making progress:
+
+1. **Symptom Tracking**: Recognizes recurring errors (blank page, hydration issues, auth failures, etc.)
+2. **Fix Attempt Counter**: Tracks edits to same file during debugging sessions
+3. **Circuit Breaker**: After 4 edits to same file without success, BLOCKS further edits until research done
+4. **Research Tracker**: Resets circuit breaker when WebSearch, crawl4ai, or PAL MCP tools are used
+5. **Verification Prompts**: Asks "Did that fix it?" after fix attempts followed by test runs
+
+**Circuit Breaker Recovery**: To reset the circuit breaker, use any of:
+- `WebSearch` or `mcp__crawl4ai__ddg_search` for online solutions
+- `mcp__pal__debug` or `mcp__pal__chat` for external LLM perspective
+- `mcp__pal__apilookup` for API/library documentation
+
 ## Increasers (Automatic Rewards)
 
 **Due diligence rewards balance natural decay:**
