@@ -39,6 +39,7 @@ from _logging import log_debug
 # CONSTANTS - Extracted thresholds for easy tuning
 # =============================================================================
 
+
 # Color thresholds (percentage)
 class Thresholds:
     # CPU load (as % of cores)
@@ -67,27 +68,27 @@ CACHE_FILE = Path("/tmp/.claude_statusline_cache.json")
 
 # TTL per metric (seconds) - tuned for typical change frequency
 CACHE_TTL: dict[str, int] = {
-    "gpu": 2,      # VRAM can change during inference
+    "gpu": 2,  # VRAM can change during inference
     "services": 5,  # Docker/node/python processes stable
     "comfyui": 10,  # Service status very stable
-    "net": 10,      # Connectivity rarely changes
-    "git": 3,       # Changes with edits but not rapidly
-    "ports": 3,     # Dev servers start/stop occasionally
-    "beads": 5,     # Task status relatively stable
+    "net": 10,  # Connectivity rarely changes
+    "git": 3,  # Changes with edits but not rapidly
+    "ports": 3,  # Dev servers start/stop occasionally
+    "beads": 5,  # Task status relatively stable
 }
 
 # Dev ports worth monitoring (port -> short label)
 DEV_PORTS: dict[int, str] = {
-    3000: "3k",    # React, Next.js, Create React App
-    3001: "3k1",   # Next.js alt
-    4200: "ng",    # Angular
-    5000: "5k",    # Flask, various
+    3000: "3k",  # React, Next.js, Create React App
+    3001: "3k1",  # Next.js alt
+    4200: "ng",  # Angular
+    5000: "5k",  # Flask, various
     5173: "vite",  # Vite dev server
     5174: "vite",  # Vite alt
-    8000: "8k",    # Django, FastAPI, uvicorn
+    8000: "8k",  # Django, FastAPI, uvicorn
     8080: "8080",  # Generic, Tomcat, etc
-    8888: "jup",   # Jupyter
-    9000: "9k",    # PHP-FPM, SonarQube
+    8888: "jup",  # Jupyter
+    9000: "9k",  # PHP-FPM, SonarQube
 }
 
 
@@ -129,6 +130,7 @@ def set_cached(cache: dict[str, Any], key: str, value: str) -> None:
 # ANSI COLORS
 # =============================================================================
 
+
 class C:
     RESET = "\033[0m"
     DIM = "\033[90m"
@@ -150,6 +152,7 @@ def colorize(value: str, pct: float, red: float, yellow: float) -> str:
 # =============================================================================
 # SYSTEM METRICS (Fast - /proc reads, no subprocess)
 # =============================================================================
+
 
 def get_cpu_load() -> str:
     """Get CPU load average (1 min)."""
@@ -188,7 +191,9 @@ def get_disk_usage() -> str:
         free = stat.f_bfree * stat.f_frsize
         pct = ((total - free) / total) * 100
         free_gb = free / (1024**3)
-        return colorize(f"{free_gb:.0f}G", pct, Thresholds.DISK_RED, Thresholds.DISK_YELLOW)
+        return colorize(
+            f"{free_gb:.0f}G", pct, Thresholds.DISK_RED, Thresholds.DISK_YELLOW
+        )
     except Exception:
         return f"{C.DIM}--{C.RESET}"
 
@@ -196,6 +201,7 @@ def get_disk_usage() -> str:
 # =============================================================================
 # SUBPROCESS METRICS (Slow - cached + parallel)
 # =============================================================================
+
 
 def get_services_status() -> str:
     """Get status of key services (Docker, Node, Python)."""
@@ -207,7 +213,9 @@ def get_services_status() -> str:
             ["docker", "ps", "-q"], capture_output=True, text=True, timeout=1
         )
         if result.returncode == 0:
-            count = len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
+            count = (
+                len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
+            )
             if count > 0:
                 services.append(f"{C.CYAN}D:{count}{C.RESET}")
     except Exception as e:
@@ -246,7 +254,11 @@ def get_network_status() -> str:
         result = subprocess.run(
             ["getent", "hosts", "google.com"], capture_output=True, timeout=1
         )
-        return f"{C.GREEN}NET{C.RESET}" if result.returncode == 0 else f"{C.RED}NET{C.RESET}"
+        return (
+            f"{C.GREEN}NET{C.RESET}"
+            if result.returncode == 0
+            else f"{C.RED}NET{C.RESET}"
+        )
     except Exception:
         return f"{C.RED}NET{C.RESET}"
 
@@ -258,15 +270,26 @@ def get_gpu_vram() -> str:
         if not Path(nvidia_smi).exists():
             return ""
         result = subprocess.run(
-            [nvidia_smi, "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=2,
+            [
+                nvidia_smi,
+                "--query-gpu=memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         if result.returncode != 0 or not result.stdout.strip():
             return ""
         used, total = map(int, result.stdout.strip().split(", "))
         pct = (used / total) * 100
         used_gb, total_gb = used / 1024, total / 1024
-        return colorize(f"{used_gb:.1f}/{total_gb:.0f}G", pct, Thresholds.GPU_RED, Thresholds.GPU_YELLOW)
+        return colorize(
+            f"{used_gb:.1f}/{total_gb:.0f}G",
+            pct,
+            Thresholds.GPU_RED,
+            Thresholds.GPU_YELLOW,
+        )
     except Exception:
         return ""
 
@@ -274,7 +297,9 @@ def get_gpu_vram() -> str:
 def get_dev_ports() -> str:
     """Check which dev ports are listening."""
     try:
-        result = subprocess.run(["ss", "-tlnH"], capture_output=True, text=True, timeout=1)
+        result = subprocess.run(
+            ["ss", "-tlnH"], capture_output=True, text=True, timeout=1
+        )
         if result.returncode != 0:
             return ""
 
@@ -301,11 +326,15 @@ def get_dev_ports() -> str:
 def get_comfyui_status() -> str:
     """Check if ComfyUI is running."""
     try:
-        result = subprocess.run(["ss", "-tlnp"], capture_output=True, text=True, timeout=1)
+        result = subprocess.run(
+            ["ss", "-tlnp"], capture_output=True, text=True, timeout=1
+        )
         if result.returncode == 0 and ":8188" in result.stdout:
             return f"{C.GREEN}ComfyUI{C.RESET}"
 
-        result = subprocess.run(["pgrep", "-af", "python"], capture_output=True, text=True, timeout=1)
+        result = subprocess.run(
+            ["pgrep", "-af", "python"], capture_output=True, text=True, timeout=1
+        )
         if result.returncode == 0:
             for line in result.stdout.split("\n"):
                 lower = line.lower()
@@ -320,7 +349,10 @@ def get_git_info() -> str:
     """Get git branch and status."""
     try:
         result = subprocess.run(
-            ["git", "branch", "--show-current"], capture_output=True, text=True, timeout=1
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            timeout=1,
         )
         if result.returncode != 0:
             return ""
@@ -355,7 +387,9 @@ def get_beads_status() -> str:
     try:
         result = subprocess.run(
             ["bd", "list", "--status=in_progress", "--format=json"],
-            capture_output=True, text=True, timeout=2
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         if result.returncode != 0:
             return ""
@@ -366,7 +400,7 @@ def get_beads_status() -> str:
                 return f"{C.YELLOW}📋{count}{C.RESET}"
         except json.JSONDecodeError:
             # Fallback: count lines
-            lines = [l for l in result.stdout.strip().split("\n") if l.strip()]
+            lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
             if lines:
                 return f"{C.YELLOW}📋{len(lines)}{C.RESET}"
         return ""
@@ -377,6 +411,7 @@ def get_beads_status() -> str:
 # =============================================================================
 # SESSION/PROJECT INFO (Direct file reads)
 # =============================================================================
+
 
 def get_project_info() -> tuple[str, str]:
     """Get project name and ID from project detector."""
@@ -395,6 +430,7 @@ def get_confidence_status() -> str:
     """Get confidence level with streak indicator from session state."""
     try:
         from _session_constants import get_project_state_file
+
         state_file = get_project_state_file()
         if not state_file.exists():
             return ""
@@ -406,11 +442,13 @@ def get_confidence_status() -> str:
         # Get streak from confidence_streaks module
         try:
             from _confidence_streaks import get_current_streak
+
             streak = get_current_streak(data)
         except Exception:
             streak = 0
 
         from confidence import get_tier_info, STASIS_FLOOR
+
         tier_name, emoji, _ = get_tier_info(confidence)
 
         # Streak indicator
@@ -426,6 +464,7 @@ def get_confidence_status() -> str:
         turn_count = data.get("turn_count", 0)
         try:
             from _fatigue import get_fatigue_tier
+
             tier, fatigue_emoji, fatigue_mult = get_fatigue_tier(turn_count)
             if tier != "fresh":  # Only show if fatigued
                 fatigue_str = f" {fatigue_emoji}{fatigue_mult:.1f}x"
@@ -443,10 +482,42 @@ def get_confidence_status() -> str:
         return ""
 
 
+def get_mastermind_turn() -> str:
+    """Get mastermind turn count for current session."""
+    try:
+        from _session_constants import get_project_state_file
+
+        state_file = get_project_state_file()
+        if not state_file.exists():
+            return ""
+        with open(state_file) as f:
+            data = json.load(f)
+        session_id = data.get("session_id", "")
+        if not session_id:
+            return ""
+
+        # Load mastermind state for this session
+        mm_state_file = (
+            Path.home() / ".claude" / "tmp" / f"mastermind_{session_id}.json"
+        )
+        if not mm_state_file.exists():
+            return ""
+        with open(mm_state_file) as f:
+            mm_data = json.load(f)
+
+        turn = mm_data.get("turn_count", 0)
+        if turn > 0:
+            return f"{C.DIM}T{turn}{C.RESET}"
+        return ""
+    except Exception:
+        return ""
+
+
 def get_serena_status() -> str:
     """Check if Serena is activated for current project."""
     try:
         from _session_constants import get_project_state_file
+
         state_file = get_project_state_file()
         if not state_file.exists():
             return ""
@@ -454,7 +525,6 @@ def get_serena_status() -> str:
             data = json.load(f)
 
         if data.get("serena_activated", False):
-            project = data.get("serena_project", "")
             return f"{C.MAGENTA}🔮{C.RESET}"
         return ""
     except Exception:
@@ -513,7 +583,9 @@ def format_token_budget(used: int, total: int) -> str:
     return f"{color}{emoji}${dollars}{C.RESET}"
 
 
-def get_context_usage(transcript_path: str, context_window: int) -> tuple[int, int, float]:
+def get_context_usage(
+    transcript_path: str, context_window: int
+) -> tuple[int, int, float]:
     """Calculate context window usage from transcript. Returns (used, total, pct)."""
     if not transcript_path or not Path(transcript_path).exists():
         return 0, 0, 0.0
@@ -549,6 +621,7 @@ def get_context_usage(transcript_path: str, context_window: int) -> tuple[int, i
 # MAIN
 # =============================================================================
 
+
 def main() -> None:
     try:
         input_data = json.loads(sys.stdin.read())
@@ -569,7 +642,9 @@ def main() -> None:
 
     # Context with warning + money framing (Entity Model: loss aversion)
     transcript = input_data.get("transcript_path", "")
-    context_window = model.get("context_window", get_magic_number("default_context_window", 200000))
+    context_window = model.get(
+        "context_window", get_magic_number("default_context_window", 200000)
+    )
     used, total, pct = get_context_usage(transcript, context_window)
     if used > 0 and total > 0:
         warn = "🚨" if pct >= Thresholds.CTX_WARN else ""
@@ -646,15 +721,17 @@ def main() -> None:
     line1_parts.append(net)
     line1 = f" {C.DIM}|{C.RESET} ".join(line1_parts)
 
-    # Line 2: Session | Project | Confidence | Beads | Serena | Git
+    # Line 2: Session | Project | Confidence | Turn | Beads | Serena | Git
     session_id = input_data.get("session_id", "")[:8]
     project_name, _ = get_project_info()
     confidence = get_confidence_status()
+    mm_turn = get_mastermind_turn()
     serena = get_serena_status()
 
     # Session age from state
     try:
         from _session_constants import get_project_state_file
+
         state_file = get_project_state_file()
         if state_file.exists():
             with open(state_file) as f:
@@ -671,6 +748,8 @@ def main() -> None:
     line2_parts.append(f"{C.CYAN}{project_name}{C.RESET}")
     if confidence:
         line2_parts.append(confidence)
+    if mm_turn:
+        line2_parts.append(mm_turn)
     if beads:
         line2_parts.append(beads)
     if serena:
