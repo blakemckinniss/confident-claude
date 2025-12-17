@@ -1401,6 +1401,86 @@ def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
     )
 
 
+@register_hook("code_tools_require_serena", "Read|Grep|Glob", priority=6)
+def check_code_tools_require_serena(data: dict, state: SessionState) -> HookResult:
+    """Block Read/Grep/Glob on code files when .serena/ exists but not activated.
+
+    Forces Serena activation before any code navigation, ensuring semantic
+    tools are used instead of raw text search.
+    """
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Check if .serena/ exists
+    cwd = Path.cwd()
+    serena_dir = None
+    serena_project = ""
+    for parent in [cwd, *cwd.parents]:
+        candidate = parent / ".serena"
+        if candidate.is_dir():
+            serena_dir = candidate
+            # Try to get project name
+            project_yml = candidate / "project.yml"
+            if project_yml.exists():
+                try:
+                    content = project_yml.read_text()
+                    for line in content.splitlines():
+                        if line.startswith("project_name:"):
+                            serena_project = line.split(":", 1)[1].strip().strip("\"'")
+                            break
+                except Exception:
+                    pass
+            if not serena_project:
+                serena_project = parent.name
+            break
+
+    # No .serena/ found - allow
+    if not serena_dir:
+        return HookResult.approve()
+
+    # Serena already activated - allow
+    if getattr(state, "serena_activated", False):
+        return HookResult.approve()
+
+    # Get the target path
+    target_path = ""
+    if tool_name == "Read":
+        target_path = tool_input.get("file_path", "")
+    elif tool_name == "Grep":
+        target_path = tool_input.get("path", "")
+    elif tool_name == "Glob":
+        target_path = tool_input.get("path", "")
+        pattern = tool_input.get("pattern", "")
+        # Check if pattern targets code files
+        code_patterns = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java")
+        if any(ext in pattern for ext in code_patterns):
+            return HookResult.deny(
+                f"🔮 **SERENA REQUIRED**: `.serena/` detected. Activate before code search.\n"
+                f'Call `mcp__serena__activate_project("{serena_project}")` first.\n'
+                f"Serena provides semantic search superior to Glob patterns."
+            )
+
+    # Check if target is a code file
+    code_extensions = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java")
+    if target_path and target_path.endswith(code_extensions):
+        return HookResult.deny(
+            f"🔮 **SERENA REQUIRED**: `.serena/` detected. Activate before reading code.\n"
+            f'Call `mcp__serena__activate_project("{serena_project}")` first.\n'
+            f"Use `mcp__serena__get_symbols_overview` or `mcp__serena__find_symbol` instead of raw reads."
+        )
+
+    # Check if searching in code directories
+    code_dirs = ("/src/", "/lib/", "/hooks/", "/ops/", "/components/", "/utils/")
+    if target_path and any(d in target_path for d in code_dirs):
+        return HookResult.deny(
+            f"🔮 **SERENA REQUIRED**: `.serena/` detected. Activate before code search.\n"
+            f'Call `mcp__serena__activate_project("{serena_project}")` first.\n'
+            f"Use `mcp__serena__search_for_pattern` for semantic code search."
+        )
+
+    return HookResult.approve()
+
+
 @register_hook("recursion_guard", "Edit|Write|Bash", priority=5)
 def check_recursion_guard(data: dict, state: SessionState) -> HookResult:
     """Block catastrophic folder duplication."""
