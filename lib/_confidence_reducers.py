@@ -476,6 +476,8 @@ class MarkdownCreationReducer(ConfidenceReducer):
             r"\.claude/memory/",  # Memory files OK
             r"\.claude/skills/",  # Skills OK
             r"\.claude/commands/",  # Slash commands OK
+            r"\.claude/tmp/",  # Scratch files OK (symlink)
+            r"/tmp/\.claude-scratch/",  # Scratch files OK (actual)
             r"\.serena/memories/",  # Serena memories OK
             r"/docs?/",  # Explicit docs folders OK
             r"README\.md$",  # README OK if explicitly requested

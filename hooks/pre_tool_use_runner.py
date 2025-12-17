@@ -1903,6 +1903,8 @@ def check_doc_theater_gate(data: dict, state: SessionState) -> HookResult:
         r"\.claude/plans/.*\.md$",
         r"\.claude/rules/.*\.md$",  # Claude Code rules directory
         r"\.claude/skills/.*\.md$",  # Claude Code skills directory
+        r"\.claude/tmp/.*\.md$",  # Scratch/draft files (symlink)
+        r"/tmp/\.claude-scratch/.*\.md$",  # Scratch/draft files (actual)
         r"projects/.*/.*\.md$",
     ]
     for pattern in ALLOWED:
