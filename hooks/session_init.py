@@ -447,9 +447,7 @@ def get_confidence_fp_history(state) -> list[str]:
                 base_cooldown = 5  # default
                 multiplier = min(3.0, 1.0 + (fp_count * 0.5))
                 cooldown = int(base_cooldown * multiplier)
-                fp_warnings.append(
-                    f"⚠️ {reducer_name}: {fp_count} FPs → cooldown {cooldown} turns"
-                )
+                fp_warnings.append(f"{reducer_name}({fp_count}→{cooldown}t)")
 
     return fp_warnings[:5]  # Limit to 5 most relevant
 
@@ -499,13 +497,9 @@ def get_cross_session_fp_insights() -> list[str]:
         for reducer, count in reducer_counts.most_common(3):
             pct = (count / total) * 100
             if count >= 3 and pct >= 30:
-                insights.append(
-                    f"🔴 {reducer}: {count} FPs ({pct:.0f}%) - investigate detection logic"
-                )
+                insights.append(f"🔴{reducer}({count}/{pct:.0f}%)")
             elif count >= 2 and pct >= 20:
-                insights.append(
-                    f"🟡 {reducer}: {count} FPs ({pct:.0f}%) - monitor for pattern"
-                )
+                insights.append(f"🟡{reducer}({count}/{pct:.0f}%)")
 
         return insights[:3]  # Limit to top 3
 
@@ -571,44 +565,44 @@ def _build_project_context(project_context) -> str | None:
 
 
 def _build_session_summary(handoff: dict | None) -> list[str]:
-    """Build previous session summary parts."""
+    """Build previous session summary parts (terse format)."""
     if not handoff:
         return []
 
     parts = []
     summary = handoff.get("summary", "")
     if summary:
-        parts.append(f"📋 **PREVIOUS SESSION**: {summary}")
+        parts.append(f"📋 Prev: {summary}")
 
     blockers = handoff.get("blockers", [])
     if blockers:
         blocker_list = ", ".join(b.get("type", "unknown")[:20] for b in blockers[:2])
-        parts.append(f"🚧 **BLOCKERS**: {blocker_list}")
+        parts.append(f"🚧 Blocked: {blocker_list}")
 
     recent = handoff.get("recent_files", [])
     if recent:
         names = [Path(f).name for f in recent[:3]]
-        parts.append(f"📝 **RECENT FILES**: {', '.join(names)}")
+        parts.append(f"📝 Recent: {', '.join(names)}")
 
     return parts
 
 
 def _build_next_work_item(state, handoff: dict | None) -> str | None:
-    """Build next work item context."""
+    """Build next work item context (terse format)."""
     next_item = get_next_work_item(state)
     if next_item:
         item_type = next_item.get("type", "task")
         desc = next_item.get("description", "")[:60]
         priority = next_item.get("priority", 50)
         start_feature(state, desc)
-        return f"🎯 **NEXT PRIORITY** [{item_type}|P{priority}]: {desc}"
+        return f"🎯 Next [{item_type}|P{priority}]: {desc}"
 
     # Fallback to handoff next_steps
     if handoff:
         next_steps = handoff.get("next_steps", [])
         if next_steps:
             desc = next_steps[0].get("description", "")[:60]
-            return f"🎯 **SUGGESTED**: {desc}"
+            return f"🎯 Suggested: {desc}"
 
     return None
 
@@ -625,31 +619,28 @@ def _build_recovery_point(handoff: dict | None) -> str | None:
     cp_id = checkpoint.get("checkpoint_id", "")
     commit = checkpoint.get("commit_hash", "")[:7]
     if commit:
-        return f"💾 **RECOVERY POINT**: {cp_id} (commit: {commit})"
+        return f"💾 Recovery: {cp_id} ({commit})"
     return None
 
 
 def _build_lessons_context(state, project_context) -> list[str]:
-    """Build lessons and calibration context."""
+    """Build lessons and calibration context (terse format)."""
     parts = []
 
-    # Block lessons (cross-session learning)
+    # Block lessons (cross-session learning) - inline format
     block_lessons = get_recent_block_lessons(limit=3)
     if block_lessons:
-        parts.append("⚠️ **RECENT LESSONS**:")
-        parts.extend(f"  • {lesson}" for lesson in block_lessons)
+        parts.append(f"⚠️ Lessons: {' | '.join(block_lessons)}")
 
-    # Confidence FP history (session state)
+    # Confidence FP history (session state) - inline format
     fp_warnings = get_confidence_fp_history(state)
     if fp_warnings:
-        parts.append("🎯 **CONFIDENCE CALIBRATION** (reducers with high FP rates):")
-        parts.extend(f"  {warning}" for warning in fp_warnings)
+        parts.append(f"🎯 FP: {' '.join(fp_warnings)}")
 
-    # Cross-session FP insights (Entity Model: immune memory)
+    # Cross-session FP insights (Entity Model: immune memory) - inline format
     cross_session_fps = get_cross_session_fp_insights()
     if cross_session_fps:
-        parts.append("🧬 **IMMUNE MEMORY** (cross-session FP patterns):")
-        parts.extend(f"  {insight}" for insight in cross_session_fps)
+        parts.append(f"🧬 Immune: {' '.join(cross_session_fps)}")
 
     # Contextual lessons
     if (
@@ -670,7 +661,7 @@ def _build_lessons_context(state, project_context) -> list[str]:
             lessons = get_contextual_lessons(keywords)
             if lessons:
                 lesson_preview = lessons[0].get("content", "")[:50]
-                parts.append(f"💡 **WISDOM**: {lesson_preview}...")
+                parts.append(f"💡 Wisdom: {lesson_preview}...")
 
     return parts
 

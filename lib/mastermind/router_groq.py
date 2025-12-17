@@ -26,8 +26,23 @@ Classify the user's request into one of three categories:
 - medium: Multi-file changes, moderate refactoring, adding features to existing code
 - complex: New systems, architecture changes, multi-component features, security-sensitive work
 
+Also identify the task TYPE and suggest the best PAL MCP tool:
+- debugging: Bug investigation, error tracing, fix attempts -> suggest "debug"
+- planning: New features, implementation design, multi-step work -> suggest "planner"
+- review: Code review, quality check, refactoring assessment -> suggest "codereview"
+- architecture: System design, technology choices, tradeoffs -> suggest "consensus"
+- research: API lookups, documentation needs, library usage -> suggest "apilookup"
+- validation: Pre-commit checks, change verification -> suggest "precommit"
+- general: Discussion, brainstorming, unclear category -> suggest "chat"
+
 Output JSON only:
-{"classification": "trivial|medium|complex", "confidence": 0.0-1.0, "reason_codes": ["code1", "code2"]}
+{
+  "classification": "trivial|medium|complex",
+  "confidence": 0.0-1.0,
+  "task_type": "debugging|planning|review|architecture|research|validation|general",
+  "suggested_tool": "debug|planner|codereview|consensus|apilookup|precommit|chat",
+  "reason_codes": ["code1", "code2"]
+}
 
 Reason codes (pick 1-3):
 - single_file: Affects one file
@@ -51,6 +66,8 @@ class RouterResponse:
     reason_codes: list[str]
     raw_response: str
     latency_ms: int
+    task_type: str = "general"  # debugging, planning, review, architecture, research, validation, general
+    suggested_tool: str = "chat"  # debug, planner, codereview, consensus, apilookup, precommit, chat
     error: str | None = None
 
     @property
@@ -61,6 +78,21 @@ class RouterResponse:
     def is_uncertain(self) -> bool:
         config = get_config()
         return self.confidence < config.router.uncertainty_threshold
+
+    @property
+    def pal_tool_name(self) -> str:
+        """Return the full MCP tool name for the suggested tool."""
+        tool_map = {
+            "debug": "mcp__pal__debug",
+            "planner": "mcp__pal__planner",
+            "codereview": "mcp__pal__codereview",
+            "consensus": "mcp__pal__consensus",
+            "apilookup": "mcp__pal__apilookup",
+            "precommit": "mcp__pal__precommit",
+            "chat": "mcp__pal__chat",
+            "thinkdeep": "mcp__pal__thinkdeep",
+        }
+        return tool_map.get(self.suggested_tool, "mcp__pal__chat")
 
 
 def _parse_response(text: str) -> dict[str, Any]:
@@ -148,6 +180,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 reason_codes=parsed.get("reason_codes", []),
                 raw_response=raw_text,
                 latency_ms=latency_ms,
+                task_type=parsed.get("task_type", "general"),
+                suggested_tool=parsed.get("suggested_tool", "chat"),
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Parse error - default to complex (safe fallback)
@@ -157,6 +191,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 reason_codes=["parse_error"],
                 raw_response=raw_text,
                 latency_ms=latency_ms,
+                task_type="general",
+                suggested_tool="chat",
                 error=f"Parse error: {e}",
             )
 
