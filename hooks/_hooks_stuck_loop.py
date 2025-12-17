@@ -30,11 +30,28 @@ from session_state import SessionState
 MAX_FIX_ATTEMPTS_BEFORE_RESEARCH = get_magic_number("max_fix_attempts", 3)
 MAX_SAME_FILE_EDITS_DEBUGGING = get_magic_number("max_debug_edits", 4)
 SYMPTOM_SIMILARITY_THRESHOLD = 0.6  # How similar symptoms must be to count as "same"
-RESEARCH_TOOLS = {"WebSearch", "WebFetch", "mcp__crawl4ai__crawl", "mcp__crawl4ai__ddg_search",
-                  "mcp__pal__chat", "mcp__pal__thinkdeep", "mcp__pal__debug", "mcp__pal__apilookup"}
+
+# Confidence floor integration (v4.9.1)
+# When confidence drops below this during debugging, force research
+CONFIDENCE_FLOOR_DEBUG = get_magic_number("confidence_floor_debug", 50)
+# Confidence threshold that indicates struggling (triggers softer warning)
+CONFIDENCE_STRUGGLING = get_magic_number("confidence_struggling", 65)
+
+RESEARCH_TOOLS = {
+    "WebSearch",
+    "WebFetch",
+    "mcp__crawl4ai__crawl",
+    "mcp__crawl4ai__ddg_search",
+    "mcp__pal__chat",
+    "mcp__pal__thinkdeep",
+    "mcp__pal__debug",
+    "mcp__pal__apilookup",
+}
 
 # State file for stuck loop tracking
-STUCK_LOOP_STATE_FILE = Path(__file__).parent.parent / "memory" / "stuck_loop_state.json"
+STUCK_LOOP_STATE_FILE = (
+    Path(__file__).parent.parent / "memory" / "stuck_loop_state.json"
+)
 
 # Patterns indicating debugging activity
 DEBUG_INTENT_PATTERNS = [
@@ -56,10 +73,19 @@ FIX_ATTEMPT_PATTERNS = [
 # Symptom extraction patterns (for detecting recurring issues)
 SYMPTOM_PATTERNS = [
     (r"(?:page|screen|app)\s+(?:is\s+)?(?:blank|empty|white)", "blank_page"),
-    (r"(?:not|isn't|doesn't)\s+(?:rendering|showing|displaying|loading)", "not_rendering"),
+    (
+        r"(?:not|isn't|doesn't)\s+(?:rendering|showing|displaying|loading)",
+        "not_rendering",
+    ),
     (r"(?:hydration|hydrate)\s+(?:error|issue|problem|failed)", "hydration_issue"),
-    (r"(?:auth|authentication|login)\s+(?:error|issue|problem|failed|broken)", "auth_issue"),
-    (r"(?:state|store)\s+(?:not|isn't)\s+(?:persisting|saving|updating)", "state_persistence"),
+    (
+        r"(?:auth|authentication|login)\s+(?:error|issue|problem|failed|broken)",
+        "auth_issue",
+    ),
+    (
+        r"(?:state|store)\s+(?:not|isn't)\s+(?:persisting|saving|updating)",
+        "state_persistence",
+    ),
     (r"(?:redirect|redirecting)\s+(?:to\s+)?(?:login|home)", "redirect_issue"),
     (r"(?:null|undefined)\s+(?:error|exception)", "null_error"),
     (r"(?:timeout|timed?\s*out)", "timeout"),
@@ -108,7 +134,7 @@ def _get_stuck_state(runner_state: dict) -> dict:
     """Get or initialize stuck loop tracking state."""
     stuck = runner_state.get("stuck_loop_state", {})
     stuck.setdefault("symptoms_seen", [])  # [(symptom_id, turn, text_hash)]
-    stuck.setdefault("fix_attempts", {})   # {file_path: [(turn, text_hash)]}
+    stuck.setdefault("fix_attempts", {})  # {file_path: [(turn, text_hash)]}
     stuck.setdefault("debug_session_start", 0)
     stuck.setdefault("research_done", False)
     stuck.setdefault("last_research_turn", 0)
@@ -144,7 +170,9 @@ def _should_force_research(stuck: dict, state: SessionState) -> tuple[bool, str]
     return False, ""
 
 
-def _check_recurring_symptom(stuck: dict, current_symptoms: list[str], turn: int) -> str | None:
+def _check_recurring_symptom(
+    stuck: dict, current_symptoms: list[str], turn: int
+) -> str | None:
     """Check if we're seeing the same symptom repeatedly."""
     if not current_symptoms:
         return None
@@ -155,7 +183,8 @@ def _check_recurring_symptom(stuck: dict, current_symptoms: list[str], turn: int
     recent_window = 15  # turns
     for symptom in current_symptoms:
         recent_occurrences = [
-            s for s in symptoms_seen
+            s
+            for s in symptoms_seen
             if s[0] == symptom and (turn - s[1]) < recent_window
         ]
         if len(recent_occurrences) >= 3:
@@ -168,8 +197,11 @@ def _check_recurring_symptom(stuck: dict, current_symptoms: list[str], turn: int
 # HOOK: FIX ATTEMPT TRACKER (priority 78)
 # =============================================================================
 
+
 @register_hook("fix_attempt_tracker", "Edit|Write", priority=78)
-def track_fix_attempt(data: dict, state: SessionState, runner_state: dict) -> HookResult:
+def track_fix_attempt(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
     """Track edit attempts during debugging sessions."""
     if not _is_debugging_context(state):
         return HookResult.none()
@@ -236,6 +268,7 @@ def track_fix_attempt(data: dict, state: SessionState, runner_state: dict) -> Ho
 # HOOK: SYMPTOM TRACKER (priority 79)
 # =============================================================================
 
+
 @register_hook("symptom_tracker", "Bash|Read", priority=79)
 def track_symptoms(data: dict, state: SessionState, runner_state: dict) -> HookResult:
     """Track recurring symptoms/errors to detect stuck patterns."""
@@ -274,7 +307,7 @@ def track_symptoms(data: dict, state: SessionState, runner_state: dict) -> HookR
         return HookResult.with_context(
             f"🔄 **RECURRING SYMPTOM**: `{symptom_name}` seen 3+ times\n"
             f"⚡ Same problem keeps appearing → Research the root cause\n"
-            f"   → WebSearch for \"{symptom_name}\" solutions\n"
+            f'   → WebSearch for "{symptom_name}" solutions\n'
             f"   → mcp__pal__debug for systematic analysis"
         )
 
@@ -285,16 +318,19 @@ def track_symptoms(data: dict, state: SessionState, runner_state: dict) -> HookR
 # HOOK: RESEARCH TRACKER (priority 80)
 # =============================================================================
 
-@register_hook("research_tracker", "WebSearch|WebFetch|mcp__pal__*|mcp__crawl4ai__*", priority=80)
+
+@register_hook(
+    "research_tracker", "WebSearch|WebFetch|mcp__pal__*|mcp__crawl4ai__*", priority=80
+)
 def track_research(data: dict, state: SessionState, runner_state: dict) -> HookResult:
     """Track when research is performed to reset stuck state."""
     tool_name = data.get("tool_name", "")
 
     # Check if this is a research tool
     is_research = (
-        tool_name in RESEARCH_TOOLS or
-        tool_name.startswith("mcp__pal__") or
-        tool_name.startswith("mcp__crawl4ai__")
+        tool_name in RESEARCH_TOOLS
+        or tool_name.startswith("mcp__pal__")
+        or tool_name.startswith("mcp__crawl4ai__")
     )
 
     if not is_research:
@@ -316,8 +352,11 @@ def track_research(data: dict, state: SessionState, runner_state: dict) -> HookR
 # HOOK: VERIFICATION PROMPT (priority 81)
 # =============================================================================
 
+
 @register_hook("verification_prompt", "Bash", priority=81)
-def check_verification_needed(data: dict, state: SessionState, runner_state: dict) -> HookResult:
+def check_verification_needed(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
     """Prompt for verification after fix attempts."""
     stuck = _get_stuck_state(runner_state)
     pending = stuck.get("pending_verification")
@@ -331,9 +370,20 @@ def check_verification_needed(data: dict, state: SessionState, runner_state: dic
 
     # Check if this looks like a test/verification command
     verification_patterns = [
-        "npm run", "npm start", "npm test", "yarn", "pnpm",
-        "python", "pytest", "cargo", "go run", "go test",
-        "curl", "http", "localhost", "browser",
+        "npm run",
+        "npm start",
+        "npm test",
+        "yarn",
+        "pnpm",
+        "python",
+        "pytest",
+        "cargo",
+        "go run",
+        "go test",
+        "curl",
+        "http",
+        "localhost",
+        "browser",
     ]
 
     is_verification = any(p in command for p in verification_patterns)
@@ -367,8 +417,11 @@ def check_verification_needed(data: dict, state: SessionState, runner_state: dic
 # HOOK: CIRCUIT BREAKER ENFORCER (priority 82)
 # =============================================================================
 
+
 @register_hook("circuit_breaker", "Edit|Write", priority=82)
-def enforce_circuit_breaker(data: dict, state: SessionState, runner_state: dict) -> HookResult:
+def enforce_circuit_breaker(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
     """Enforce circuit breaker - block edits until research is done."""
     stuck = _get_stuck_state(runner_state)
 
@@ -379,8 +432,11 @@ def enforce_circuit_breaker(data: dict, state: SessionState, runner_state: dict)
     file_path = tool_input.get("file_path", "")
 
     # Allow edits to different files (might be legitimate other work)
-    problem_files = [f for f, attempts in stuck.get("fix_attempts", {}).items()
-                     if len(attempts) >= MAX_FIX_ATTEMPTS_BEFORE_RESEARCH]
+    problem_files = [
+        f
+        for f, attempts in stuck.get("fix_attempts", {}).items()
+        if len(attempts) >= MAX_FIX_ATTEMPTS_BEFORE_RESEARCH
+    ]
 
     if file_path not in problem_files:
         return HookResult.none()
@@ -400,8 +456,11 @@ def enforce_circuit_breaker(data: dict, state: SessionState, runner_state: dict)
 # HOOK: DEBUG SESSION RESET (priority 83)
 # =============================================================================
 
+
 @register_hook("debug_session_reset", "Bash", priority=83)
-def check_debug_session_reset(data: dict, state: SessionState, runner_state: dict) -> HookResult:
+def check_debug_session_reset(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
     """Reset debug session on clear success signals."""
     tool_result = data.get("tool_result", {})
     result_str = ""
@@ -443,3 +502,105 @@ def check_debug_session_reset(data: dict, state: SessionState, runner_state: dic
             )
 
     return HookResult.none()
+
+
+# =============================================================================
+# HOOK: CONFIDENCE FLOOR TRIGGER (priority 84)
+# =============================================================================
+
+
+@register_hook("confidence_floor_debug", "Edit|Write|Bash", priority=84)
+def check_confidence_floor(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Force research when confidence drops below floor during debugging.
+
+    This creates a dual-trigger system:
+    1. Attempt-based: After N edits to same file (handled by circuit_breaker)
+    2. Confidence-based: When confidence drops below threshold (this hook)
+
+    The confidence floor trigger catches cases where multiple small failures
+    accumulate without triggering the attempt counter.
+    """
+    # Only relevant during debugging sessions
+    if not _is_debugging_context(state):
+        return HookResult.none()
+
+    stuck = _get_stuck_state(runner_state)
+
+    # Skip if no debug session active
+    if stuck.get("debug_session_start", 0) == 0:
+        return HookResult.none()
+
+    # Skip if research was done recently
+    if stuck.get("research_done", False):
+        turns_since = state.turn_count - stuck.get("last_research_turn", 0)
+        if turns_since < 10:  # Research is still "fresh"
+            return HookResult.none()
+
+    confidence = state.confidence
+
+    # Hard floor: confidence below 50% during debugging = mandatory research
+    if confidence < CONFIDENCE_FLOOR_DEBUG:
+        # Activate circuit breaker via confidence
+        stuck["circuit_breaker_active"] = True
+        stuck["confidence_triggered"] = True
+        runner_state["stuck_loop_state"] = stuck
+
+        return HookResult.with_context(
+            f"🔴 **CONFIDENCE FLOOR BREACH** ({confidence}% < {CONFIDENCE_FLOOR_DEBUG}%)\n"
+            f"⚡ **RESEARCH MANDATORY** - Confidence dropped too low during debugging\n"
+            f"   → `mcp__pal__debug` for systematic root cause analysis\n"
+            f"   → `WebSearch` or `mcp__crawl4ai__ddg_search` for solutions\n"
+            f"   → `mcp__pal__chat` for external perspective\n"
+            f"💡 Low confidence + debugging loop = wrong approach. Get help."
+        )
+
+    # Soft warning: confidence below 65% during debugging = suggest research
+    if confidence < CONFIDENCE_STRUGGLING:
+        # Check cooldown for soft warning
+        last_warn = stuck.get("last_confidence_warn", 0)
+        if state.turn_count - last_warn < 5:
+            return HookResult.none()
+
+        stuck["last_confidence_warn"] = state.turn_count
+        runner_state["stuck_loop_state"] = stuck
+
+        return HookResult.with_context(
+            f"⚠️ **STRUGGLING SIGNAL** ({confidence}% confidence during debugging)\n"
+            f"💡 Consider research before confidence drops further:\n"
+            f"   → `mcp__pal__apilookup` if it's an API/library question\n"
+            f"   → `WebSearch` for common solutions to this pattern"
+        )
+
+    return HookResult.none()
+
+
+# =============================================================================
+# HOOK: CONFIDENCE RECOVERY TRACKER (priority 85)
+# =============================================================================
+
+
+@register_hook(
+    "confidence_recovery",
+    "WebSearch|WebFetch|mcp__pal__*|mcp__crawl4ai__*",
+    priority=85,
+)
+def track_confidence_recovery(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Track confidence recovery after research during low-confidence debugging."""
+    stuck = _get_stuck_state(runner_state)
+
+    # Only relevant if confidence triggered the circuit breaker
+    if not stuck.get("confidence_triggered", False):
+        return HookResult.none()
+
+    # Research was done, clear the confidence trigger
+    stuck["confidence_triggered"] = False
+    runner_state["stuck_loop_state"] = stuck
+
+    return HookResult.with_context(
+        "✅ **Confidence-triggered research complete**\n"
+        f"💡 Apply fresh insights. Current confidence: {state.confidence}%"
+    )

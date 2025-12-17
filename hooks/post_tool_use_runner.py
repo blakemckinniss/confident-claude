@@ -33,13 +33,15 @@ HOOKS INDEX (by priority):
     76 failure_curiosity   - Alternative approach prompts after tool failures
     77 low_confidence_curiosity - Uncertainty exploration at <70% confidence
 
-  STUCK LOOP DETECTION (78-83):
+  STUCK LOOP DETECTION (78-85):
     78 fix_attempt_tracker  - Track edit attempts during debugging sessions
     79 symptom_tracker      - Track recurring symptoms/errors
     80 research_tracker     - Track when research is performed
     81 verification_prompt  - Prompt for verification after fix attempts
     82 circuit_breaker      - Block edits until research done
     83 debug_session_reset  - Reset debug session on clear success
+    84 confidence_floor_debug - Force research when confidence <50% during debug
+    85 confidence_recovery  - Track recovery after confidence-triggered research
 
 ARCHITECTURE:
   - Hooks register via @register_hook(name, matcher, priority)

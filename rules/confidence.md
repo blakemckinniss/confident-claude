@@ -194,6 +194,14 @@ The stuck loop system detects when Claude is trapped in a debugging cycle withou
 3. **Circuit Breaker**: After 4 edits to same file without success, BLOCKS further edits until research done
 4. **Research Tracker**: Resets circuit breaker when WebSearch, crawl4ai, or PAL MCP tools are used
 5. **Verification Prompts**: Asks "Did that fix it?" after fix attempts followed by test runs
+6. **Confidence Floor (v4.9.1)**: DUAL-TRIGGER - Forces research when confidence drops below 50% during debugging
+
+**Dual-Trigger System**:
+- **Attempt-based**: 4+ edits to same file → circuit breaker
+- **Confidence-based**: Confidence < 50% during debugging → circuit breaker
+- **Soft warning**: Confidence < 65% during debugging → suggests research
+
+This catches cases where multiple small failures accumulate without triggering the attempt counter.
 
 **Circuit Breaker Recovery**: To reset the circuit breaker, use any of:
 - `WebSearch` or `mcp__crawl4ai__ddg_search` for online solutions
