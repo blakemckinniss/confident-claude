@@ -2,7 +2,7 @@
 State management PostToolUse hooks.
 
 Updates session state, manages confidence decay/reduction/increase.
-Priority range: 10-16
+Priority range: 5-16 (PAL mandate at 5, state at 10+)
 """
 
 import _lib_path  # noqa: F401
@@ -53,6 +53,44 @@ from confidence import (
     format_trajectory_warning,
     get_current_streak,
 )
+
+
+# -----------------------------------------------------------------------------
+# PAL MANDATE CLEARING (priority 5) - Clear lock when PAL planner succeeds
+# -----------------------------------------------------------------------------
+
+_PAL_MANDATE_LOCK = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
+
+
+@register_hook("pal_mandate_clear", "mcp__pal__planner", priority=5)
+def clear_pal_mandate_on_success(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Clear PAL mandate lock when mcp__pal__planner succeeds with GPT-5.x model.
+
+    MCP tools don't trigger PreToolUse hooks, so we clear the lock here in
+    PostToolUse instead.
+    """
+    if not _PAL_MANDATE_LOCK.exists():
+        return HookResult.approve()
+
+    # Check if the model used was GPT-5.x
+    tool_input = data.get("tool_input", {})
+    model = tool_input.get("model", "").lower()
+
+    if "gpt-5" in model or "gpt5" in model:
+        try:
+            _PAL_MANDATE_LOCK.unlink()
+            return HookResult.approve(
+                "✅ **PAL MANDATE SATISFIED** - GPT-5.x planner called. Lock cleared."
+            )
+        except OSError as e:
+            import sys
+
+            print(f"[pal_mandate_clear] Failed to clear lock: {e}", file=sys.stderr)
+            return HookResult.approve()
+
+    return HookResult.approve()
 
 
 # -----------------------------------------------------------------------------
@@ -483,7 +521,9 @@ def _handle_bash_tool(tool_input: dict, result: dict, state: SessionState) -> No
                         if next_part not in state.dirs_listed:
                             state.dirs_listed.append(next_part)
                             state.dirs_listed = state.dirs_listed[-50:]
-                elif part == "ls" and (i + 1 >= len(parts) or parts[i + 1].startswith("-")):
+                elif part == "ls" and (
+                    i + 1 >= len(parts) or parts[i + 1].startswith("-")
+                ):
                     # ls with no dir or only flags = current dir
                     if "." not in state.dirs_listed:
                         state.dirs_listed.append(".")
@@ -1161,9 +1201,7 @@ def _detect_incomplete_refactor(
                     break
 
 
-def _detect_sequential_file_ops(
-    tool_name: str, state: SessionState, ctx: dict
-) -> None:
+def _detect_sequential_file_ops(tool_name: str, state: SessionState, ctx: dict) -> None:
     """Detect 3+ sequential file ops that could be parallelized."""
     file_ops = {"Read", "Edit", "Write", "Glob", "Grep"}
     if tool_name not in file_ops:
@@ -1240,9 +1278,7 @@ def _detect_change_without_test(
             ctx["change_without_test"] = True
 
 
-def _detect_contradiction(
-    tool_result: dict, state: SessionState, ctx: dict
-) -> None:
+def _detect_contradiction(tool_result: dict, state: SessionState, ctx: dict) -> None:
     """Detect contradictory statements in output."""
     output = str(tool_result.get("output", "")).lower()
 
@@ -1260,9 +1296,7 @@ def _detect_contradiction(
             break
 
 
-def _detect_trivial_question(
-    state: SessionState, ctx: dict
-) -> None:
+def _detect_trivial_question(state: SessionState, ctx: dict) -> None:
     """Detect questions that could be answered by reading code.
 
     Triggers when asking obvious questions about code that's already been read
