@@ -683,13 +683,33 @@ _PAL_MANDATE_LOCK = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
 
 
 def check_pal_mandate_lock() -> dict | None:
-    """Check if PAL mandate lock exists and return its contents."""
-    if _PAL_MANDATE_LOCK.exists():
+    """Check if PAL mandate lock exists, is valid, and not expired.
+
+    Returns lock contents if valid, None if missing/expired/invalid.
+    Auto-clears expired locks (default TTL: 30 minutes).
+    """
+    if not _PAL_MANDATE_LOCK.exists():
+        return None
+
+    try:
+        lock_data = json.loads(_PAL_MANDATE_LOCK.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    # Check TTL - default 30 minutes
+    import time
+    created_at = lock_data.get("created_at", 0)
+    ttl_minutes = 30  # Could be loaded from config if needed
+
+    if created_at and (time.time() - created_at) > (ttl_minutes * 60):
+        # Lock expired - auto-clear
         try:
-            return json.loads(_PAL_MANDATE_LOCK.read_text())
-        except (json.JSONDecodeError, OSError):
+            _PAL_MANDATE_LOCK.unlink()
+        except OSError:
             pass
-    return None
+        return None
+
+    return lock_data
 
 
 def clear_pal_mandate_lock() -> None:

@@ -12,13 +12,9 @@ Generates execution blueprints with:
 from __future__ import annotations
 
 import json
-import subprocess
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from .config import get_config
 from .state import Blueprint
 
 
@@ -52,6 +48,7 @@ Guidelines:
 @dataclass
 class PlannerResponse:
     """Response from GPT-5.2 planner."""
+
     blueprint: Blueprint | None
     raw_response: str
     latency_ms: int
@@ -65,10 +62,17 @@ def call_pal_planner(
     continuation_id: str | None = None,
     working_dir: Path | None = None,
 ) -> PlannerResponse:
-    """Call PAL MCP planner tool for blueprint generation.
+    """DEPRECATED: Blueprint capture now happens via PostToolUse hook.
 
-    Uses mcp__pal__planner via subprocess to Claude CLI.
-    Falls back to mcp__pal__chat if planner unavailable.
+    The mastermind architecture changed:
+    1. User sends `^ <prompt>` to trigger planning
+    2. UserPromptSubmit hook injects PAL mandate instruction
+    3. Claude calls mcp__pal__planner directly
+    4. PostToolUse hook in _hooks_state.py captures the blueprint
+    5. Blueprint stored in MastermindState for drift detection
+
+    This function is retained for reference but should not be called.
+    Use mcp__pal__planner MCP tool instead.
 
     Args:
         context: Packed context for planning
@@ -77,52 +81,15 @@ def call_pal_planner(
         working_dir: Working directory for context
 
     Returns:
-        PlannerResponse with blueprint or error
+        PlannerResponse with error indicating deprecation
     """
-    config = get_config()
-    start = time.time()
-
-    # Build the planning prompt
-    prompt = f"""{PLANNER_SYSTEM_PROMPT}
-
-## Task Context
-{context}
-
-Generate a blueprint JSON for this task."""
-
-    # For now, simulate the response structure
-    # In production, this would call PAL MCP directly
-    # The actual integration depends on how PAL MCP is invoked
-
-    try:
-        # Attempt to use PAL MCP via environment
-        # This is a placeholder - actual implementation depends on MCP integration
-        blueprint = Blueprint(
-            goal="[Blueprint generation requires PAL MCP integration]",
-            invariants=["Maintain existing tests", "No breaking API changes"],
-            touch_set=[],
-            budget={"estimated_files": 3, "max_turns": 10},
-            decision_points=[],
-            acceptance_criteria=["Task completes successfully"],
-        )
-
-        latency_ms = int((time.time() - start) * 1000)
-
-        return PlannerResponse(
-            blueprint=blueprint,
-            raw_response="[simulated - PAL MCP integration pending]",
-            latency_ms=latency_ms,
-            continuation_id=continuation_id,
-        )
-
-    except Exception as e:
-        latency_ms = int((time.time() - start) * 1000)
-        return PlannerResponse(
-            blueprint=None,
-            raw_response="",
-            latency_ms=latency_ms,
-            error=str(e),
-        )
+    return PlannerResponse(
+        blueprint=None,
+        raw_response="",
+        latency_ms=0,
+        error="DEPRECATED: Use mcp__pal__planner MCP tool directly. "
+        "Blueprint capture happens via PostToolUse hook in _hooks_state.py",
+    )
 
 
 def parse_blueprint_response(text: str) -> Blueprint | None:
