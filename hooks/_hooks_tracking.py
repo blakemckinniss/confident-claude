@@ -110,7 +110,10 @@ LEARNABLE_PATTERNS = [
     (r"ModuleNotFoundError: No module named '([^']+)'", "Missing module: {0}"),
     (r"ImportError: cannot import name '([^']+)'", "Import error: {0}"),
     (r"AttributeError: '(\w+)' object has no attribute '(\w+)'", "{0}.{1} missing"),
-    (r"TypeError: ([^(]+)\(\) got an unexpected keyword argument '(\w+)'", "{0} rejects '{1}'"),
+    (
+        r"TypeError: ([^(]+)\(\) got an unexpected keyword argument '(\w+)'",
+        "{0} rejects '{1}'",
+    ),
     (r"FileNotFoundError: \[Errno 2\].*'([^']+)'", "File not found: {0}"),
     (r"🛑 GAP: (.+)", "Gap detected: {0}"),
     (r"BLOCKED: (.+)", "Blocked: {0}"),
@@ -129,7 +132,9 @@ IGNORE_PATTERNS = [
 
 def _learn_from_bash_error(tool_output: str) -> str | None:
     """Extract lesson from bash error output."""
-    if not tool_output or not any(k in tool_output.lower() for k in ("error", "failed")):
+    if not tool_output or not any(
+        k in tool_output.lower() for k in ("error", "failed")
+    ):
         return None
     if any(re.search(p, tool_output, re.IGNORECASE) for p in IGNORE_PATTERNS):
         return None
@@ -142,16 +147,24 @@ def _learn_from_bash_error(tool_output: str) -> str | None:
     return None
 
 
-def _get_quality_hint(tool_name: str, tool_input: dict, runner_state: dict) -> str | None:
+def _get_quality_hint(
+    tool_name: str, tool_input: dict, runner_state: dict
+) -> str | None:
     """Get quality hint for tool usage."""
     hints_shown = runner_state.setdefault("hints_shown", [])
-    if tool_name in ("Write", "Edit") and tool_input.get("file_path", "").endswith(".py"):
+    if tool_name in ("Write", "Edit") and tool_input.get("file_path", "").endswith(
+        ".py"
+    ):
         if "py_ruff" not in hints_shown:
             hints_shown.append("py_ruff")
             return "💡 Run `ruff check --fix && ruff format` after editing Python"
     elif tool_name == "Bash":
         cmd = tool_input.get("command", "")
-        if re.search(r"\bgrep\s+-r", cmd) and "rg " not in cmd and "use_rg" not in hints_shown:
+        if (
+            re.search(r"\bgrep\s+-r", cmd)
+            and "rg " not in cmd
+            and "use_rg" not in hints_shown
+        ):
             hints_shown.append("use_rg")
             return "💡 Use `rg` (ripgrep) instead of `grep -r` for 10-100x speed"
     return None
@@ -166,10 +179,16 @@ def check_auto_learn(data: dict, state: SessionState, runner_state: dict) -> Hoo
         if lesson := _learn_from_bash_error(data.get("tool_output", "")):
             messages.append(f"🐘 Auto-learned: {lesson}...")
 
-    if hint := _get_quality_hint(data.get("tool_name", ""), data.get("tool_input", {}), runner_state):
+    if hint := _get_quality_hint(
+        data.get("tool_name", ""), data.get("tool_input", {}), runner_state
+    ):
         messages.append(hint)
 
-    return HookResult.with_context("\n".join(messages[:2])) if messages else HookResult.none()
+    return (
+        HookResult.with_context("\n".join(messages[:2]))
+        if messages
+        else HookResult.none()
+    )
 
 
 # =============================================================================
@@ -177,7 +196,9 @@ def check_auto_learn(data: dict, state: SessionState, runner_state: dict) -> Hoo
 # =============================================================================
 
 
-def _check_self_check_pattern(tool_name: str, tool_input: dict, state: SessionState) -> str | None:
+def _check_self_check_pattern(
+    tool_name: str, tool_input: dict, state: SessionState
+) -> str | None:
     """Detect Edit-then-Read self-distrust pattern."""
     if tool_name != "Read" or len(state.last_5_tools) < 2:
         return None
@@ -275,9 +296,17 @@ READS_BEFORE_CRYSTALLIZE = get_magic_number("reads_before_crystallize", 8)
 READ_TOOLS = {"Read", "Grep", "Glob"}
 PROGRESS_TOOLS = {"Edit", "Write"}
 PROGRESS_BASH_PATTERNS = [
-    "pytest", "npm test", "npm run", "cargo test", "cargo build",
-    "python3 .claude/ops/verify", "python3 .claude/ops/audit",
-    "git commit", "git add", "pip install", "npm install",
+    "pytest",
+    "npm test",
+    "npm run",
+    "cargo test",
+    "cargo build",
+    "python3 .claude/ops/verify",
+    "python3 .claude/ops/audit",
+    "git commit",
+    "git add",
+    "pip install",
+    "npm install",
 ]
 
 
@@ -310,7 +339,11 @@ def check_info_gain(data: dict, state: SessionState, runner_state: dict) -> Hook
             runner_state["info_gain_state"] = ig_state
 
             severity = "⚠️" if reads < READS_BEFORE_CRYSTALLIZE else "🛑"
-            hint = " → crystallize to .claude/tmp/" if reads >= READS_BEFORE_CRYSTALLIZE else ""
+            hint = (
+                " → crystallize to .claude/tmp/"
+                if reads >= READS_BEFORE_CRYSTALLIZE
+                else ""
+            )
             return HookResult.with_context(
                 f"{severity} INFO GAIN: {reads} reads ({file_list}) - act or need more?{hint}"
             )
@@ -379,6 +412,157 @@ def check_beads_auto_sync(
         return HookResult.with_context("🔄 Beads auto-synced in background")
     except (OSError, IOError):
         return HookResult.none()
+
+
+# =============================================================================
+# TOOLCHAIN BEAD CREATOR (priority 73)
+# =============================================================================
+
+TOOLCHAIN_MARKER = '"toolchain":'
+TOOLCHAIN_STAGES = {"triage", "locate", "analyze", "modify", "validate", "report"}
+
+
+def _extract_toolchain_from_response(response_text: str) -> list[dict] | None:
+    """Extract toolchain steps from GPT-5.2 routing response."""
+    import json
+
+    if not response_text or TOOLCHAIN_MARKER not in response_text:
+        return None
+
+    # Find JSON in response (may be wrapped in markdown code block)
+    text = response_text.strip()
+    if "```" in text:
+        # Extract from code block
+        lines = text.split("\n")
+        in_block = False
+        json_lines = []
+        for line in lines:
+            if line.strip().startswith("```"):
+                if in_block:
+                    break
+                in_block = True
+                continue
+            if in_block:
+                json_lines.append(line)
+        text = "\n".join(json_lines)
+
+    # Try to parse JSON
+    try:
+        # Find JSON object boundaries
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start < 0 or end <= start:
+            return None
+        data = json.loads(text[start:end])
+        toolchain = data.get("toolchain", [])
+        if not toolchain or not isinstance(toolchain, list):
+            return None
+        return toolchain
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def _create_beads_from_toolchain(toolchain: list[dict], session_id: str) -> list[str]:
+    """Create beads from toolchain steps. Returns list of created bead IDs."""
+    import json
+
+    bd_path = shutil.which("bd")
+    if not bd_path:
+        return []
+
+    bead_ids = []
+    for step in toolchain[:5]:  # Max 5 steps
+        stage = step.get("stage", "analyze")
+        if stage not in TOOLCHAIN_STAGES:
+            continue
+
+        primary = step.get("primary", {})
+        rationale = step.get("rationale", "") or primary.get(
+            "capability_id", "Task step"
+        )
+        rationale = rationale[:50]
+
+        title = f"[{stage}] {rationale}"
+
+        try:
+            result = subprocess.run(
+                [bd_path, "create", f"--title={title}", "--type=task", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                    bead_id = data.get("id") or data.get("bead_id")
+                    if bead_id:
+                        bead_ids.append(bead_id)
+                except json.JSONDecodeError:
+                    pass
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+    # Add dependencies: each step depends on previous
+    for i in range(1, len(bead_ids)):
+        try:
+            subprocess.run(
+                [bd_path, "dep", "add", bead_ids[i], bead_ids[i - 1]],
+                capture_output=True,
+                timeout=5,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+    return bead_ids
+
+
+@register_hook("toolchain_bead_creator", "mcp__pal__chat", priority=73)
+def check_toolchain_bead_creator(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Create beads from GPT-5.2 toolchain recommendations.
+
+    When mcp__pal__chat returns a routing response with a toolchain,
+    parse the JSON and create beads for each stage.
+    """
+    tool_result = data.get("tool_result", {})
+    if not isinstance(tool_result, dict):
+        return HookResult.none()
+
+    # Get response content
+    content = tool_result.get("content", "") or tool_result.get("response", "")
+    if not content:
+        return HookResult.none()
+
+    # Check if this looks like a routing response
+    if TOOLCHAIN_MARKER not in content:
+        return HookResult.none()
+
+    # Cooldown: only create beads once per session
+    tc_state = runner_state.get("toolchain_bead_state", {})
+    if tc_state.get("beads_created_this_session"):
+        return HookResult.none()
+
+    # Extract and create beads
+    toolchain = _extract_toolchain_from_response(content)
+    if not toolchain or len(toolchain) < 2:
+        return HookResult.none()
+
+    session_id = getattr(state, "session_id", "unknown")
+    bead_ids = _create_beads_from_toolchain(toolchain, session_id)
+
+    if bead_ids:
+        tc_state["beads_created_this_session"] = True
+        tc_state["bead_ids"] = bead_ids
+        runner_state["toolchain_bead_state"] = tc_state
+
+        stages = [s.get("stage", "?") for s in toolchain[: len(bead_ids)]]
+        return HookResult.with_context(
+            f"📋 **Beads created from toolchain** ({len(bead_ids)} stages: {', '.join(stages)})\n"
+            f"Run `bd list` to see tasks. First bead: `{bead_ids[0]}`"
+        )
+
+    return HookResult.none()
 
 
 # =============================================================================

@@ -8,6 +8,7 @@ HOOKS INDEX (by priority):
   CONTEXT MANAGEMENT (0-5):
     3 context_warning     - Warn at 75% context usage
     4 context_exhaustion  - Force resume prompt at 85%
+    5 session_close_protocol - Enforce bd sync + next steps before exit
 
   PERSISTENCE (6-20):
     10 auto_commit        - Commit all changes (semantic backup)
@@ -124,7 +125,9 @@ MAX_CREATED_FILES_SCAN = 10
 # Context exhaustion thresholds
 # Token-based thresholds (absolute, not percentage)
 CONTEXT_WARNING_TOKENS = 120000  # 120K tokens - soft warning
-CONTEXT_EXHAUSTION_TOKENS = 150000  # 150K tokens - hard block (correlates with ~$50K remaining)
+CONTEXT_EXHAUSTION_TOKENS = (
+    150000  # 150K tokens - hard block (correlates with ~$50K remaining)
+)
 DEFAULT_CONTEXT_WINDOW = 200000  # Default if model info unavailable
 
 # Dismissal patterns
@@ -515,6 +518,67 @@ def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
 
     pct = used / total
     return StopHookResult.block(_format_exhaustion_block(pct, used, total))
+
+
+def _has_sudo_bypass(transcript_path: str) -> bool:
+    """Check if SUDO bypass was used in recent transcript."""
+    if not transcript_path or not Path(transcript_path).exists():
+        return False
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 5000))
+            content = f.read().decode("utf-8", errors="ignore").upper()
+        return "SUDO" in content
+    except (OSError, PermissionError):
+        return False
+
+
+@register_hook("session_close_protocol", priority=5)
+def check_session_close_protocol(data: dict, state: SessionState) -> StopHookResult:
+    """Enforce session close protocol: bd sync + next steps before exit.
+
+    Protocol:
+    1. bd sync must have been run (persists task state)
+    2. Next steps must be documented (in handoff or response)
+
+    Git commit is handled by auto_commit hook at priority 10.
+    """
+    # SUDO bypass
+    transcript_path = data.get("transcript_path", "")
+    if _has_sudo_bypass(transcript_path):
+        return StopHookResult.ok()
+
+    # Skip if this is a trivial session (few turns, no meaningful work)
+    if state.turn_count < 3 and not state.files_edited:
+        return StopHookResult.ok()
+
+    violations = []
+
+    # 1. Check bd sync ran (look for recent 'bd sync' in commands)
+    recent_cmds = list(state.commands_succeeded)[-30:]
+    has_bd_sync = any("bd sync" in cmd or "bd sync" in cmd for cmd in recent_cmds)
+    if not has_bd_sync:
+        violations.append("bd sync not run")
+
+    # 2. Check next steps documented
+    has_next_steps = bool(getattr(state, "handoff_next_steps", None))
+    # Also check if original_goal was set (indicates planning happened)
+    has_goal = bool(getattr(state, "original_goal", None))
+
+    if not has_next_steps and has_goal:
+        violations.append("next steps not documented")
+
+    if violations:
+        return StopHookResult.block(
+            f"🚨 **SESSION CLOSE PROTOCOL** - Missing: {', '.join(violations)}\n\n"
+            "**Required before session end:**\n"
+            "1. Run `bd sync` to persist task state\n"
+            "2. Document next steps in your response\n\n"
+            "**Bypass:** Say 'SUDO' to skip protocol"
+        )
+
+    return StopHookResult.ok()
 
 
 @register_hook("auto_commit", priority=10)
@@ -1300,7 +1364,6 @@ def sync_serena_memory(data: dict, state: SessionState) -> StopHookResult:
             return StopHookResult.ok()
 
     # Build session summary for memory
-    project_name = Path(cwd).name
     files_edited = list(set(state.files_edited[-20:]))
     files_created = list(set(state.files_created[-10:]))
 
@@ -1310,6 +1373,7 @@ def sync_serena_memory(data: dict, state: SessionState) -> StopHookResult:
 
     # Build memory content
     from datetime import datetime
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     memory_lines = [
@@ -1328,12 +1392,18 @@ def sync_serena_memory(data: dict, state: SessionState) -> StopHookResult:
     if state.errors_unresolved:
         memory_lines.append(f"\n## Unresolved Issues ({len(state.errors_unresolved)})")
         for err in state.errors_unresolved[:3]:
-            memory_lines.append(f"- {err.get('type', 'unknown')}: {err.get('message', '')[:100]}")
+            memory_lines.append(
+                f"- {err.get('type', 'unknown')}: {err.get('message', '')[:100]}"
+            )
 
     memory_content = "\n".join(memory_lines)
 
     # Write directly to Serena memories (fire and forget via Popen)
-    memory_file = serena_dir / "memories" / f"session_{timestamp.replace(':', '-').replace(' ', '_')}.md"
+    memory_file = (
+        serena_dir
+        / "memories"
+        / f"session_{timestamp.replace(':', '-').replace(' ', '_')}.md"
+    )
 
     # Use a simple background write - spawn detached process
     write_script = f'''
