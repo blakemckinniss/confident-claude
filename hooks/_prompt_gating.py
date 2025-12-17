@@ -379,6 +379,10 @@ def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
     if not state.original_goal:
         _init_goal(state, prompt, project_id)
         return HookResult.allow()
+    # /clear command resets goal - user is intentionally starting fresh topic
+    if prompt.strip().lower().startswith("/clear"):
+        _reset_goal_state(state)
+        return HookResult.allow()
     if "SUDO SCOPE" in prompt.upper():
         _reset_goal_state(state)
         clean = re.sub(r"\bSUDO\s+SCOPE\b", "", prompt, flags=re.IGNORECASE).strip()

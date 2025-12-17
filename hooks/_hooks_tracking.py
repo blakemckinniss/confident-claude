@@ -379,3 +379,59 @@ def check_beads_auto_sync(
         return HookResult.with_context("🔄 Beads auto-synced in background")
     except (OSError, IOError):
         return HookResult.none()
+
+
+# =============================================================================
+# PATTERN RECOGNITION CURIOSITY (priority 75)
+# =============================================================================
+
+PATTERN_PROMPTS = [
+    "🔍 What patterns are emerging across these files?",
+    "🧩 How do these pieces fit together architecturally?",
+    "🔗 What dependencies or relationships am I seeing?",
+    "💡 Is there a common abstraction hiding here?",
+]
+
+
+@register_hook("pattern_curiosity", "Read", priority=75)
+def inject_pattern_curiosity(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Inject pattern recognition prompts after reading multiple files.
+
+    After 5+ file reads, prompt expanded thinking about patterns,
+    relationships, and emergent structure across the files read.
+
+    This is the PostToolUse companion to PreToolUse curiosity_injection -
+    it fires AFTER gathering information to prompt synthesis.
+    """
+    tool_input = data.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
+
+    if not file_path:
+        return HookResult.none()
+
+    # Skip non-code files
+    code_ext = {".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java"}
+    ext = Path(file_path).suffix.lower()
+    if ext not in code_ext:
+        return HookResult.none()
+
+    # Track reads in runner_state
+    pc_state = runner_state.get("pattern_curiosity", {})
+    pc_state.setdefault("code_reads", 0)
+    pc_state.setdefault("last_prompt_at", 0)
+    pc_state["code_reads"] = pc_state.get("code_reads", 0) + 1
+
+    reads = pc_state["code_reads"]
+    last_prompt = pc_state.get("last_prompt_at", 0)
+
+    # Fire every 5 code reads, with cooldown
+    if reads >= 5 and reads - last_prompt >= 5:
+        pc_state["last_prompt_at"] = reads
+        prompt = PATTERN_PROMPTS[reads % len(PATTERN_PROMPTS)]
+        runner_state["pattern_curiosity"] = pc_state
+        return HookResult.with_context(f"💡 CURIOSITY: {prompt}")
+
+    runner_state["pattern_curiosity"] = pc_state
+    return HookResult.none()

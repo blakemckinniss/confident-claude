@@ -28,6 +28,8 @@ HOOKS INDEX (by priority):
     60 auto_learn          - Capture lessons from errors, quality hints
     65 velocity_tracker    - Detect oscillation/spinning patterns
     70 info_gain_tracker   - Detect reads without progress
+    72 beads_auto_sync     - Auto-sync beads after git commit/push
+    75 pattern_curiosity   - Pattern recognition prompts after 5+ file reads
 
 ARCHITECTURE:
   - Hooks register via @register_hook(name, matcher, priority)
