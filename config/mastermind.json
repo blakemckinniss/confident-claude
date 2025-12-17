@@ -13,7 +13,7 @@
   },
   "drift_detection": {
     "enabled": true,
-    "file_count_trigger": 8,
+    "file_count_trigger": 5,
     "test_failure_trigger": 3,
     "approach_change_detection": true,
     "cooldown_turns": 10,
@@ -41,13 +41,5 @@
     "redact_api_keys": true,
     "preserve_shape": true
   },
-  "lock_ttl_minutes": 30,
-  "rollout_phase": 2,
-  "rollout_phases": {
-    "0": "dark_launch",
-    "1": "explicit_override_only",
-    "2": "auto_planner_complex",
-    "3": "drift_escalation",
-    "4": "threshold_tuning"
-  }
+  "rollout_phase": 2
 }
