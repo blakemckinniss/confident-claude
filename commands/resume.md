@@ -1,6 +1,6 @@
 # Resume Previous Session
 
-**Purpose:** Recover context from the previous session for the CURRENT project.
+**Purpose:** Recover FULL context from the previous session for the CURRENT project.
 
 ---
 
@@ -64,18 +64,80 @@ git log --oneline -5
 Beads are project-isolated. Run from project directory:
 ```bash
 bd list --status=in_progress
-bd list --status=open
+bd list --status=open --limit=10
 ```
 
-### Step 5: Check Serena (If Available)
+### Step 5: Query claude-mem for Recent Context
+
+**CRITICAL:** Pull recent observations for this project from claude-mem:
+
+```
+mcp__plugin_claude-mem_claude-mem-search__get_recent_context with:
+  - project: "{project_name}"
+  - limit: 20
+```
+
+This returns decisions, discoveries, bugfixes, and learnings from recent sessions.
+
+If claude-mem is offline, note it and continue.
+
+### Step 6: Load Recent Session History
+
+```bash
+# Get last 3 sessions for this project from session log
+python3 -c "
+import json
+from pathlib import Path
+
+log_file = Path.home() / '.claude/memory/session_log.jsonl'
+project = '${PROJECT_NAME:-unknown}'
+
+if log_file.exists():
+    sessions = []
+    for line in open(log_file):
+        try:
+            s = json.loads(line)
+            # Match by files_edited containing project path or domain
+            files = s.get('files_edited', [])
+            if any(project.lower() in f.lower() for f in files) or s.get('domain') == project:
+                sessions.append(s)
+        except: pass
+
+    # Show last 3
+    for s in sessions[-3:]:
+        print(f\"Session {s.get('session_id', 'unknown')[:8]}:\")
+        print(f\"  Domain: {s.get('domain')}\")
+        print(f\"  Files: {', '.join(s.get('files_edited', [])[:5])}\")
+        print(f\"  Errors: {s.get('errors_unresolved', [])}\")
+        print()
+"
+```
+
+### Step 7: Load Framework Memories (Lessons & Decisions)
+
+Read these files and extract entries relevant to the current project:
+
+```bash
+# Recent lessons (last 20 lines)
+tail -20 ~/.claude/memory/__lessons.md 2>/dev/null
+
+# Recent decisions (last 20 lines)
+tail -20 ~/.claude/memory/__decisions.md 2>/dev/null
+```
+
+Look for entries mentioning the project name or related technologies.
+
+### Step 8: Check Serena Memories (If Available)
 
 If `.serena/` exists in project root:
 ```
-mcp__serena__activate_project
+mcp__serena__activate_project("{project_path}")
 mcp__serena__list_memories
 ```
 
-### Step 6: Present Recovery Summary
+Read any memories with names matching current work.
+
+### Step 9: Present Recovery Summary
 
 ```
 ## 🔄 SESSION RECOVERED - {project_name}
@@ -102,9 +164,27 @@ mcp__serena__list_memories
 [From git status/log output]
 
 ### Active Beads
-[From bd list output - IN_PROGRESS items only]
+[From bd list output - IN_PROGRESS items first, then OPEN]
+
+### Recent Learnings (from claude-mem)
+[Key observations from claude-mem query - decisions, discoveries, bugfixes]
+
+### Session History
+[Brief summary of last 3 sessions for this project]
+
+### Relevant Memories
+[Any serena memories or framework lessons that apply]
 
 ---
+
+**Context sources loaded:**
+- [ ] Session state file
+- [ ] Git status
+- [ ] Beads (project-scoped)
+- [ ] claude-mem observations
+- [ ] Session history log
+- [ ] Framework memories
+- [ ] Serena memories
 
 **Ready to continue.** What would you like me to work on?
 ```
