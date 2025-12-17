@@ -10,9 +10,9 @@ Hooks are registered via decorator and stored in the `HOOKS` list. The runner ex
 | File | Event | Purpose |
 |------|-------|---------|
 | `post_tool_use_runner.py` | PostToolUse | 1 hook (confidence tracking), bulk logic moved to inline |
-| `pre_tool_use_runner.py` | PreToolUse | 38 hooks for permission gates, blocking checks |
+| `pre_tool_use_runner.py` | PreToolUse | 43 hooks for permission gates, blocking checks |
 | `user_prompt_submit_runner.py` | UserPromptSubmit | 1 hook, context injection via _prompt_* modules |
-| `stop_runner.py` | Stop | 12 hooks for completion gate, cleanup |
+| `stop_runner.py` | Stop | 14 hooks for completion gate, cleanup |
 
 ### Additional Runners
 | File | Event | Purpose |

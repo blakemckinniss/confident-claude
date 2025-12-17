@@ -2,17 +2,18 @@
 
 ## Overview
 
-38 registered hooks in `pre_tool_use_runner.py` that gate tool execution. These run BEFORE a tool executes and can block or modify the action.
+43 registered hooks in `pre_tool_use_runner.py` that gate tool execution. These run BEFORE a tool executes and can block or modify the action.
 
 ## Location
 - **File**: `hooks/pre_tool_use_runner.py`
-- **Total hooks**: 38 registered via `@register_hook`
+- **Total hooks**: 43 registered via `@register_hook`
 
 ## Hooks by Category
 
-### Caching & Performance (Priority 2-4)
+### Critical Safety (Priority 1-4)
 | Hook | Matcher | Priority | Purpose |
 |------|---------|----------|---------|
+| `fp_fix_enforcer` | None | 1 | Force false positive fixes before continuing |
 | `read_cache` | Read | 2 | Cache file reads to prevent redundant I/O |
 | `self_heal_enforcer` | None | 2 | Force framework error fixes |
 | `exploration_cache` | Task | 3 | Cache exploration results |
@@ -21,14 +22,18 @@
 | `beads_parallel` | Bash | 4 | Parallel bead operations |
 | `bead_enforcement` | Edit\|Write | 4 | Require in_progress bead for edits |
 
-### Recursion & Safety (Priority 5-15)
+### Recursion & Safety (Priority 5-17)
 | Hook | Matcher | Priority | Purpose |
 |------|---------|----------|---------|
 | `recursion_guard` | Edit\|Write\|Bash | 5 | Prevent recursive/runaway operations |
+| `serena_activation_gate` | mcp__serena__ | 6 | Require Serena activation; reads project_name from project.yml |
 | `loop_detector` | Bash | 10 | Detect bash command loops |
 | `python_path_enforcer` | Bash | 12 | Enforce correct Python path |
 | `script_nudge` | Bash | 14 | Suggest scripts over manual commands |
+| `inline_server_background` | Bash | 14 | Block inline server backgrounding anti-pattern |
 | `background_enforcer` | Bash | 15 | Enforce background for slow commands |
+| `homeostatic_drive` | None | 16 | Entity model: suggest recovery when below stasis |
+| `threat_anticipation` | Edit\|Write\|Bash | 17 | Predict confidence trajectory before risky actions |
 
 ### Confidence Gates (Priority 18-32)
 | Hook | Matcher | Priority | Purpose |

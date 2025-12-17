@@ -1803,6 +1803,8 @@ class FileReeditReducer(ConfidenceReducer):
         "CLAUDE.md",
         "/rules/",
         "/.claude/rules/",
+        "/plans/",  # Plan mode explicitly requires iterative plan file edits
+        "/.claude/plans/",
     )
 
     def should_trigger(

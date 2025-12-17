@@ -1,6 +1,6 @@
 # Capabilities Index
 
-**Generated:** 2025-12-14 (complexity refactoring documented)
+**Generated:** 2025-12-16 (hook counts updated: 59 hooks, 47 ops, 72 commands)
 
 **PURPOSE:** Before proposing new functionality, check if it exists here.
 
@@ -99,6 +99,32 @@ Key lib files refactored for maintainability:
 - Early returns to flatten nesting
 
 **Result:** Overall lib complexity A (4.33 avg), 19 C901 violations remaining (down from ~50+)
+
+---
+
+## ⚠️ Key Safety Hooks
+
+### Inline Server Background Block (Dec 2025)
+
+**Hook:** `inline_server_background` (priority 14)
+
+**Blocks this anti-pattern:**
+```bash
+# ❌ Race conditions, hangs, unpredictable
+uvicorn app:app & sleep 2 && curl localhost:8000
+npm run dev & sleep 5 && curl localhost:3000
+```
+
+**Correct pattern:**
+```bash
+# ✅ Step 1: Start server in background
+Bash(command="uvicorn app:app", run_in_background=true)
+
+# ✅ Step 2: Interact separately
+Bash(command="curl localhost:8000/health")
+```
+
+**Why:** Inline `&` backgrounding creates race conditions - `sleep N` is never reliable for server startup. Use `run_in_background=true` and `TaskOutput` to monitor.
 
 ---
 

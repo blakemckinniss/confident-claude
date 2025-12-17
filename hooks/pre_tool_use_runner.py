@@ -17,6 +17,7 @@ HOOKS INDEX (by priority):
   SAFETY (5-20):
     5  recursion_guard     - Block nested .claude/.claude paths
     10 loop_detector       - Block bash loops
+    14 inline_server_background - Block server & curl/sleep patterns
     15 background_enforcer - Require background for slow commands
     18 confidence_tool_gate - Block tools at low confidence levels
 
@@ -305,6 +306,94 @@ def check_script_nudge(data: dict, state: SessionState) -> HookResult:
                 "⚡ SCRIPT OPPORTUNITY: loop/iteration detected\n"
                 "→ Consider: .claude/tmp/solve_$(date +%s).py"
             )
+    return HookResult.approve()
+
+
+@register_hook("inline_server_background", "Bash", priority=14)
+def check_inline_server_background(data: dict, state: SessionState) -> HookResult:
+    """Block inline server backgrounding pattern - use run_in_background instead.
+
+    Anti-pattern: `uvicorn app:app & sleep 2 && curl localhost:8000`
+    This creates race conditions, hangs, and unpredictable behavior.
+
+    Correct pattern: Use run_in_background=true for the server,
+    then separate Bash calls to interact with it.
+    """
+    tool_input = data.get("tool_input", {})
+    command = tool_input.get("command", "")
+
+    if not command or "&" not in command:
+        return HookResult.approve()
+
+    # SUDO bypass
+    if data.get("_sudo_bypass"):
+        return HookResult.approve()
+
+    # Strip heredoc content to avoid false positives
+    cmd_to_check = strip_heredoc_content(command)
+
+    # Server-like commands that should use run_in_background
+    SERVER_PATTERNS = [
+        r"\buvicorn\b",
+        r"\bgunicorn\b",
+        r"\bflask\s+run\b",
+        r"\bnpm\s+(run\s+)?(dev|start|serve)\b",
+        r"\byarn\s+(dev|start|serve)\b",
+        r"\bpnpm\s+(dev|start|serve)\b",
+        r"\bpython\s+-m\s+http\.server\b",
+        r"\bpython\s+.*\bapp\.py\b",
+        r"\bnode\s+.*server",
+        r"\bng\s+serve\b",
+        r"\bvite\b",
+        r"\bnext\s+dev\b",
+        r"\brails\s+server\b",
+        r"\bcargo\s+run\b.*--.*server",
+        r"\bgo\s+run\b.*server",
+    ]
+
+    # Commands that indicate interaction with the backgrounded server
+    INTERACTION_PATTERNS = [
+        r"\bcurl\b",
+        r"\bwget\b",
+        r"\bhttpie\b",
+        r"\bhttp\s+",  # httpie alias
+        r"\bsleep\b",
+        r"\bpkill\b",
+        r"\bkill\b",
+    ]
+
+    # Check if command has server backgrounded with &
+    has_backgrounded_server = False
+    server_name = ""
+    for pattern in SERVER_PATTERNS:
+        # Look for pattern followed by & (with optional stuff in between)
+        if re.search(rf"{pattern}[^&]*&", cmd_to_check, re.IGNORECASE):
+            has_backgrounded_server = True
+            match = re.search(pattern, cmd_to_check, re.IGNORECASE)
+            if match:
+                server_name = match.group(0)
+            break
+
+    if not has_backgrounded_server:
+        return HookResult.approve()
+
+    # Check if there's interaction after the &
+    has_interaction = any(
+        re.search(pattern, cmd_to_check, re.IGNORECASE)
+        for pattern in INTERACTION_PATTERNS
+    )
+
+    if has_interaction:
+        return HookResult.deny(
+            f"⛔ **INLINE SERVER BACKGROUND BLOCKED**\n"
+            f"Pattern: `{server_name} ... & ... curl/sleep`\n\n"
+            f"This creates race conditions and hangs. Instead:\n"
+            f"1. Run server with `run_in_background: true`\n"
+            f"2. Wait for startup (check logs with TaskOutput)\n"
+            f"3. Then run curl/tests in separate Bash call\n\n"
+            f"Say SUDO to bypass."
+        )
+
     return HookResult.approve()
 
 
@@ -1097,12 +1186,26 @@ def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
     if serena_activated:
         return HookResult.approve()
 
-    # Block with helpful message
+    # Block with helpful message - find project name from .serena/project.yml
     serena_project = ""
     cwd = Path.cwd()
     for parent in [cwd, *cwd.parents]:
-        if (parent / ".serena").is_dir():
-            serena_project = parent.name
+        serena_dir = parent / ".serena"
+        if serena_dir.is_dir():
+            # Try to read project_name from project.yml
+            project_yml = serena_dir / "project.yml"
+            if project_yml.exists():
+                try:
+                    content = project_yml.read_text()
+                    for line in content.splitlines():
+                        if line.startswith("project_name:"):
+                            serena_project = line.split(":", 1)[1].strip().strip('"\'')
+                            break
+                except Exception:
+                    pass
+            # Fall back to folder name if no project_name found
+            if not serena_project:
+                serena_project = parent.name
             break
         if parent == Path.home():
             break
@@ -1623,35 +1726,10 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
                 )
             return HookResult.approve()
 
-        # New file creation - check parent directory was explored
-        parent_dir = str(path_obj.parent)
-        parent_explored = any(
-            parent_dir in f or str(path_obj.parent.name) in f
-            for f in getattr(state, "dirs_listed", [])
-        )
-        # Also accept if parent was read via Glob
-        glob_explored = any(
-            parent_dir in p or file_path.rsplit("/", 1)[0] in p
-            for p in getattr(state, "globs_run", [])
-        )
-        # Also accept if any file in parent was read
-        files_in_parent = any(
-            str(Path(f).parent) == parent_dir for f in state.files_read
-        )
-
-        if parent_explored or glob_explored or files_in_parent:
-            return HookResult.approve()
-
-        # Allow if parent directory doesn't exist (will be created)
-        if not path_obj.parent.exists():
-            return HookResult.approve()
-
-        filename = path_obj.name
-        parent_name = path_obj.parent.name
-        return HookResult.deny(
-            f"**GAP DETECTED**: Creating `{filename}` without exploring `{parent_name}/` first.\n"
-            f"Use `ls {parent_dir}` or Glob to verify location before creating new files."
-        )
+        # NOTE: "ls before create" check disabled - too much friction for little value
+        # The check was blocking legitimate new file creation in known project directories
+        # Keep the "read before overwrite" check above which is actually valuable
+        return HookResult.approve()
 
     # === EDIT TOOL: Check "read before edit" ===
     if tool_name != "Edit":

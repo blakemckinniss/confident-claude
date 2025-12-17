@@ -301,3 +301,21 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-16 13:26
 - [abandoned_stubs] ⚠️ ABANDONED WORK: _question_triggers.py contain stubs/TODOs
+
+### 2025-12-16 15:01
+- [abandoned_stubs] ⚠️ ABANDONED WORK: api.ts contain stubs/TODOs
+
+### 2025-12-16 15:19
+- [abandoned_stubs] ⚠️ ABANDONED WORK: api.ts, generate.py contain stubs/TODOs
+
+### 2025-12-16 16:29
+- [abandoned_stubs] ⚠️ ABANDONED WORK: crawl.py, validate.py contain stubs/TODOs
+
+### 2025-12-16 17:42
+- [abandoned_stubs] ⚠️ ABANDONED WORK: planner.py, order_tester.py, order_test.py, email.py, emailTemplates.ts contain stubs/TODOs
+
+### 2025-12-16 17:52
+- [abandoned_stubs] ⚠️ ABANDONED WORK: planner.py, order_tester.py, order_test.py, email.py, emailTemplates.ts, audit.py contain stubs/TODOs
+
+### 2025-12-16 18:36
+- [abandoned_stubs] ⚠️ ABANDONED WORK: test_live_integrations.py, test_e2e_ui.py contain stubs/TODOs
