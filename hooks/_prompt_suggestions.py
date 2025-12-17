@@ -345,7 +345,8 @@ def check_self_heal_diagnostic(data: dict, state: SessionState) -> HookResult:
     # Path-specific diagnostics
     if "hook" in target.lower() or "runner" in target.lower():
         diagnostics.append(
-            "~/.claude/.venv/bin/python -c \"import sys; sys.path.insert(0, '/home/blake/.claude/hooks'); import pre_tool_use_runner\"  # Test import"
+            "cd ~/.claude/hooks && ~/.claude/.venv/bin/python -c "
+            '"import pre_tool_use_runner"  # Test import'
         )
     if "session_state" in target.lower() or "lib" in target.lower():
         diagnostics.append(
