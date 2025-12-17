@@ -851,6 +851,9 @@ def main():
     except (json.JSONDecodeError, ValueError):
         pass
 
+    # === SYSTEM HEALTH CHECK (v3.9) - Start async early ===
+    health_proc = start_health_check_async()
+
     # === DEPENDENCY CHECK (v3.10) ===
     dep_warning = None
     if DEPENDENCY_CHECK_AVAILABLE:
@@ -861,8 +864,8 @@ def main():
         except Exception:
             pass  # Non-critical, don't fail session start
 
-    # === SYSTEM HEALTH CHECK (v3.9) ===
-    health_warning = check_system_health()
+    # === SYSTEM HEALTH CHECK - Collect result (runs in parallel with dep check) ===
+    health_warning = collect_health_result(health_proc)
 
     # === PROJECT-AWARE INITIALIZATION ===
     project_context = None
