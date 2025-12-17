@@ -51,6 +51,7 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
                 process_user_prompt(
                     prompt=prompt,
                     turn_count=getattr(state, "turn_count", 0),
+                    session_id=getattr(state, "session_id", None),
                 )
                 # Log but don't inject
                 return HookResult(decision="allow", context=None)
@@ -64,6 +65,7 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         result = process_user_prompt(
             prompt=prompt,
             turn_count=getattr(state, "turn_count", 0),
+            session_id=getattr(state, "session_id", None),
         )
 
         # Build context from result

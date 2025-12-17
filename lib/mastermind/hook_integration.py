@@ -15,13 +15,16 @@ from typing import Any
 
 from .config import get_config
 from .state import MastermindState, load_state, save_state
-from .context_packer import pack_for_router, pack_for_planner
+from .context_packer import pack_for_router
 from .routing import parse_user_override, make_routing_decision
 from .router_groq import call_groq_router, apply_risk_lexicon
 from .redaction import redact_text
 from .drift import evaluate_drift, should_escalate
-from .executor_instructions import generate_executor_instructions, should_inject_instructions
-from .telemetry import log_router_decision, log_planner_called, log_escalation
+from .executor_instructions import (
+    generate_executor_instructions,
+    should_inject_instructions,
+)
+from .telemetry import log_router_decision, log_escalation
 from .variance import generate_variance_report, format_variance_for_user
 
 
@@ -34,6 +37,7 @@ def process_user_prompt(
     prompt: str,
     turn_count: int,
     cwd: Path | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Process user prompt through mastermind pipeline.
 
@@ -52,7 +56,7 @@ def process_user_prompt(
         - warnings: Any warnings for user
     """
     config = get_config()
-    session_id = get_session_id()
+    session_id = session_id or get_session_id()
     result: dict[str, Any] = {
         "inject_context": None,
         "modified_prompt": prompt,
