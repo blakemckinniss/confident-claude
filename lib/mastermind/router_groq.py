@@ -1,0 +1,226 @@
+"""Groq API router client using Kimi K2 for task classification.
+
+Classifies user prompts as: trivial, medium, or complex.
+Returns structured JSON with classification, confidence, and reason codes.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from dataclasses import dataclass
+from typing import Any
+
+from .config import get_config
+
+# Groq API endpoint
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "moonshotai/kimi-k2-instruct"
+
+# Classification prompt
+ROUTER_SYSTEM_PROMPT = """You are a task complexity classifier for an AI coding assistant.
+
+Classify the user's request into one of three categories:
+- trivial: Simple questions, lookups, single-file changes, explanations
+- medium: Multi-file changes, moderate refactoring, adding features to existing code
+- complex: New systems, architecture changes, multi-component features, security-sensitive work
+
+Output JSON only:
+{"classification": "trivial|medium|complex", "confidence": 0.0-1.0, "reason_codes": ["code1", "code2"]}
+
+Reason codes (pick 1-3):
+- single_file: Affects one file
+- multi_file: Affects multiple files
+- new_feature: Creating new functionality
+- refactor: Restructuring existing code
+- bug_fix: Fixing a bug
+- explanation: Just explaining/answering
+- security: Security-sensitive changes
+- architecture: System design changes
+- config: Configuration changes
+- docs: Documentation only
+- test: Test-related work"""
+
+
+@dataclass
+class RouterResponse:
+    """Parsed router classification response."""
+    classification: str  # trivial, medium, complex
+    confidence: float
+    reason_codes: list[str]
+    raw_response: str
+    latency_ms: int
+    error: str | None = None
+
+    @property
+    def is_complex(self) -> bool:
+        return self.classification == "complex"
+
+    @property
+    def is_uncertain(self) -> bool:
+        config = get_config()
+        return self.confidence < config.router.uncertainty_threshold
+
+
+def _parse_response(text: str) -> dict[str, Any]:
+    """Parse JSON from model response, handling markdown code blocks."""
+    text = text.strip()
+
+    # Handle markdown code blocks
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # Remove first and last lines (``` markers)
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Try to extract JSON from text
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(text[start:end])
+        raise
+
+
+def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
+    """Call Groq API to classify task complexity.
+
+    Args:
+        prompt: The packed context prompt for classification
+        timeout: Request timeout in seconds
+
+    Returns:
+        RouterResponse with classification, confidence, and reason codes
+    """
+    import urllib.request
+    import urllib.error
+
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        return RouterResponse(
+            classification="complex",
+            confidence=0.0,
+            reason_codes=["no_api_key"],
+            raw_response="",
+            latency_ms=0,
+            error="GROQ_API_KEY not set",
+        )
+
+    start = time.time()
+
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 150,
+        "response_format": {"type": "json_object"},
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        req = urllib.request.Request(
+            GROQ_API_URL,
+            data=json.dumps(payload).encode(),
+            headers=headers,
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            result = json.loads(resp.read().decode())
+
+        latency_ms = int((time.time() - start) * 1000)
+        raw_text = result["choices"][0]["message"]["content"]
+
+        try:
+            parsed = _parse_response(raw_text)
+            return RouterResponse(
+                classification=parsed.get("classification", "complex"),
+                confidence=float(parsed.get("confidence", 0.5)),
+                reason_codes=parsed.get("reason_codes", []),
+                raw_response=raw_text,
+                latency_ms=latency_ms,
+            )
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            # Parse error - default to complex (safe fallback)
+            return RouterResponse(
+                classification="complex",
+                confidence=0.5,
+                reason_codes=["parse_error"],
+                raw_response=raw_text,
+                latency_ms=latency_ms,
+                error=f"Parse error: {e}",
+            )
+
+    except urllib.error.HTTPError as e:
+        latency_ms = int((time.time() - start) * 1000)
+        return RouterResponse(
+            classification="complex",
+            confidence=0.0,
+            reason_codes=["http_error"],
+            raw_response="",
+            latency_ms=latency_ms,
+            error=f"HTTP {e.code}: {e.reason}",
+        )
+    except urllib.error.URLError as e:
+        latency_ms = int((time.time() - start) * 1000)
+        return RouterResponse(
+            classification="complex",
+            confidence=0.0,
+            reason_codes=["network_error"],
+            raw_response="",
+            latency_ms=latency_ms,
+            error=f"Network error: {e.reason}",
+        )
+    except TimeoutError:
+        latency_ms = int((time.time() - start) * 1000)
+        return RouterResponse(
+            classification="complex",
+            confidence=0.0,
+            reason_codes=["timeout"],
+            raw_response="",
+            latency_ms=latency_ms,
+            error="Request timed out",
+        )
+
+
+def apply_risk_lexicon(prompt: str, response: RouterResponse) -> RouterResponse:
+    """Override classification for high-risk keywords.
+
+    Certain keywords always escalate to complex regardless of router decision.
+    """
+    config = get_config()
+    if not config.router.risk_lexicon_override:
+        return response
+
+    # High-risk keywords that force complex classification
+    risk_keywords = [
+        "security", "auth", "authentication", "authorization",
+        "password", "credential", "secret", "api key", "token",
+        "encrypt", "decrypt", "vulnerability", "injection",
+        "delete all", "drop table", "rm -rf", "sudo",
+        "production", "deploy", "migration", "rollback",
+    ]
+
+    prompt_lower = prompt.lower()
+    triggered = [kw for kw in risk_keywords if kw in prompt_lower]
+
+    if triggered and response.classification != "complex":
+        return RouterResponse(
+            classification="complex",
+            confidence=response.confidence,
+            reason_codes=response.reason_codes + ["risk_lexicon_override"],
+            raw_response=response.raw_response,
+            latency_ms=response.latency_ms,
+            error=response.error,
+        )
+
+    return response

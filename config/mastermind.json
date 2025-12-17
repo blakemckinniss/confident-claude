@@ -1,0 +1,52 @@
+{
+  "session_start_router": {
+    "enabled": false,
+    "force_complex_when_uncertain": true,
+    "uncertainty_threshold": 0.6,
+    "risk_lexicon_override": true
+  },
+  "planner": {
+    "enabled": false,
+    "model": "openai/gpt-5.2",
+    "mini_mode_threshold": "trivial",
+    "max_blueprint_tokens": 4000
+  },
+  "drift_detection": {
+    "enabled": false,
+    "file_count_trigger": 5,
+    "test_failure_trigger": 2,
+    "approach_change_detection": true,
+    "cooldown_turns": 8,
+    "max_escalations_per_session": 3
+  },
+  "context_packer": {
+    "router_token_budget": 1200,
+    "planner_token_budget": 4000,
+    "include_repo_structure": true,
+    "include_git_diff": true,
+    "include_beads": true,
+    "include_test_status": true,
+    "include_serena_context": true
+  },
+  "telemetry": {
+    "enabled": true,
+    "log_router_decisions": true,
+    "log_planner_calls": true,
+    "log_escalations": true,
+    "jsonl_per_session": true
+  },
+  "safety": {
+    "redact_secrets": true,
+    "redact_env_vars": true,
+    "redact_api_keys": true,
+    "preserve_shape": true
+  },
+  "rollout_phase": 0,
+  "rollout_phases": {
+    "0": "dark_launch",
+    "1": "explicit_override_only",
+    "2": "auto_planner_complex",
+    "3": "drift_escalation",
+    "4": "threshold_tuning"
+  }
+}
