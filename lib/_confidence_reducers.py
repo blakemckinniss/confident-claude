@@ -443,6 +443,14 @@ class VersionFileReducer(ConfidenceReducer):
             r"\.\d+\.",  # file.2.py
         ]
     )
+    # Paths where version-like patterns are expected (not tech debt)
+    exempt_paths: list = field(
+        default_factory=lambda: [
+            r"/plugins/cache/",  # Plugin cache uses semver directories like /7.3.2/
+            r"/node_modules/",  # npm packages have version directories
+            r"\.venv/",  # Python venvs may have versioned paths
+        ]
+    )
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -452,6 +460,10 @@ class VersionFileReducer(ConfidenceReducer):
         file_path = context.get("file_path", "")
         if not file_path:
             return False
+        # Check exempt paths first
+        for exempt in self.exempt_paths:
+            if re.search(exempt, file_path, re.IGNORECASE):
+                return False
         for pattern in self.patterns:
             if re.search(pattern, file_path, re.IGNORECASE):
                 return True
