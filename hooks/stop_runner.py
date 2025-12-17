@@ -122,8 +122,9 @@ DISMISSAL_SCAN_BYTES = 20000
 MAX_CREATED_FILES_SCAN = 10
 
 # Context exhaustion thresholds
-CONTEXT_WARNING_THRESHOLD = 0.75  # 75% - soft warning
-CONTEXT_EXHAUSTION_THRESHOLD = 0.85  # 85% - hard block
+# Token-based thresholds (absolute, not percentage)
+CONTEXT_WARNING_TOKENS = 120000  # 120K tokens - soft warning
+CONTEXT_EXHAUSTION_TOKENS = 150000  # 150K tokens - hard block (correlates with ~$50K remaining)
 DEFAULT_CONTEXT_WINDOW = 200000  # Default if model info unavailable
 
 # Dismissal patterns
@@ -452,7 +453,7 @@ The `/resume` command will:
 
 @register_hook("context_warning", priority=3)
 def check_context_warning(data: dict, state: SessionState) -> StopHookResult:
-    """Warn when context reaches 75% - non-blocking heads up."""
+    """Warn when context reaches 120K tokens - non-blocking heads up."""
     # Skip if already warned this session
     if state.nudge_history.get("context_warning_shown"):
         return StopHookResult.ok()
@@ -464,31 +465,32 @@ def check_context_warning(data: dict, state: SessionState) -> StopHookResult:
     if total == 0:
         return StopHookResult.ok()
 
-    pct = used / total
-    if pct < CONTEXT_WARNING_THRESHOLD:
+    # Token-based thresholds (absolute, not percentage)
+    if used < CONTEXT_WARNING_TOKENS:
         return StopHookResult.ok()
 
     # Don't warn if we're already at exhaustion threshold (let that hook handle it)
-    if pct >= CONTEXT_EXHAUSTION_THRESHOLD:
+    if used >= CONTEXT_EXHAUSTION_TOKENS:
         return StopHookResult.ok()
 
     # Mark as warned
     state.nudge_history["context_warning_shown"] = True
 
+    pct = used / total
     return StopHookResult.warn(
-        f"⚠️ **CONTEXT WARNING** - {pct:.0%} used ({used:,} / {total:,} tokens)\n\n"
+        f"⚠️ **CONTEXT WARNING** - {used:,} tokens used ({pct:.0%} of {total:,})\n\n"
         "Consider:\n"
         "- Wrapping up current task\n"
         "- Running `bd sync` to save bead state\n"
         "- Committing work in progress\n\n"
-        f"**At {CONTEXT_EXHAUSTION_THRESHOLD:.0%}, you'll be prompted to wrap up.** "
+        f"**At {CONTEXT_EXHAUSTION_TOKENS:,} tokens, you'll be prompted to wrap up.** "
         "Session state auto-persists; `/resume` in next session recovers context."
     )
 
 
 @register_hook("context_exhaustion", priority=4)
 def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
-    """Block session end at 85% context - prompt wrap-up actions.
+    """Block session end at 150K tokens - prompt wrap-up actions.
 
     State is auto-persisted; `/resume` in the NEXT session recovers it.
     This hook just ensures Claude wraps up cleanly before context dies.
@@ -504,13 +506,14 @@ def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
     if total == 0:
         return StopHookResult.ok()
 
-    pct = used / total
-    if pct < CONTEXT_EXHAUSTION_THRESHOLD:
+    # Token-based threshold (absolute, not percentage)
+    if used < CONTEXT_EXHAUSTION_TOKENS:
         return StopHookResult.ok()
 
     # Mark as shown (only block once per session)
     state.nudge_history["context_exhaustion_shown"] = True
 
+    pct = used / total
     return StopHookResult.block(_format_exhaustion_block(pct, used, total))
 
 
