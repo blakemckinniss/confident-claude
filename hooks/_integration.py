@@ -128,7 +128,7 @@ def is_claudemem_available() -> bool:
         import urllib.request
 
         req = urllib.request.Request(
-            "http://127.0.0.1:37777/api/status",
+            "http://127.0.0.1:37777/health",
             method="GET",
         )
         with urllib.request.urlopen(req, timeout=1) as resp:
