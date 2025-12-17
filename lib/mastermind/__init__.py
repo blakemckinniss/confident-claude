@@ -7,14 +7,30 @@ Architecture:
 - Drift detection monitors for mid-session divergence
 """
 
-from .config import MastermindConfig, load_config, get_config
+from .config import (
+    MastermindConfig,
+    load_config,
+    get_config,
+    save_config,
+    update_drift_thresholds,
+)
 from .state import MastermindState, Blueprint, load_state, save_state
 from .routing import parse_user_override, make_routing_decision
 from .hook_integration import process_user_prompt
+from .telemetry import get_threshold_effectiveness
 
 __all__ = [
-    "MastermindConfig", "load_config", "get_config",
-    "MastermindState", "Blueprint", "load_state", "save_state",
-    "parse_user_override", "make_routing_decision",
+    "MastermindConfig",
+    "load_config",
+    "get_config",
+    "save_config",
+    "update_drift_thresholds",
+    "MastermindState",
+    "Blueprint",
+    "load_state",
+    "save_state",
+    "parse_user_override",
+    "make_routing_decision",
     "process_user_prompt",
+    "get_threshold_effectiveness",
 ]

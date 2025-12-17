@@ -20,6 +20,7 @@ _config_cache: MastermindConfig | None = None
 @dataclass
 class RouterConfig:
     """Session-start router configuration."""
+
     enabled: bool = False
     force_complex_when_uncertain: bool = True
     uncertainty_threshold: float = 0.6
@@ -29,6 +30,7 @@ class RouterConfig:
 @dataclass
 class PlannerConfig:
     """GPT-5.2 planner configuration."""
+
     enabled: bool = False
     model: str = "openai/gpt-5.2"
     mini_mode_threshold: str = "trivial"
@@ -38,6 +40,7 @@ class PlannerConfig:
 @dataclass
 class DriftConfig:
     """Mid-session drift detection configuration."""
+
     enabled: bool = False
     file_count_trigger: int = 5
     test_failure_trigger: int = 2
@@ -49,6 +52,7 @@ class DriftConfig:
 @dataclass
 class ContextPackerConfig:
     """Context packing token budgets."""
+
     router_token_budget: int = 1200
     planner_token_budget: int = 4000
     include_repo_structure: bool = True
@@ -61,6 +65,7 @@ class ContextPackerConfig:
 @dataclass
 class TelemetryConfig:
     """Observability settings."""
+
     enabled: bool = True
     log_router_decisions: bool = True
     log_planner_calls: bool = True
@@ -71,6 +76,7 @@ class TelemetryConfig:
 @dataclass
 class SafetyConfig:
     """Secret redaction settings."""
+
     redact_secrets: bool = True
     redact_env_vars: bool = True
     redact_api_keys: bool = True
@@ -80,6 +86,7 @@ class SafetyConfig:
 @dataclass
 class MastermindConfig:
     """Complete mastermind configuration."""
+
     router: RouterConfig = field(default_factory=RouterConfig)
     planner: PlannerConfig = field(default_factory=PlannerConfig)
     drift: DriftConfig = field(default_factory=DriftConfig)
@@ -117,7 +124,9 @@ def _load_nested(data: dict[str, Any], key: str, cls: type) -> Any:
     return cls()
 
 
-def load_config(path: Path | None = None, force_reload: bool = False) -> MastermindConfig:
+def load_config(
+    path: Path | None = None, force_reload: bool = False
+) -> MastermindConfig:
     """Load mastermind configuration from JSON file.
 
     Args:
@@ -168,3 +177,102 @@ def clear_cache() -> None:
     """Clear config cache (for testing)."""
     global _config_cache
     _config_cache = None
+
+
+def save_config(config: MastermindConfig, path: Path | None = None) -> Path:
+    """Save mastermind configuration to JSON file.
+
+    Args:
+        config: Configuration to save
+        path: Override config path (default: ~/.claude/config/mastermind.json)
+
+    Returns:
+        Path where config was saved
+    """
+    global _config_cache
+    config_path = path or CONFIG_PATH
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {
+        "session_start_router": {
+            "enabled": config.router.enabled,
+            "force_complex_when_uncertain": config.router.force_complex_when_uncertain,
+            "uncertainty_threshold": config.router.uncertainty_threshold,
+            "risk_lexicon_override": config.router.risk_lexicon_override,
+        },
+        "planner": {
+            "enabled": config.planner.enabled,
+            "model": config.planner.model,
+            "mini_mode_threshold": config.planner.mini_mode_threshold,
+            "max_blueprint_tokens": config.planner.max_blueprint_tokens,
+        },
+        "drift_detection": {
+            "enabled": config.drift.enabled,
+            "file_count_trigger": config.drift.file_count_trigger,
+            "test_failure_trigger": config.drift.test_failure_trigger,
+            "approach_change_detection": config.drift.approach_change_detection,
+            "cooldown_turns": config.drift.cooldown_turns,
+            "max_escalations_per_session": config.drift.max_escalations_per_session,
+        },
+        "context_packer": {
+            "router_token_budget": config.context_packer.router_token_budget,
+            "planner_token_budget": config.context_packer.planner_token_budget,
+            "include_repo_structure": config.context_packer.include_repo_structure,
+            "include_git_diff": config.context_packer.include_git_diff,
+            "include_beads": config.context_packer.include_beads,
+            "include_test_status": config.context_packer.include_test_status,
+            "include_serena_context": config.context_packer.include_serena_context,
+        },
+        "telemetry": {
+            "enabled": config.telemetry.enabled,
+            "log_router_decisions": config.telemetry.log_router_decisions,
+            "log_planner_calls": config.telemetry.log_planner_calls,
+            "log_escalations": config.telemetry.log_escalations,
+            "jsonl_per_session": config.telemetry.jsonl_per_session,
+        },
+        "safety": {
+            "redact_secrets": config.safety.redact_secrets,
+            "redact_env_vars": config.safety.redact_env_vars,
+            "redact_api_keys": config.safety.redact_api_keys,
+            "preserve_shape": config.safety.preserve_shape,
+        },
+        "rollout_phase": config.rollout_phase,
+    }
+
+    with open(config_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+    _config_cache = config
+    return config_path
+
+
+def update_drift_thresholds(
+    file_count: int | None = None,
+    test_failures: int | None = None,
+    cooldown: int | None = None,
+    max_escalations: int | None = None,
+) -> MastermindConfig:
+    """Update drift detection thresholds at runtime.
+
+    Args:
+        file_count: New file count trigger (default: unchanged)
+        test_failures: New test failure trigger (default: unchanged)
+        cooldown: New cooldown turns (default: unchanged)
+        max_escalations: New max escalations per session (default: unchanged)
+
+    Returns:
+        Updated config
+    """
+    config = load_config(force_reload=True)
+
+    if file_count is not None:
+        config.drift.file_count_trigger = file_count
+    if test_failures is not None:
+        config.drift.test_failure_trigger = test_failures
+    if cooldown is not None:
+        config.drift.cooldown_turns = cooldown
+    if max_escalations is not None:
+        config.drift.max_escalations_per_session = max_escalations
+
+    save_config(config)
+    return config

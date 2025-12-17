@@ -21,6 +21,7 @@ TELEMETRY_DIR = Path.home() / ".claude" / "tmp" / "mastermind_telemetry"
 @dataclass
 class TelemetryEvent:
     """Base telemetry event."""
+
     event_type: str
     session_id: str
     timestamp: float
@@ -175,3 +176,117 @@ def get_session_summary(session_id: str) -> dict[str, Any]:
         "last_event": events[-1].timestamp,
         "duration_seconds": events[-1].timestamp - events[0].timestamp,
     }
+
+
+# Phase 4: Threshold effectiveness telemetry
+
+
+def log_threshold_check(
+    session_id: str,
+    turn: int,
+    threshold_type: str,
+    current_value: int,
+    threshold_value: int,
+    triggered: bool,
+    epoch_id: int,
+) -> None:
+    """Log threshold evaluation for effectiveness analysis.
+
+    Args:
+        session_id: Session identifier
+        turn: Current turn number
+        threshold_type: Type of threshold (file_count, test_failures)
+        current_value: Current metric value
+        threshold_value: Configured threshold
+        triggered: Whether threshold was exceeded
+        epoch_id: Current epoch for blueprint tracking
+    """
+    log_event(
+        "threshold_check",
+        session_id,
+        turn,
+        {
+            "threshold_type": threshold_type,
+            "current_value": current_value,
+            "threshold_value": threshold_value,
+            "triggered": triggered,
+            "headroom": threshold_value - current_value,
+            "utilization_pct": (current_value / threshold_value * 100)
+            if threshold_value
+            else 0,
+            "epoch_id": epoch_id,
+        },
+    )
+
+
+def log_threshold_update(
+    session_id: str,
+    turn: int,
+    changes: dict[str, tuple[int, int]],
+    reason: str | None = None,
+) -> None:
+    """Log threshold configuration change.
+
+    Args:
+        session_id: Session identifier
+        turn: Current turn number
+        changes: Dict of {threshold_name: (old_value, new_value)}
+        reason: Optional reason for threshold adjustment
+    """
+    log_event(
+        "threshold_update",
+        session_id,
+        turn,
+        {
+            "changes": {k: {"old": v[0], "new": v[1]} for k, v in changes.items()},
+            "reason": reason,
+        },
+    )
+
+
+def get_threshold_effectiveness(session_id: str) -> dict[str, Any]:
+    """Analyze threshold effectiveness for a session.
+
+    Returns metrics on how well thresholds are calibrated:
+    - How often each threshold triggered
+    - Average headroom when not triggered
+    - Utilization distribution
+    """
+    events = read_session_telemetry(session_id)
+    threshold_events = [e for e in events if e.event_type == "threshold_check"]
+
+    if not threshold_events:
+        return {"session_id": session_id, "threshold_checks": 0}
+
+    by_type: dict[str, list[dict]] = {}
+    for e in threshold_events:
+        t_type = e.data.get("threshold_type", "unknown")
+        if t_type not in by_type:
+            by_type[t_type] = []
+        by_type[t_type].append(e.data)
+
+    effectiveness: dict[str, Any] = {
+        "session_id": session_id,
+        "threshold_checks": len(threshold_events),
+        "by_type": {},
+    }
+
+    for t_type, checks in by_type.items():
+        triggered_count = sum(1 for c in checks if c.get("triggered"))
+        avg_utilization = sum(c.get("utilization_pct", 0) for c in checks) / len(checks)
+        avg_headroom = sum(
+            c.get("headroom", 0) for c in checks if not c.get("triggered")
+        )
+        non_triggered = [c for c in checks if not c.get("triggered")]
+
+        effectiveness["by_type"][t_type] = {
+            "total_checks": len(checks),
+            "triggered_count": triggered_count,
+            "trigger_rate_pct": triggered_count / len(checks) * 100,
+            "avg_utilization_pct": avg_utilization,
+            "avg_headroom_when_ok": avg_headroom / len(non_triggered)
+            if non_triggered
+            else 0,
+        }
+
+    return effectiveness

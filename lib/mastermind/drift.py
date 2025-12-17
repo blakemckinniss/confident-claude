@@ -15,11 +15,13 @@ from typing import Any
 
 from .config import get_config
 from .state import MastermindState, Blueprint
+from .telemetry import log_threshold_check
 
 
 @dataclass
 class DriftSignal:
     """Signal indicating potential drift from blueprint."""
+
     trigger: str  # file_count, test_failures, approach_change
     severity: str  # low, medium, high
     evidence: dict[str, Any]
@@ -45,8 +47,20 @@ def check_file_drift(
     # Files outside touch_set
     outside = modified - touch_set
     threshold = config.drift.file_count_trigger
+    triggered = len(outside) >= threshold
 
-    if len(outside) >= threshold:
+    # Log threshold check for effectiveness analysis
+    log_threshold_check(
+        session_id=state.session_id,
+        turn=state.turn_count,
+        threshold_type="file_count",
+        current_value=len(outside),
+        threshold_value=threshold,
+        triggered=triggered,
+        epoch_id=state.epoch_id,
+    )
+
+    if triggered:
         return DriftSignal(
             trigger="file_count",
             severity="high" if len(outside) >= threshold * 2 else "medium",
@@ -69,8 +83,20 @@ def check_test_drift(state: MastermindState) -> DriftSignal | None:
         return None
 
     threshold = config.drift.test_failure_trigger
+    triggered = state.test_failures >= threshold
 
-    if state.test_failures >= threshold:
+    # Log threshold check for effectiveness analysis
+    log_threshold_check(
+        session_id=state.session_id,
+        turn=state.turn_count,
+        threshold_type="test_failures",
+        current_value=state.test_failures,
+        threshold_value=threshold,
+        triggered=triggered,
+        epoch_id=state.epoch_id,
+    )
+
+    if triggered:
         return DriftSignal(
             trigger="test_failures",
             severity="high" if state.test_failures >= threshold * 2 else "medium",
