@@ -148,20 +148,35 @@ _SCRIPT_NUDGE_PATTERNS = [
 # Heredoc detection - matches << 'DELIM', << "DELIM", << DELIM, <<-DELIM variants
 _HEREDOC_PATTERN = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
 
+# Git commit message detection - matches -m "..." or -m '...' with multi-line content
+# Uses non-greedy match and handles escaped quotes
+_GIT_COMMIT_MSG_PATTERN = re.compile(
+    r'git\s+commit\s+[^-]*-m\s*["\']', re.IGNORECASE
+)
+
 
 def strip_heredoc_content(command: str) -> str:
-    """Extract only the shell command portion, excluding heredoc content.
+    """Extract only the shell command portion, excluding heredoc/message content.
 
-    For 'cat > file << EOF\\ncontent\\nEOF', returns 'cat > file << EOF'.
-    This prevents false positives when heredoc content mentions slow commands.
+    Strips:
+    - Heredoc content: 'cat > file << EOF\\ncontent\\nEOF' -> 'cat > file << EOF'
+    - Git commit messages: 'git commit -m "content"' -> 'git commit -m "'
+
+    This prevents false positives when content mentions patterns like 'npm run dev'.
     """
-    match = _HEREDOC_PATTERN.search(command)
-    if not match:
-        return command
+    result = command
 
-    # Return everything up to and including the heredoc delimiter declaration
-    heredoc_start = match.end()
-    return command[:heredoc_start]
+    # Strip heredoc content
+    match = _HEREDOC_PATTERN.search(result)
+    if match:
+        result = result[:match.end()]
+
+    # Strip git commit message content (keep just 'git commit -m "')
+    match = _GIT_COMMIT_MSG_PATTERN.search(result)
+    if match:
+        result = result[:match.end()]
+
+    return result
 
 
 # Thinking coach flaw patterns
