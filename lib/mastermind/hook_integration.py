@@ -64,22 +64,22 @@ def process_user_prompt(
         "warnings": [],
     }
 
-    # Load or create session state
+    # Load or create session state (use mastermind's own turn counter)
     state = load_state(session_id)
-    state.turn_count = turn_count
+    state.increment_turn()  # Mastermind tracks its own turns per-session
 
     # Parse user override
     clean_prompt, override = parse_user_override(prompt)
     result["modified_prompt"] = clean_prompt
 
-    # Check if routing applies (turn 0-1 only)
-    if turn_count <= 1 and config.router.enabled:
+    # Check if routing applies (turn 0-1 only, using mastermind's counter)
+    if state.turn_count <= 1 and config.router.enabled:
         result["routing_info"] = handle_session_start_routing(
             clean_prompt, override, state, cwd
         )
 
     # Check for drift on subsequent turns
-    elif turn_count > 1 and config.drift.enabled and state.blueprint:
+    elif state.turn_count > 1 and config.drift.enabled and state.blueprint:
         drift_result = handle_drift_check(state)
         if drift_result.get("warnings"):
             result["warnings"].extend(drift_result["warnings"])
