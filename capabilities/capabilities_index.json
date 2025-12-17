@@ -1,0 +1,4937 @@
+{
+  "schema_version": "1.0",
+  "inventory_version": "sha256:46a54af1e3a67e35",
+  "generated_at": "2025-12-17T23:12:44.902292+00:00",
+  "sources": [
+    {
+      "source_type": "ops_dir",
+      "path": "/home/jinx/.claude/ops",
+      "fingerprint": "81568a64cc532b6c"
+    },
+    {
+      "source_type": "commands_dir",
+      "path": "/home/jinx/.claude/commands",
+      "fingerprint": "d259303f7afab676"
+    },
+    {
+      "source_type": "registry",
+      "path": "/home/jinx/.claude/capabilities/registry.yaml",
+      "fingerprint": "file:18927:1766013090175224918"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "agent__api_cartographer",
+      "name": "API Cartographer",
+      "summary": "Build complete API map with endpoints, types, auth requirements.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "docs_lookup",
+        "repo_map",
+        "summarize"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__dead_code_hunter",
+      "name": "Dead Code Hunter",
+      "summary": "Find unreachable code, unused exports, stale tests, orphaned files.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "static_analysis",
+        "refactor",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__deep_research",
+      "name": "Deep Research",
+      "summary": "Recursive multi-agent research for complex questions.",
+      "stages": [
+        "triage",
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "explain",
+        "summarize",
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "high"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__deep_security",
+      "name": "Deep Security",
+      "summary": "Full security audit - auth flows, injection vectors, OWASP top 10.",
+      "stages": [
+        "analyze",
+        "validate",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "security_review",
+        "static_analysis",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "high"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__dependency_mapper",
+      "name": "Dependency Mapper",
+      "summary": "Map internal module dependencies, find circular imports, analyze coupling.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "dependency_graph",
+        "repo_map",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__error_tracer",
+      "name": "Error Tracer",
+      "summary": "Trace error propagation paths, find unhandled exceptions.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "debugging",
+        "stack_trace",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__explore",
+      "name": "Explore",
+      "summary": "Fast codebase exploration - find files, search code, answer questions.",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "code_reading",
+        "repo_map",
+        "semantic_search"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "family_id": "family__semantic_code_search",
+      "role_in_family": "orchestrator",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__general_purpose",
+      "name": "General Purpose",
+      "summary": "Multi-step autonomous agent for complex tasks.",
+      "stages": [
+        "triage",
+        "locate",
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "workflow",
+        "code_mod",
+        "large_change"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "high"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__migration_planner",
+      "name": "Migration Planner",
+      "summary": "Plan data migrations, schema changes, codebase migrations.",
+      "stages": [
+        "triage",
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "migration",
+        "planning",
+        "large_change"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__perf_profiler",
+      "name": "Performance Profiler",
+      "summary": "Find N+1 queries, expensive loops, memory leaks, bundle bloat.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "performance",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__plan",
+      "name": "Plan",
+      "summary": "Design implementation plans, identify critical files, consider trade-offs.",
+      "stages": [
+        "triage",
+        "analyze"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "planning",
+        "workflow",
+        "large_change"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "family_id": "family__planning",
+      "role_in_family": "orchestrator",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__refactor_planner",
+      "name": "Refactor Planner",
+      "summary": "Identify refactoring opportunities, plan safe refactoring sequences.",
+      "stages": [
+        "analyze",
+        "modify"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "refactor",
+        "large_change",
+        "safe_change",
+        "dependency_graph"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__scout",
+      "name": "Scout",
+      "summary": "Codebase exploration when you don't know where something is.",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "code_reading",
+        "repo_map"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "family_id": "family__semantic_code_search",
+      "role_in_family": "specialized",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__test_analyzer",
+      "name": "Test Analyzer",
+      "summary": "Analyze test coverage gaps, test quality, flaky tests.",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "tests",
+        "test_failure",
+        "coverage"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__claude_mem__search",
+      "name": "Claude-Mem: Search",
+      "summary": "Search persistent cross-session memory database.",
+      "stages": [
+        "locate",
+        "triage"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "code_reading",
+        "summarize"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "local_machine",
+      "family_id": "family__memory",
+      "role_in_family": "primitive",
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__claude_mem__timeline",
+      "name": "Claude-Mem: Timeline",
+      "summary": "Get timeline context around a specific memory.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "code_reading",
+        "summarize",
+        "reporting"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "local_machine",
+      "family_id": "family__memory",
+      "role_in_family": "primitive",
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__crawl4ai__crawl",
+      "name": "Crawl4AI: Crawl",
+      "summary": "Fetch and extract content from URL with JS rendering.",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "web_research",
+        "crawl",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
+      "family_id": "family__web_research",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__crawl4ai__ddg_search",
+      "name": "Crawl4AI: DuckDuckGo Search",
+      "summary": "Search the web and return results with titles, URLs, snippets.",
+      "stages": [
+        "locate",
+        "triage"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "web_research",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
+      "family_id": "family__web_research",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__apilookup",
+      "name": "PAL: API Lookup",
+      "summary": "Current API/SDK documentation, versions, breaking changes.",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "docs_lookup",
+        "release_notes"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__chat",
+      "name": "PAL: Chat",
+      "summary": "General brainstorming and discussion with external LLM.",
+      "stages": [
+        "triage",
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "explain",
+        "summarize",
+        "planning"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__codereview",
+      "name": "PAL: Code Review",
+      "summary": "Systematic code review covering quality, security, performance.",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis",
+        "security_review",
+        "performance"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "family_id": "family__code_review",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__consensus",
+      "name": "PAL: Consensus",
+      "summary": "Multi-model consultation for architecture decisions.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "planning",
+        "explain"
+      ],
+      "cost": {
+        "price_tier": "high",
+        "latency_tier": "high"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__debug",
+      "name": "PAL: Debug",
+      "summary": "Analyze errors/stack traces, propose root-cause hypotheses.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "debugging",
+        "root_cause",
+        "stack_trace"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "family_id": "family__debug_assist",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__planner",
+      "name": "PAL: Planner",
+      "summary": "Strategic planning for multi-step implementations.",
+      "stages": [
+        "triage",
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "planning",
+        "workflow",
+        "large_change"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "family_id": "family__planning",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__precommit",
+      "name": "PAL: Pre-commit",
+      "summary": "Validate git changes before committing.",
+      "stages": [
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation",
+        "ci",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__pal__thinkdeep",
+      "name": "PAL: Think Deep",
+      "summary": "Complex problem decomposition and multi-stage investigation.",
+      "stages": [
+        "triage",
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "root_cause",
+        "explain",
+        "planning"
+      ],
+      "cost": {
+        "price_tier": "medium",
+        "latency_tier": "high"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "external_api",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__playwright__browser_click",
+      "name": "Playwright: Click",
+      "summary": "Click on an element in the browser.",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "crawl"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
+      "family_id": "family__browser_automation",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network",
+          "browser"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__playwright__browser_navigate",
+      "name": "Playwright: Navigate",
+      "summary": "Navigate browser to a URL.",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "crawl",
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
+      "family_id": "family__browser_automation",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network",
+          "browser"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__playwright__browser_snapshot",
+      "name": "Playwright: Snapshot",
+      "summary": "Capture accessibility snapshot of current page.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "crawl",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
+      "family_id": "family__browser_automation",
+      "role_in_family": "primitive",
+      "availability": {
+        "requires": [
+          "network",
+          "browser"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__repomix__pack_codebase",
+      "name": "Repomix: Pack Codebase",
+      "summary": "Package local code directory into consolidated file for analysis.",
+      "stages": [
+        "triage",
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "repo_map",
+        "code_reading",
+        "summarize"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "local_machine",
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__repomix__pack_remote_repository",
+      "name": "Repomix: Pack Remote",
+      "summary": "Clone and package GitHub repository for analysis.",
+      "stages": [
+        "triage",
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "repo_map",
+        "code_reading",
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "high"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
+      "availability": {
+        "requires": [
+          "network"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__serena__find_referencing_symbols",
+      "name": "Serena: Find References",
+      "summary": "Find all references to a symbol across the codebase.",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "semantic_search",
+        "symbol_resolution",
+        "dependency_graph"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "family_id": "family__semantic_code_search",
+      "role_in_family": "specialized",
+      "availability": {
+        "requires": [
+          "repo_indexed"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__serena__find_symbol",
+      "name": "Serena: Find Symbol",
+      "summary": "Locate definitions/references for a symbol using semantic indexing.",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "semantic_search",
+        "symbol_resolution",
+        "repo_map"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "family_id": "family__semantic_code_search",
+      "role_in_family": "specialized",
+      "availability": {
+        "requires": [
+          "repo_indexed"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__serena__get_symbols_overview",
+      "name": "Serena: Symbols Overview",
+      "summary": "Get high-level understanding of code symbols in a file.",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "code_reading",
+        "repo_map",
+        "symbol_resolution"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "family_id": "family__semantic_code_search",
+      "role_in_family": "specialized",
+      "availability": {
+        "requires": [
+          "repo_indexed"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__serena__rename_symbol",
+      "name": "Serena: Rename Symbol",
+      "summary": "Rename a symbol throughout the entire codebase.",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "refactor",
+        "large_change",
+        "safe_change"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "availability": {
+        "requires": [
+          "repo_indexed"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__serena__replace_symbol_body",
+      "name": "Serena: Replace Symbol",
+      "summary": "Replace the body of a symbol with new code.",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "code_mod",
+        "refactor",
+        "safe_change"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "availability": {
+        "requires": [
+          "repo_indexed"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "mcp__serena__search_for_pattern",
+      "name": "Serena: Pattern Search",
+      "summary": "Flexible regex search across codebase including non-code files.",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "semantic_search",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "availability": {
+        "requires": [
+          "repo_indexed"
+        ]
+      },
+      "type": "mcp_tool",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "ops__audit",
+      "type": "ops_script",
+      "name": "audit.py",
+      "summary": "Runs static analysis and anti-pattern detection on target files",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/audit.py"
+      }
+    },
+    {
+      "id": "ops__audit_hooks",
+      "type": "ops_script",
+      "name": "audit_hooks.py",
+      "summary": "Hook System Auditor (The Hook Sheriff)",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "debugging",
+        "static_analysis",
+        "validation",
+        "formatting",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/audit_hooks.py"
+      }
+    },
+    {
+      "id": "ops__bd_bridge",
+      "type": "ops_script",
+      "name": "bd_bridge.py",
+      "summary": "Beads-Claude-Mem Integration Bridge",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/bd_bridge.py"
+      }
+    },
+    {
+      "id": "ops__bead_claim",
+      "type": "ops_script",
+      "name": "bead_claim.py",
+      "summary": "Wrapper for Task agents to claim beads with lifecycle tracking.",
+      "stages": [
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/bead_claim.py"
+      }
+    },
+    {
+      "id": "ops__bead_lifecycle_daemon",
+      "type": "ops_script",
+      "name": "bead_lifecycle_daemon.py",
+      "summary": "Bead Lifecycle Daemon",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/bead_lifecycle_daemon.py"
+      }
+    },
+    {
+      "id": "ops__bead_orphan_check",
+      "type": "ops_script",
+      "name": "bead_orphan_check.py",
+      "summary": "Bead Orphan Check",
+      "stages": [
+        "locate",
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/bead_orphan_check.py"
+      }
+    },
+    {
+      "id": "ops__bead_release",
+      "type": "ops_script",
+      "name": "bead_release.py",
+      "summary": "Wrapper for Task agents to release beads with lifecycle tracking.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/bead_release.py"
+      }
+    },
+    {
+      "id": "ops__capabilities",
+      "type": "ops_script",
+      "name": "capabilities.py",
+      "summary": "Extracts and categorizes all hook/op functionality.",
+      "stages": [
+        "triage"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis",
+        "refactor",
+        "code_reading",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/capabilities.py"
+      }
+    },
+    {
+      "id": "ops__capability_inventory",
+      "type": "ops_script",
+      "name": "capability_inventory.py",
+      "summary": "Capability Inventory Generator",
+      "stages": [
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation",
+        "code_reading",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": true
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/capability_inventory.py"
+      }
+    },
+    {
+      "id": "ops__coderabbit",
+      "type": "ops_script",
+      "name": "coderabbit.py",
+      "summary": "AI-powered code review and commit workflow",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": true
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/coderabbit.py"
+      }
+    },
+    {
+      "id": "ops__compress_session",
+      "type": "ops_script",
+      "name": "compress_session.py",
+      "summary": "compress_session.py - Preservation-focused session compression with token-efficient format",
+      "stages": [
+        "modify",
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "tests",
+        "formatting",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/compress_session.py"
+      }
+    },
+    {
+      "id": "ops__council",
+      "type": "ops_script",
+      "name": "council.py",
+      "summary": "Multi-Round Decision Framework with Convergence",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "formatting"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/council.py"
+      }
+    },
+    {
+      "id": "ops__detour",
+      "type": "ops_script",
+      "name": "detour.py",
+      "summary": "CLI management tool for the Detour Protocol - status tracking, resolution, and testing",
+      "stages": [
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "debugging",
+        "tests"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/detour.py"
+      }
+    },
+    {
+      "id": "ops__docs",
+      "type": "ops_script",
+      "name": "docs.py",
+      "summary": "Retrieves latest documentation using Context7 REST API",
+      "stages": [
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "tests",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/docs.py"
+      }
+    },
+    {
+      "id": "ops__drift",
+      "type": "ops_script",
+      "name": "drift.py",
+      "summary": "Detects stylistic drift by comparing code against reference templates",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/drift.py"
+      }
+    },
+    {
+      "id": "ops__evidence",
+      "type": "ops_script",
+      "name": "evidence.py",
+      "summary": "Evidence Ledger Viewer - Review evidence gathered during sessions",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/evidence.py"
+      }
+    },
+    {
+      "id": "ops__firecrawl",
+      "type": "ops_script",
+      "name": "firecrawl.py",
+      "summary": "Scrape and crawl websites using Firecrawl API",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "web_research",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/firecrawl.py"
+      }
+    },
+    {
+      "id": "ops__fp",
+      "type": "ops_script",
+      "name": "fp.py",
+      "summary": "Record a false positive for a confidence reducer.",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/fp.py"
+      }
+    },
+    {
+      "id": "ops__fp_analyze",
+      "type": "ops_script",
+      "name": "fp_analyze.py",
+      "summary": "FP Pattern Analyzer - Cross-session learning from false positives.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis",
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/fp_analyze.py"
+      }
+    },
+    {
+      "id": "ops__gaps",
+      "type": "ops_script",
+      "name": "gaps.py",
+      "summary": "Scans code for missing functionality, stubs, and logical gaps.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/gaps.py"
+      }
+    },
+    {
+      "id": "ops__groq",
+      "type": "ops_script",
+      "name": "groq.py",
+      "summary": "Zero-Dependency Groq API Client",
+      "stages": [
+        "locate",
+        "analyze",
+        "modify",
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "debugging",
+        "tests",
+        "web_research",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/groq.py"
+      }
+    },
+    {
+      "id": "ops__health",
+      "type": "ops_script",
+      "name": "health.py",
+      "summary": "Entity Model Health Check - Self-diagnostic immune system scan.",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/health.py"
+      }
+    },
+    {
+      "id": "ops__hooks",
+      "type": "ops_script",
+      "name": "hooks.py",
+      "summary": "Hook System Tool - Unified audit and testing for Claude Code hooks.",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "tests",
+        "static_analysis",
+        "validation",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": true
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/hooks.py"
+      }
+    },
+    {
+      "id": "ops__housekeeping",
+      "type": "ops_script",
+      "name": "housekeeping.py",
+      "summary": "The Housekeeper - Disk space management for .claude runtime directories",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "debugging",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": true
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/housekeeping.py"
+      }
+    },
+    {
+      "id": "ops__integration_install",
+      "type": "ops_script",
+      "name": "integration_install.py",
+      "summary": "Integration Install - One-shot setup for Integration Synergy components.",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/integration_install.py"
+      }
+    },
+    {
+      "id": "ops__inventory",
+      "type": "ops_script",
+      "name": "inventory.py",
+      "summary": "Detects available system binaries, languages, and network capabilities",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/inventory.py"
+      }
+    },
+    {
+      "id": "ops__mastermind_rollout",
+      "type": "ops_script",
+      "name": "mastermind_rollout.py",
+      "summary": "Mastermind rollout management.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/mastermind_rollout.py"
+      }
+    },
+    {
+      "id": "ops__new_project",
+      "type": "ops_script",
+      "name": "new_project.py",
+      "summary": "New Project Scaffolding",
+      "stages": [
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/new_project.py"
+      }
+    },
+    {
+      "id": "ops__oracle",
+      "type": "ops_script",
+      "name": "oracle.py",
+      "summary": "Generic OpenRouter LLM Consultation",
+      "stages": [
+        "triage",
+        "analyze",
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "security_review",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/oracle.py"
+      }
+    },
+    {
+      "id": "ops__orchestrate",
+      "type": "ops_script",
+      "name": "orchestrate.py",
+      "summary": "Claude-powered programmatic tool orchestration.",
+      "stages": [
+        "locate",
+        "analyze",
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis",
+        "refactor",
+        "web_research",
+        "code_reading",
+        "workflow",
+        "security_review",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/orchestrate.py"
+      }
+    },
+    {
+      "id": "ops__probe",
+      "type": "ops_script",
+      "name": "probe.py",
+      "summary": "Introspects Python modules/objects to reveal the ACTUAL runtime API",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/probe.py"
+      }
+    },
+    {
+      "id": "ops__recruiter",
+      "type": "ops_script",
+      "name": "recruiter.py",
+      "summary": "Selects optimal personas for a given proposal.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/recruiter.py"
+      }
+    },
+    {
+      "id": "ops__remember",
+      "type": "ops_script",
+      "name": "remember.py",
+      "summary": "Manages persistent project memory (Context, Decisions, Lessons)",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/remember.py"
+      }
+    },
+    {
+      "id": "ops__research",
+      "type": "ops_script",
+      "name": "research.py",
+      "summary": "Performs deep web search using Tavily to retrieve up-to-date documentation and context",
+      "stages": [
+        "locate",
+        "report"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "web_research",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/research.py"
+      }
+    },
+    {
+      "id": "ops__scope",
+      "type": "ops_script",
+      "name": "scope.py",
+      "summary": "Manages the Definition of Done (DoD) for the current task.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": true
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/scope.py"
+      }
+    },
+    {
+      "id": "ops__serena",
+      "type": "ops_script",
+      "name": "serena.py",
+      "summary": "Serena Integration Utility",
+      "stages": [
+        "locate",
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis",
+        "validation",
+        "web_research",
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/serena.py"
+      }
+    },
+    {
+      "id": "ops__serena_memory_lifecycle",
+      "type": "ops_script",
+      "name": "serena_memory_lifecycle.py",
+      "summary": "Serena Memory Lifecycle Management",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/serena_memory_lifecycle.py"
+      }
+    },
+    {
+      "id": "ops__spark",
+      "type": "ops_script",
+      "name": "spark.py",
+      "summary": "Scans prompt for keywords and retrieves associated memories and protocols",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/spark.py"
+      }
+    },
+    {
+      "id": "ops__state_migrate",
+      "type": "ops_script",
+      "name": "state_migrate.py",
+      "summary": "State Migration Helper - Migrate global state to current project.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": true
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/state_migrate.py"
+      }
+    },
+    {
+      "id": "ops__swarm",
+      "type": "ops_script",
+      "name": "swarm.py",
+      "summary": "Massive Parallel External Reasoning",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "tests",
+        "static_analysis",
+        "validation",
+        "security_review"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/swarm.py"
+      }
+    },
+    {
+      "id": "ops__sysinfo",
+      "type": "ops_script",
+      "name": "sysinfo.py",
+      "summary": "The System Probe - WSL2 system information and health monitoring",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "formatting"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/sysinfo.py"
+      }
+    },
+    {
+      "id": "ops__test_hooks",
+      "type": "ops_script",
+      "name": "test_hooks.py",
+      "summary": "Comprehensive testing for Claude Code hooks.",
+      "stages": [
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "debugging",
+        "tests",
+        "performance"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/test_hooks.py"
+      }
+    },
+    {
+      "id": "ops__think",
+      "type": "ops_script",
+      "name": "think.py",
+      "summary": "Decomposes complex problems into atomic steps using Chain of Thought",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/think.py"
+      }
+    },
+    {
+      "id": "ops__timekeeper",
+      "type": "ops_script",
+      "name": "timekeeper.py",
+      "summary": "Assesses proposal complexity and sets dynamic deliberation limits.",
+      "stages": [
+        "triage"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/timekeeper.py"
+      }
+    },
+    {
+      "id": "ops__unified_context",
+      "type": "ops_script",
+      "name": "unified_context.py",
+      "summary": "Unified Context Aggregator",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "formatting"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/unified_context.py"
+      }
+    },
+    {
+      "id": "ops__upkeep",
+      "type": "ops_script",
+      "name": "upkeep.py",
+      "summary": "Pre-commit health checks and project maintenance.",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/upkeep.py"
+      }
+    },
+    {
+      "id": "ops__verify",
+      "type": "ops_script",
+      "name": "verify.py",
+      "summary": "Validates system state assertions. Returns True/False. Use this BEFORE claiming something is true.",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/verify.py"
+      }
+    },
+    {
+      "id": "ops__void",
+      "type": "ops_script",
+      "name": "void.py",
+      "summary": "Scans code for missing functionality, stubs, and logical gaps.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/void.py"
+      }
+    },
+    {
+      "id": "ops__xray",
+      "type": "ops_script",
+      "name": "xray.py",
+      "summary": "Performs AST-based structural search on Python code (Classes, Functions, Imports, Decorators)",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/xray.py"
+      }
+    },
+    {
+      "id": "slash__/README",
+      "type": "slash_command",
+      "name": "/README",
+      "summary": "# Whitebox Slash Commands",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/README.md"
+      }
+    },
+    {
+      "id": "slash__/audit",
+      "type": "slash_command",
+      "name": "/audit",
+      "summary": "The Sheriff - Code quality audit (security, complexity, style)",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "security_review"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/audit.md"
+      }
+    },
+    {
+      "id": "slash__/audit-hooks",
+      "type": "slash_command",
+      "name": "/audit-hooks",
+      "summary": "---",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/audit-hooks.md"
+      }
+    },
+    {
+      "id": "slash__/bd",
+      "type": "slash_command",
+      "name": "/bd",
+      "summary": "Beads - Persistent task tracking (create, list, close, dependencies)",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/bd.md"
+      }
+    },
+    {
+      "id": "slash__/bestway",
+      "type": "slash_command",
+      "name": "/bestway",
+      "summary": "Best Way - Evaluates optimal approaches for implementing X",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "web_research",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/bestway.md"
+      }
+    },
+    {
+      "id": "slash__/better",
+      "type": "slash_command",
+      "name": "/better",
+      "summary": "Improvement Analyzer - Identifies concrete ways to make things better",
+      "stages": [
+        "analyze",
+        "modify"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "performance"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/better.md"
+      }
+    },
+    {
+      "id": "slash__/capabilities",
+      "type": "slash_command",
+      "name": "/capabilities",
+      "summary": "---",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/capabilities.md"
+      }
+    },
+    {
+      "id": "slash__/cc",
+      "type": "slash_command",
+      "name": "/cc",
+      "summary": "Command Creator - Creates new slash commands from description",
+      "stages": [
+        "locate",
+        "modify"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/cc.md"
+      }
+    },
+    {
+      "id": "slash__/comfy",
+      "type": "slash_command",
+      "name": "/comfy",
+      "summary": "# ComfyUI Management",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation",
+        "performance"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/comfy.md"
+      }
+    },
+    {
+      "id": "slash__/commit",
+      "type": "slash_command",
+      "name": "/commit",
+      "summary": "Smart Commit - Stage, commit all changes, offer push",
+      "stages": [
+        "triage",
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/commit.md"
+      }
+    },
+    {
+      "id": "slash__/compress",
+      "type": "slash_command",
+      "name": "/compress",
+      "summary": "---",
+      "stages": [
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "tests",
+        "formatting"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/compress.md"
+      }
+    },
+    {
+      "id": "slash__/consult",
+      "type": "slash_command",
+      "name": "/consult",
+      "summary": "The Oracle - High-level reasoning via OpenRouter",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/consult.md"
+      }
+    },
+    {
+      "id": "slash__/council",
+      "type": "slash_command",
+      "name": "/council",
+      "summary": "The Council - Parallel multi-perspective analysis (Judge, Critic, Skeptic, Thinker, Oracle)",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/council.md"
+      }
+    },
+    {
+      "id": "slash__/cr",
+      "type": "slash_command",
+      "name": "/cr",
+      "summary": "CodeRabbit - Run AI code review on uncommitted changes",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/cr.md"
+      }
+    },
+    {
+      "id": "slash__/critic",
+      "type": "slash_command",
+      "name": "/critic",
+      "summary": "The Critic - The 10th Man, attacks assumptions and exposes blind spots",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/critic.md"
+      }
+    },
+    {
+      "id": "slash__/cs",
+      "type": "slash_command",
+      "name": "/cs",
+      "summary": "Can/Should - Quick feasibility and advisability check for X",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/cs.md"
+      }
+    },
+    {
+      "id": "slash__/cwms",
+      "type": "slash_command",
+      "name": "/cwms",
+      "summary": "Can We Make Sure - Verify and enforce X is true",
+      "stages": [
+        "locate",
+        "analyze",
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "tests",
+        "validation",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/cwms.md"
+      }
+    },
+    {
+      "id": "slash__/dc",
+      "type": "slash_command",
+      "name": "/dc",
+      "summary": "Double Check - Verify work, fix critical gaps, present remaining issues",
+      "stages": [
+        "triage",
+        "locate",
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "tests",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/dc.md"
+      }
+    },
+    {
+      "id": "slash__/deps",
+      "type": "slash_command",
+      "name": "/deps",
+      "summary": "Check all .claude dependencies (API keys, Python packages, binaries, Node.js, MCP servers, stale processes)",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation",
+        "code_reading",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/deps.md"
+      }
+    },
+    {
+      "id": "slash__/detour",
+      "type": "slash_command",
+      "name": "/detour",
+      "summary": "---",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/detour.md"
+      }
+    },
+    {
+      "id": "slash__/docs",
+      "type": "slash_command",
+      "name": "/docs",
+      "summary": "Docs: Fetch latest library documentation via Context7",
+      "stages": [
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "tests",
+        "web_research",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/docs.md"
+      }
+    },
+    {
+      "id": "slash__/doit",
+      "type": "slash_command",
+      "name": "/doit",
+      "summary": "Do It - Execute the last discussed action without re-explaining",
+      "stages": [
+        "modify",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/doit.md"
+      }
+    },
+    {
+      "id": "slash__/drift",
+      "type": "slash_command",
+      "name": "/drift",
+      "summary": "The Court - Checks project consistency and style drift",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/drift.md"
+      }
+    },
+    {
+      "id": "slash__/dyr",
+      "type": "slash_command",
+      "name": "/dyr",
+      "summary": "Do You Respect - Verify Claude follows a specific principle/rule",
+      "stages": [
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation",
+        "formatting"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/dyr.md"
+      }
+    },
+    {
+      "id": "slash__/evidence",
+      "type": "slash_command",
+      "name": "/evidence",
+      "summary": "---",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/evidence.md"
+      }
+    },
+    {
+      "id": "slash__/f",
+      "type": "slash_command",
+      "name": "/f",
+      "summary": "Fix Console Errors - Diagnose and fix browser console errors",
+      "stages": [
+        "locate",
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "refactor",
+        "validation",
+        "web_research",
+        "code_reading",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/f.md"
+      }
+    },
+    {
+      "id": "slash__/find",
+      "type": "slash_command",
+      "name": "/find",
+      "summary": "Everything Search - Instant file search across Windows + WSL2",
+      "stages": [
+        "locate",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/find.md"
+      }
+    },
+    {
+      "id": "slash__/firecrawl",
+      "type": "slash_command",
+      "name": "/firecrawl",
+      "summary": "Firecrawl: Scrape websites to clean markdown/HTML/JSON",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/firecrawl.md"
+      }
+    },
+    {
+      "id": "slash__/fix",
+      "type": "slash_command",
+      "name": "/fix",
+      "summary": "The Fixer - Fix all issues, fill gaps, and verify work",
+      "stages": [
+        "locate",
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "tests",
+        "lint",
+        "static_analysis",
+        "validation",
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/fix.md"
+      }
+    },
+    {
+      "id": "slash__/gaps",
+      "type": "slash_command",
+      "name": "/gaps",
+      "summary": "Gap Hunter - Completeness check (finds stubs, missing CRUD, error handling gaps)",
+      "stages": [
+        "locate",
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/gaps.md"
+      }
+    },
+    {
+      "id": "slash__/groq",
+      "type": "slash_command",
+      "name": "/groq",
+      "summary": "---",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/groq.md"
+      }
+    },
+    {
+      "id": "slash__/har",
+      "type": "slash_command",
+      "name": "/har",
+      "summary": "HAR - Have Any Recommendations for improving X?",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "static_analysis",
+        "web_research",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/har.md"
+      }
+    },
+    {
+      "id": "slash__/hooks",
+      "type": "slash_command",
+      "name": "/hooks",
+      "summary": "---",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "tests",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/hooks.md"
+      }
+    },
+    {
+      "id": "slash__/housekeeping",
+      "type": "slash_command",
+      "name": "/housekeeping",
+      "summary": "The Housekeeper - Manage .claude disk space (--status, --execute)",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/housekeeping.md"
+      }
+    },
+    {
+      "id": "slash__/imp",
+      "type": "slash_command",
+      "name": "/imp",
+      "summary": "Implement - Research + optimal setup of X for this project",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/imp.md"
+      }
+    },
+    {
+      "id": "slash__/inventory",
+      "type": "slash_command",
+      "name": "/inventory",
+      "summary": "MacGyver Scan - Scans for available binaries and system tools",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/inventory.md"
+      }
+    },
+    {
+      "id": "slash__/judge",
+      "type": "slash_command",
+      "name": "/judge",
+      "summary": "The Judge - Value assurance, ROI, YAGNI, anti-bikeshedding",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/judge.md"
+      }
+    },
+    {
+      "id": "slash__/new-project",
+      "type": "slash_command",
+      "name": "/new-project",
+      "summary": "New Project - Create fully-integrated project with beads + serena + claude",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/new-project.md"
+      }
+    },
+    {
+      "id": "slash__/no",
+      "type": "slash_command",
+      "name": "/no",
+      "summary": "No - Reject proposal and get alternatives",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/no.md"
+      }
+    },
+    {
+      "id": "slash__/opt",
+      "type": "slash_command",
+      "name": "/opt",
+      "summary": "Optimality Check - Evaluates if X is the best choice for this project",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "validation",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/opt.md"
+      }
+    },
+    {
+      "id": "slash__/oracle",
+      "type": "slash_command",
+      "name": "/oracle",
+      "summary": "---",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/oracle.md"
+      }
+    },
+    {
+      "id": "slash__/orchestrate",
+      "type": "slash_command",
+      "name": "/orchestrate",
+      "summary": "Orchestrate - Claude API code_execution for batch/aggregate tasks",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "refactor",
+        "web_research",
+        "code_reading",
+        "workflow",
+        "security_review",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/orchestrate.md"
+      }
+    },
+    {
+      "id": "slash__/probe",
+      "type": "slash_command",
+      "name": "/probe",
+      "summary": "The Probe - Runtime introspection (inspect object APIs before coding)",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "code_reading",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/probe.md"
+      }
+    },
+    {
+      "id": "slash__/recall",
+      "type": "slash_command",
+      "name": "/recall",
+      "summary": "Search past session transcripts for relevant context.",
+      "stages": [
+        "locate",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/recall.md"
+      }
+    },
+    {
+      "id": "slash__/reddit",
+      "type": "slash_command",
+      "name": "/reddit",
+      "summary": "Reddit - Open reddit.com/r/all in Chrome",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/reddit.md"
+      }
+    },
+    {
+      "id": "slash__/remember",
+      "type": "slash_command",
+      "name": "/remember",
+      "summary": "---",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/remember.md"
+      }
+    },
+    {
+      "id": "slash__/research",
+      "type": "slash_command",
+      "name": "/research",
+      "summary": "The Researcher - Live web search via Tavily API",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/research.md"
+      }
+    },
+    {
+      "id": "slash__/resume",
+      "type": "slash_command",
+      "name": "/resume",
+      "summary": "# Resume Previous Session",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/resume.md"
+      }
+    },
+    {
+      "id": "slash__/roi",
+      "type": "slash_command",
+      "name": "/roi",
+      "summary": "ROI Maximizer - Implements highest-value concepts by impact/effort ratio",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/roi.md"
+      }
+    },
+    {
+      "id": "slash__/scope",
+      "type": "slash_command",
+      "name": "/scope",
+      "summary": "---",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/scope.md"
+      }
+    },
+    {
+      "id": "slash__/serena",
+      "type": "slash_command",
+      "name": "/serena",
+      "summary": "Serena - Semantic code analysis via MCP (status, impact, validate, memories, context, search)",
+      "stages": [
+        "locate",
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "validation",
+        "web_research",
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/serena.md"
+      }
+    },
+    {
+      "id": "slash__/serena-mem",
+      "type": "slash_command",
+      "name": "/serena-mem",
+      "summary": "Serena Memory - Lifecycle management (status, stale, prune, refresh)",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/serena-mem.md"
+      }
+    },
+    {
+      "id": "slash__/si",
+      "type": "slash_command",
+      "name": "/si",
+      "summary": "/si <symbol> - Serena impact analysis shortcut",
+      "stages": [
+        "locate",
+        "analyze",
+        "modify"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "workflow",
+        "formatting"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/si.md"
+      }
+    },
+    {
+      "id": "slash__/skeptic",
+      "type": "slash_command",
+      "name": "/skeptic",
+      "summary": "The Skeptic - Hostile review, finds ways things will fail",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/skeptic.md"
+      }
+    },
+    {
+      "id": "slash__/sm",
+      "type": "slash_command",
+      "name": "/sm",
+      "summary": "/sm [search] - Serena memories shortcut",
+      "stages": [
+        "locate",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research",
+        "code_reading",
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/sm.md"
+      }
+    },
+    {
+      "id": "slash__/spark",
+      "type": "slash_command",
+      "name": "/spark",
+      "summary": "Synapse Fire - Retrieve associative memories for a topic",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/spark.md"
+      }
+    },
+    {
+      "id": "slash__/sv",
+      "type": "slash_command",
+      "name": "/sv",
+      "summary": "/sv <file> - Serena validate file shortcut",
+      "stages": [
+        "analyze",
+        "validate",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "validation",
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/sv.md"
+      }
+    },
+    {
+      "id": "slash__/swarm",
+      "type": "slash_command",
+      "name": "/swarm",
+      "summary": "---",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/swarm.md"
+      }
+    },
+    {
+      "id": "slash__/sysinfo",
+      "type": "slash_command",
+      "name": "/sysinfo",
+      "summary": "The System Probe - WSL2 system health (CPU/mem/disk/services)",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/sysinfo.md"
+      }
+    },
+    {
+      "id": "slash__/test",
+      "type": "slash_command",
+      "name": "/test",
+      "summary": "Test Worth - Evaluate if something deserves test coverage",
+      "stages": [
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "tests",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/test.md"
+      }
+    },
+    {
+      "id": "slash__/think",
+      "type": "slash_command",
+      "name": "/think",
+      "summary": "The Thinker - Decomposes complex problems into sequential steps",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/think.md"
+      }
+    },
+    {
+      "id": "slash__/upkeep",
+      "type": "slash_command",
+      "name": "/upkeep",
+      "summary": "The Janitor - Project upkeep (sync requirements, tool index, check scratch)",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/upkeep.md"
+      }
+    },
+    {
+      "id": "slash__/useful",
+      "type": "slash_command",
+      "name": "/useful",
+      "summary": "Usefulness Amplifier - Makes X more practical, actionable, and valuable",
+      "stages": [
+        "triage",
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/useful.md"
+      }
+    },
+    {
+      "id": "slash__/verify",
+      "type": "slash_command",
+      "name": "/verify",
+      "summary": "---",
+      "stages": [
+        "locate",
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/verify.md"
+      }
+    },
+    {
+      "id": "slash__/vo",
+      "type": "slash_command",
+      "name": "/vo",
+      "summary": "Gap Oracle - Runs gaps.py + oracle analysis on changes",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/vo.md"
+      }
+    },
+    {
+      "id": "slash__/void",
+      "type": "slash_command",
+      "name": "/void",
+      "summary": "The Void Hunter - Completeness check (finds stubs, missing CRUD, error handling gaps)",
+      "stages": [
+        "locate",
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/void.md"
+      }
+    },
+    {
+      "id": "slash__/wcwd",
+      "type": "slash_command",
+      "name": "/wcwd",
+      "summary": "Implementation Brainstorm - Explores options for implementing X in Y",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "refactor",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/wcwd.md"
+      }
+    },
+    {
+      "id": "slash__/win",
+      "type": "slash_command",
+      "name": "/win",
+      "summary": "Windows Manager - Install/uninstall Windows programs via winget",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/win.md"
+      }
+    },
+    {
+      "id": "slash__/workflow",
+      "type": "slash_command",
+      "name": "/workflow",
+      "summary": "Multi-Session Step-Based Operations",
+      "stages": [
+        "modify"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "workflow"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/workflow.md"
+      }
+    },
+    {
+      "id": "slash__/worth",
+      "type": "slash_command",
+      "name": "/worth",
+      "summary": "Worth Check - Is X worth adding to this project?",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "validation",
+        "code_reading"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/worth.md"
+      }
+    },
+    {
+      "id": "slash__/xray",
+      "type": "slash_command",
+      "name": "/xray",
+      "summary": "---",
+      "stages": [
+        "locate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/xray.md"
+      }
+    },
+    {
+      "id": "slash__/yes",
+      "type": "slash_command",
+      "name": "/yes",
+      "summary": "Autonomous Mode - Execute what's best for project health and success",
+      "stages": [
+        "triage",
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "debugging",
+        "tests",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/yes.md"
+      }
+    }
+  ]
+}

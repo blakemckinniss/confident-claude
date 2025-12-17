@@ -1,0 +1,48 @@
+[
+  "workflow",
+  "triage",
+  "planning",
+  "explain",
+  "summarize",
+  "reporting",
+
+  "semantic_search",
+  "symbol_resolution",
+  "repo_map",
+  "dependency_graph",
+  "code_reading",
+
+  "debugging",
+  "root_cause",
+  "stack_trace",
+  "logging",
+  "performance",
+  "security_review",
+
+  "code_mod",
+  "refactor",
+  "large_change",
+  "safe_change",
+  "formatting",
+  "migration",
+
+  "tests",
+  "test_failure",
+  "coverage",
+  "lint",
+  "static_analysis",
+  "validation",
+  "ci",
+
+  "web_research",
+  "docs_lookup",
+  "crawl",
+  "release_notes",
+
+  "local_exec",
+  "network_io",
+  "credentials",
+
+  "destructive_risk",
+  "secrets_risk"
+]

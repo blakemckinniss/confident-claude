@@ -1,0 +1,497 @@
+schema_version: "1.0"
+
+# Defaults applied when entry omits a field
+defaults:
+  cost:
+    price_tier: low
+    latency_tier: medium
+  risk:
+    read_only: true
+    writes_repo: false
+    network: false
+    executes_code: false
+    destructive_possible: false
+
+# Capability families for grouping related tools
+families:
+  - id: family__semantic_code_search
+    name: Semantic code search
+  - id: family__debug_assist
+    name: Debug assistance
+  - id: family__web_research
+    name: Web research
+  - id: family__code_review
+    name: Code review
+  - id: family__planning
+    name: Planning and architecture
+  - id: family__browser_automation
+    name: Browser automation
+  - id: family__file_operations
+    name: File operations
+  - id: family__memory
+    name: Memory and context
+
+# ============================================================================
+# AGENTS (Task tool subagent_type)
+# ============================================================================
+agents:
+  - id: agent__explore
+    name: Explore
+    summary: "Fast codebase exploration - find files, search code, answer questions."
+    stages: [locate, analyze]
+    interaction_mode: autonomous
+    tags: [code_reading, repo_map, semantic_search]
+    cost: { price_tier: low, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+    family_id: family__semantic_code_search
+    role_in_family: orchestrator
+
+  - id: agent__plan
+    name: Plan
+    summary: "Design implementation plans, identify critical files, consider trade-offs."
+    stages: [triage, analyze]
+    interaction_mode: autonomous
+    tags: [planning, workflow, large_change]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+    family_id: family__planning
+    role_in_family: orchestrator
+
+  - id: agent__scout
+    name: Scout
+    summary: "Codebase exploration when you don't know where something is."
+    stages: [locate]
+    interaction_mode: autonomous
+    tags: [code_reading, repo_map]
+    cost: { price_tier: low, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+    family_id: family__semantic_code_search
+    role_in_family: specialized
+
+  - id: agent__refactor_planner
+    name: Refactor Planner
+    summary: "Identify refactoring opportunities, plan safe refactoring sequences."
+    stages: [analyze, modify]
+    interaction_mode: autonomous
+    tags: [refactor, large_change, safe_change, dependency_graph]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__test_analyzer
+    name: Test Analyzer
+    summary: "Analyze test coverage gaps, test quality, flaky tests."
+    stages: [analyze, validate]
+    interaction_mode: autonomous
+    tags: [tests, test_failure, coverage]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__deep_research
+    name: Deep Research
+    summary: "Recursive multi-agent research for complex questions."
+    stages: [triage, analyze, reporting]
+    interaction_mode: autonomous
+    tags: [explain, summarize, web_research]
+    cost: { price_tier: medium, latency_tier: high }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: web
+
+  - id: agent__deep_security
+    name: Deep Security
+    summary: "Full security audit - auth flows, injection vectors, OWASP top 10."
+    stages: [analyze, validate, reporting]
+    interaction_mode: autonomous
+    tags: [security_review, static_analysis, validation]
+    cost: { price_tier: medium, latency_tier: high }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__dead_code_hunter
+    name: Dead Code Hunter
+    summary: "Find unreachable code, unused exports, stale tests, orphaned files."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [static_analysis, refactor, code_reading]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__dependency_mapper
+    name: Dependency Mapper
+    summary: "Map internal module dependencies, find circular imports, analyze coupling."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [dependency_graph, repo_map, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__perf_profiler
+    name: Performance Profiler
+    summary: "Find N+1 queries, expensive loops, memory leaks, bundle bloat."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [performance, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__error_tracer
+    name: Error Tracer
+    summary: "Trace error propagation paths, find unhandled exceptions."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [debugging, stack_trace, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__migration_planner
+    name: Migration Planner
+    summary: "Plan data migrations, schema changes, codebase migrations."
+    stages: [triage, analyze, reporting]
+    interaction_mode: autonomous
+    tags: [migration, planning, large_change]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__api_cartographer
+    name: API Cartographer
+    summary: "Build complete API map with endpoints, types, auth requirements."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [docs_lookup, repo_map, summarize]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__general_purpose
+    name: General Purpose
+    summary: "Multi-step autonomous agent for complex tasks."
+    stages: [triage, locate, analyze, modify, validate]
+    interaction_mode: autonomous
+    tags: [workflow, code_mod, large_change]
+    cost: { price_tier: medium, latency_tier: high }
+    risk: { read_only: false, writes_repo: true, network: true, executes_code: true }
+    scope: repo
+
+# ============================================================================
+# MCP TOOLS - PAL (External LLM)
+# ============================================================================
+mcp_tools:
+  - id: mcp__pal__chat
+    name: "PAL: Chat"
+    summary: "General brainstorming and discussion with external LLM."
+    stages: [triage, analyze]
+    interaction_mode: primitive
+    tags: [explain, summarize, planning]
+    cost: { price_tier: medium, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    availability:
+      requires: [network]
+
+  - id: mcp__pal__debug
+    name: "PAL: Debug"
+    summary: "Analyze errors/stack traces, propose root-cause hypotheses."
+    stages: [analyze]
+    interaction_mode: primitive
+    tags: [debugging, root_cause, stack_trace]
+    cost: { price_tier: medium, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    family_id: family__debug_assist
+    role_in_family: primitive
+    availability:
+      requires: [network]
+
+  - id: mcp__pal__planner
+    name: "PAL: Planner"
+    summary: "Strategic planning for multi-step implementations."
+    stages: [triage, analyze]
+    interaction_mode: primitive
+    tags: [planning, workflow, large_change]
+    cost: { price_tier: medium, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    family_id: family__planning
+    role_in_family: primitive
+    availability:
+      requires: [network]
+
+  - id: mcp__pal__consensus
+    name: "PAL: Consensus"
+    summary: "Multi-model consultation for architecture decisions."
+    stages: [analyze]
+    interaction_mode: primitive
+    tags: [planning, explain]
+    cost: { price_tier: high, latency_tier: high }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    availability:
+      requires: [network]
+
+  - id: mcp__pal__codereview
+    name: "PAL: Code Review"
+    summary: "Systematic code review covering quality, security, performance."
+    stages: [analyze, validate]
+    interaction_mode: primitive
+    tags: [static_analysis, security_review, performance]
+    cost: { price_tier: medium, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    family_id: family__code_review
+    role_in_family: primitive
+    availability:
+      requires: [network]
+
+  - id: mcp__pal__thinkdeep
+    name: "PAL: Think Deep"
+    summary: "Complex problem decomposition and multi-stage investigation."
+    stages: [triage, analyze]
+    interaction_mode: primitive
+    tags: [root_cause, explain, planning]
+    cost: { price_tier: medium, latency_tier: high }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    availability:
+      requires: [network]
+
+  - id: mcp__pal__apilookup
+    name: "PAL: API Lookup"
+    summary: "Current API/SDK documentation, versions, breaking changes."
+    stages: [locate]
+    interaction_mode: primitive
+    tags: [docs_lookup, release_notes]
+    cost: { price_tier: low, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    availability:
+      requires: [network]
+
+  - id: mcp__pal__precommit
+    name: "PAL: Pre-commit"
+    summary: "Validate git changes before committing."
+    stages: [validate]
+    interaction_mode: primitive
+    tags: [validation, ci, static_analysis]
+    cost: { price_tier: medium, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: external_api
+    availability:
+      requires: [network]
+
+# ============================================================================
+# MCP TOOLS - Serena (Semantic Code Analysis)
+# ============================================================================
+  - id: mcp__serena__find_symbol
+    name: "Serena: Find Symbol"
+    summary: "Locate definitions/references for a symbol using semantic indexing."
+    stages: [locate]
+    interaction_mode: primitive
+    tags: [semantic_search, symbol_resolution, repo_map]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+    family_id: family__semantic_code_search
+    role_in_family: specialized
+    availability:
+      requires: [repo_indexed]
+
+  - id: mcp__serena__get_symbols_overview
+    name: "Serena: Symbols Overview"
+    summary: "Get high-level understanding of code symbols in a file."
+    stages: [locate, analyze]
+    interaction_mode: primitive
+    tags: [code_reading, repo_map, symbol_resolution]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+    family_id: family__semantic_code_search
+    role_in_family: specialized
+    availability:
+      requires: [repo_indexed]
+
+  - id: mcp__serena__find_referencing_symbols
+    name: "Serena: Find References"
+    summary: "Find all references to a symbol across the codebase."
+    stages: [locate, analyze]
+    interaction_mode: primitive
+    tags: [semantic_search, symbol_resolution, dependency_graph]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+    family_id: family__semantic_code_search
+    role_in_family: specialized
+    availability:
+      requires: [repo_indexed]
+
+  - id: mcp__serena__search_for_pattern
+    name: "Serena: Pattern Search"
+    summary: "Flexible regex search across codebase including non-code files."
+    stages: [locate]
+    interaction_mode: primitive
+    tags: [semantic_search, code_reading]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+    availability:
+      requires: [repo_indexed]
+
+  - id: mcp__serena__replace_symbol_body
+    name: "Serena: Replace Symbol"
+    summary: "Replace the body of a symbol with new code."
+    stages: [modify]
+    interaction_mode: primitive
+    tags: [code_mod, refactor, safe_change]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: false, writes_repo: true, network: false, executes_code: false }
+    scope: repo
+    availability:
+      requires: [repo_indexed]
+
+  - id: mcp__serena__rename_symbol
+    name: "Serena: Rename Symbol"
+    summary: "Rename a symbol throughout the entire codebase."
+    stages: [modify]
+    interaction_mode: primitive
+    tags: [refactor, large_change, safe_change]
+    cost: { price_tier: free, latency_tier: medium }
+    risk: { read_only: false, writes_repo: true, network: false, executes_code: false }
+    scope: repo
+    availability:
+      requires: [repo_indexed]
+
+# ============================================================================
+# MCP TOOLS - Crawl4AI (Web Scraping)
+# ============================================================================
+  - id: mcp__crawl4ai__crawl
+    name: "Crawl4AI: Crawl"
+    summary: "Fetch and extract content from URL with JS rendering."
+    stages: [locate]
+    interaction_mode: primitive
+    tags: [web_research, crawl, docs_lookup]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: web
+    family_id: family__web_research
+    role_in_family: primitive
+    availability:
+      requires: [network]
+
+  - id: mcp__crawl4ai__ddg_search
+    name: "Crawl4AI: DuckDuckGo Search"
+    summary: "Search the web and return results with titles, URLs, snippets."
+    stages: [locate, triage]
+    interaction_mode: primitive
+    tags: [web_research, docs_lookup]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: web
+    family_id: family__web_research
+    role_in_family: primitive
+    availability:
+      requires: [network]
+
+# ============================================================================
+# MCP TOOLS - Playwright (Browser Automation)
+# ============================================================================
+  - id: mcp__playwright__browser_navigate
+    name: "Playwright: Navigate"
+    summary: "Navigate browser to a URL."
+    stages: [locate]
+    interaction_mode: primitive
+    tags: [crawl, web_research]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: web
+    family_id: family__browser_automation
+    role_in_family: primitive
+    availability:
+      requires: [network, browser]
+
+  - id: mcp__playwright__browser_snapshot
+    name: "Playwright: Snapshot"
+    summary: "Capture accessibility snapshot of current page."
+    stages: [analyze]
+    interaction_mode: primitive
+    tags: [crawl, code_reading]
+    cost: { price_tier: low, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: web
+    family_id: family__browser_automation
+    role_in_family: primitive
+    availability:
+      requires: [network, browser]
+
+  - id: mcp__playwright__browser_click
+    name: "Playwright: Click"
+    summary: "Click on an element in the browser."
+    stages: [modify]
+    interaction_mode: primitive
+    tags: [crawl]
+    cost: { price_tier: low, latency_tier: low }
+    risk: { read_only: false, writes_repo: false, network: true, executes_code: false }
+    scope: web
+    family_id: family__browser_automation
+    role_in_family: primitive
+    availability:
+      requires: [network, browser]
+
+# ============================================================================
+# MCP TOOLS - Repomix (Codebase Packaging)
+# ============================================================================
+  - id: mcp__repomix__pack_codebase
+    name: "Repomix: Pack Codebase"
+    summary: "Package local code directory into consolidated file for analysis."
+    stages: [triage, analyze]
+    interaction_mode: primitive
+    tags: [repo_map, code_reading, summarize]
+    cost: { price_tier: free, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: local_machine
+
+  - id: mcp__repomix__pack_remote_repository
+    name: "Repomix: Pack Remote"
+    summary: "Clone and package GitHub repository for analysis."
+    stages: [triage, analyze]
+    interaction_mode: primitive
+    tags: [repo_map, code_reading, web_research]
+    cost: { price_tier: low, latency_tier: high }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: web
+    availability:
+      requires: [network]
+
+# ============================================================================
+# MCP TOOLS - Claude-Mem (Memory)
+# ============================================================================
+  - id: mcp__claude_mem__search
+    name: "Claude-Mem: Search"
+    summary: "Search persistent cross-session memory database."
+    stages: [locate, triage]
+    interaction_mode: primitive
+    tags: [code_reading, summarize]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: local_machine
+    family_id: family__memory
+    role_in_family: primitive
+
+  - id: mcp__claude_mem__timeline
+    name: "Claude-Mem: Timeline"
+    summary: "Get timeline context around a specific memory."
+    stages: [analyze]
+    interaction_mode: primitive
+    tags: [code_reading, summarize, reporting]
+    cost: { price_tier: free, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: local_machine
+    family_id: family__memory
+    role_in_family: primitive
