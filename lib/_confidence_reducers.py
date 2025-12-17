@@ -1823,6 +1823,9 @@ class FileReeditReducer(ConfidenceReducer):
             return False
 
         # Check if file was edited before this turn
+        # NOTE: state_updater (priority 10) runs BEFORE this reducer (priority 12),
+        # so the current edit is ALREADY in files_edited. We need count >= 2 to
+        # detect a RE-edit (current + at least one previous).
         files_edited = getattr(state, "files_edited", [])
         edit_count = 0
         for entry in files_edited:
@@ -1832,8 +1835,8 @@ class FileReeditReducer(ConfidenceReducer):
             elif isinstance(entry, str) and entry == file_path:
                 edit_count += 1
 
-        # Trigger if this is 2nd+ edit
-        return edit_count >= 1
+        # Trigger if this is 2nd+ edit (count >= 2 because current edit already added)
+        return edit_count >= 2
 
 
 @dataclass
