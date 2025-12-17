@@ -67,21 +67,7 @@ bd list --status=in_progress
 bd list --status=open --limit=10
 ```
 
-### Step 5: Query claude-mem for Recent Context
-
-**CRITICAL:** Pull recent observations for this project from claude-mem:
-
-```
-mcp__plugin_claude-mem_claude-mem-search__get_recent_context with:
-  - project: "{project_name}"
-  - limit: 20
-```
-
-This returns decisions, discoveries, bugfixes, and learnings from recent sessions.
-
-If claude-mem is offline, note it and continue.
-
-### Step 6: Load Recent Session History
+### Step 5: Load Recent Session History
 
 ```bash
 # Get last 3 sessions for this project from session log
@@ -113,7 +99,7 @@ if log_file.exists():
 "
 ```
 
-### Step 7: Load Framework Memories (Lessons & Decisions)
+### Step 6: Load Framework Memories (Lessons & Decisions)
 
 Read these files and extract entries relevant to the current project:
 
@@ -127,7 +113,7 @@ tail -20 ~/.claude/memory/__decisions.md 2>/dev/null
 
 Look for entries mentioning the project name or related technologies.
 
-### Step 8: Check Serena Memories (If Available)
+### Step 7: Check Serena Memories (If Available)
 
 If `.serena/` exists in project root:
 ```
@@ -137,7 +123,7 @@ mcp__serena__list_memories
 
 Read any memories with names matching current work.
 
-### Step 9: Present Recovery Summary
+### Step 8: Present Recovery Summary
 
 ```
 ## 🔄 SESSION RECOVERED - {project_name}
@@ -166,9 +152,6 @@ Read any memories with names matching current work.
 ### Active Beads
 [From bd list output - IN_PROGRESS items first, then OPEN]
 
-### Recent Learnings (from claude-mem)
-[Key observations from claude-mem query - decisions, discoveries, bugfixes]
-
 ### Session History
 [Brief summary of last 3 sessions for this project]
 
@@ -181,10 +164,10 @@ Read any memories with names matching current work.
 - [ ] Session state file
 - [ ] Git status
 - [ ] Beads (project-scoped)
-- [ ] claude-mem observations
 - [ ] Session history log
 - [ ] Framework memories
 - [ ] Serena memories
+- [auto] claude-mem (injected via hooks)
 
 **Ready to continue.** What would you like me to work on?
 ```
