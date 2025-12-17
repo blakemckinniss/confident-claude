@@ -371,11 +371,19 @@ def handle_session_start_routing(
         result["should_plan"] = policy.should_plan
 
         # If classified as complex AND planner enabled, SUGGEST PAL tool (hybrid approach)
-        # Claude can choose any PAL tool - enforcement at completion gate
+        # Claude can choose any PAL tool - hard lock ensures at least one is used
         if policy.should_plan and config.planner.enabled:
+            project = cwd.name if cwd else "unknown"
             result["pal_suggestion"] = True
 
-            # Inject PAL MCP tool suggestion (not a hard mandate)
+            # CREATE LOCK - blocks tools until ANY PAL tool is called
+            create_pal_mandate_lock(
+                session_id=state.session_id,
+                project=project,
+                prompt=prompt,
+            )
+
+            # Inject PAL MCP tool suggestion (lock enforces usage)
             result["inject_context"] = generate_pal_suggestion(
                 prompt,
                 state,

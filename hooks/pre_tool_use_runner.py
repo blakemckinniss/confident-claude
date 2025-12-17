@@ -64,6 +64,11 @@ import re
 import time
 from pathlib import Path
 from typing import Optional, Callable
+
+# PERFORMANCE: Minimal top-level imports. Heavy modules loaded lazily inside hooks.
+# This reduces import time from ~55ms to ~20ms per invocation.
+
+# Core session state - needed for run_hooks orchestration
 from session_state import (
     load_state,
     save_state,
@@ -73,21 +78,13 @@ from session_state import (
     check_cascade_failure,
 )
 from _hook_result import HookResult
-
-# Confidence system
-from confidence import (
-    check_tool_permission,
-    suggest_alternatives,
-    should_mandate_external,
-    get_tier_info,
-)
-from _beads import (
-    get_open_beads,
-    get_in_progress_beads,
-    get_independent_beads,
-    generate_parallel_task_calls,
-)
 from _logging import log_debug
+
+# LAZY IMPORTS - These are loaded inside hooks that need them:
+# - confidence (check_tool_permission, get_tier_info) -> confidence_tool_gate, homeostatic_drive, threat_anticipation
+# - _beads (get_open_beads, etc.) -> bead_enforcement, parallel_bead_delegation
+# - _confidence_constants -> homeostatic_drive, threat_anticipation
+# - _confidence_streaks -> threat_anticipation
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -744,36 +741,25 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve("⚠️ PAL mandate bypassed via SUDO")
 
     tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", {})
 
-    # Check if this IS the required PAL planner call
-    if tool_name == "mcp__pal__planner":
-        model = tool_input.get("model", "").lower()
-        # Accept gpt-5.2, gpt5.2, openai/gpt-5.2, etc.
-        if "gpt-5" in model or "gpt5" in model:
-            clear_pal_mandate_lock()
-            # Mark session as bootstrapped so Groq routing stops
-            try:
-                from mastermind.state import load_state, save_state
-                from mastermind.hook_integration import get_session_id
+    # Check if this IS a PAL MCP tool call (any PAL tool satisfies the mandate)
+    if isinstance(tool_name, str) and tool_name.startswith("mcp__pal__"):
+        clear_pal_mandate_lock()
+        # Mark session as bootstrapped so Groq routing stops
+        try:
+            from mastermind.state import load_state, save_state
+            from mastermind.hook_integration import get_session_id
 
-                session_id = get_session_id()
-                mm_state = load_state(session_id)
-                mm_state.mark_bootstrapped()
-                save_state(mm_state)
-            except Exception as e:
-                log_debug(f"[mastermind] Failed to mark session bootstrapped: {e}")
-            return HookResult.approve(
-                "✅ **PAL MANDATE SATISFIED** - GPT-5.x planner invoked. Session bootstrapped."
-            )
-        else:
-            # Wrong model - still block
-            return HookResult.deny(
-                f"🚨 **WRONG MODEL** - You must use GPT-5.x\n"
-                f"You specified: `{tool_input.get('model', 'none')}`\n"
-                f"Required: `openai/gpt-5.2` or similar GPT-5.x model\n\n"
-                f"**Fix your mcp__pal__planner call to use the correct model.**"
-            )
+            session_id = get_session_id()
+            mm_state = load_state(session_id)
+            mm_state.mark_bootstrapped()
+            mm_state.pal_consulted = True
+            save_state(mm_state)
+        except (ImportError, FileNotFoundError, AttributeError) as e:
+            log_debug(f"[mastermind] Failed to mark session bootstrapped: {e}")
+        return HookResult.approve(
+            f"✅ **PAL MANDATE SATISFIED** - `{tool_name}` invoked. Session bootstrapped."
+        )
 
     # Allow read-only investigation tools (can't cause harm)
     if tool_name in ("Read", "Grep", "Glob", "LS"):
@@ -786,17 +772,21 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
 
     return HookResult.deny(
         f"🚨 **PAL MANDATE ENFORCED** (Priority 0 Hard Block)\n\n"
-        f"**The user requested strategic planning via `^` prefix.**\n"
-        f'You MUST call `mcp__pal__planner` with `model: "openai/gpt-5.2"` FIRST.\n\n'
+        f"**This task requires external consultation before proceeding.**\n"
+        f"You MUST call a PAL MCP tool (`mcp__pal__*`) FIRST.\n\n"
         f"**Blocked tool:** `{tool_name}`\n"
         f"**Session:** `{session_id}`\n"
         f"**Project:** `{project}`\n"
         f"**Original request:** `{prompt_preview}...`\n\n"
-        f"**ONLY ALLOWED ACTIONS:**\n"
-        f"1. Call `mcp__pal__planner` with model `openai/gpt-5.2`\n"
-        f"2. Use Read/Grep/Glob/LS for investigation\n"
-        f"3. User says SUDO to bypass\n\n"
-        f"**ALL OTHER TOOLS ARE BLOCKED UNTIL YOU COMPLY.**"
+        f"**ALLOWED PAL TOOLS:**\n"
+        f"- `mcp__pal__planner` - Strategic planning\n"
+        f"- `mcp__pal__debug` - Debugging analysis\n"
+        f"- `mcp__pal__codereview` - Code review\n"
+        f"- `mcp__pal__consensus` - Architecture decisions\n"
+        f"- `mcp__pal__chat` - General discussion\n"
+        f"- `mcp__pal__thinkdeep` - Problem decomposition\n\n"
+        f"**ALSO ALLOWED:** Read/Grep/Glob/LS for investigation, SUDO to bypass\n\n"
+        f"**Choose the PAL tool that best fits this task.**"
     )
 
 
