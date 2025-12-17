@@ -322,3 +322,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-16 20:32
 - [abandoned_stubs] ⚠️ ABANDONED WORK: generate_monsters.py contain stubs/TODOs
+
+### 2025-12-16 21:32
+- [abandoned_stubs] ⚠️ ABANDONED WORK: card-animations.ts, resource-effects.ts, enemy-actions.ts, generators.ts, packs.ts contain stubs/TODOs
