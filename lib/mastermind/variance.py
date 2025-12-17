@@ -31,7 +31,7 @@ def generate_variance_report(
     blueprint: Blueprint | None = None,
 ) -> VarianceReport:
     """Generate variance report from drift signals."""
-    bp = blueprint or state.blueprint
+    _bp = blueprint or state.blueprint  # Reserved for future use
 
     # Summarize what changed
     changes = []
