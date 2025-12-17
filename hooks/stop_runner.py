@@ -1272,6 +1272,90 @@ def check_pending_greps(data: dict, state: SessionState) -> StopHookResult:
     )
 
 
+@register_hook("serena_memory_sync", priority=75)
+def sync_serena_memory(data: dict, state: SessionState) -> StopHookResult:
+    """Fire-and-forget Serena memory update on session end.
+
+    Runs async - doesn't block stop, user doesn't see output.
+    Writes session summary to Serena project memory.
+    """
+    cwd = data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+
+    # Check if project has Serena
+    serena_dir = Path(cwd) / ".serena"
+    if not serena_dir.exists():
+        # Walk up to find project root with .serena
+        check_dir = Path(cwd)
+        serena_dir = None
+        for _ in range(5):  # Max 5 levels up
+            if (check_dir / ".serena").exists():
+                serena_dir = check_dir / ".serena"
+                cwd = str(check_dir)
+                break
+            if check_dir.parent == check_dir:
+                break
+            check_dir = check_dir.parent
+
+        if not serena_dir:
+            return StopHookResult.ok()
+
+    # Build session summary for memory
+    project_name = Path(cwd).name
+    files_edited = list(set(state.files_edited[-20:]))
+    files_created = list(set(state.files_created[-10:]))
+
+    # Skip if nothing significant happened
+    if not files_edited and not files_created:
+        return StopHookResult.ok()
+
+    # Build memory content
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    memory_lines = [
+        f"# Session Summary - {timestamp}",
+        "",
+        f"## Files Modified ({len(files_edited)})",
+    ]
+    for f in files_edited[:10]:
+        memory_lines.append(f"- {f}")
+
+    if files_created:
+        memory_lines.append(f"\n## Files Created ({len(files_created)})")
+        for f in files_created[:5]:
+            memory_lines.append(f"- {f}")
+
+    if state.errors_unresolved:
+        memory_lines.append(f"\n## Unresolved Issues ({len(state.errors_unresolved)})")
+        for err in state.errors_unresolved[:3]:
+            memory_lines.append(f"- {err.get('type', 'unknown')}: {err.get('message', '')[:100]}")
+
+    memory_content = "\n".join(memory_lines)
+
+    # Write directly to Serena memories (fire and forget via Popen)
+    memory_file = serena_dir / "memories" / f"session_{timestamp.replace(':', '-').replace(' ', '_')}.md"
+
+    # Use a simple background write - spawn detached process
+    write_script = f'''
+import os
+os.makedirs("{memory_file.parent}", exist_ok=True)
+with open("{memory_file}", "w") as f:
+    f.write("""{memory_content}""")
+'''
+
+    try:
+        subprocess.Popen(
+            [sys.executable, "-c", write_script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,  # Detach from parent
+        )
+    except Exception:
+        pass  # Fire and forget - ignore errors
+
+    return StopHookResult.ok()
+
+
 @register_hook("unresolved_errors", priority=80)
 def check_unresolved_errors(data: dict, state: SessionState) -> StopHookResult:
     """Check for lingering errors."""
