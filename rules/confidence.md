@@ -22,15 +22,15 @@ This "stasis zone" represents balanced operation where:
 
 **If confidence drops below 80%**, PROACTIVELY recover by:
 1. Reading relevant files (+1 each)
-2. Running `git status/log/diff` (+10)
+2. Running `git status/log/diff` (+3, cooldown 5)
 3. Consulting `~/.claude/memory/` files (+10)
 4. Creating beads with `bd create` (+10)
 5. Running lints/tests (+3/+5)
-6. **Asking clarifying questions (+20)** ← Most effective single recovery action
+6. **Asking clarifying questions (+8)** - demonstrates epistemic humility
 
 ## Question-Asking Thresholds
 
-**Questions are a confidence multiplier.** The `AskUserQuestion` tool provides +20 confidence because it demonstrates epistemic humility and ensures alignment.
+**Questions are a confidence signal.** The `AskUserQuestion` tool provides +8 confidence (with 8-turn cooldown to prevent spam) because it demonstrates epistemic humility and ensures alignment.
 
 | Confidence | Question Behavior |
 |------------|-------------------|
@@ -47,7 +47,7 @@ This "stasis zone" represents balanced operation where:
 4. **Implementation choices**: When user might have preferences
 5. **10+ actions**: Extended autonomous work without check-in
 
-**Question format**: Use `AskUserQuestion` with 2-4 structured options. Users can always select "Other" for custom input. This is faster for users than open-ended questions and earns +20 confidence.
+**Question format**: Use `AskUserQuestion` with 2-4 structured options. Users can always select "Other" for custom input. This is faster for users than open-ended questions and earns +8 confidence.
 
 **Do NOT spam SUDO** - use the increasers to earn confidence back legitimately.
 
@@ -188,7 +188,7 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `productive_bash` | +1 | ls, pwd, which, tree, stat (inspection) |
 | `research` | +2 | WebSearch, WebFetch, crawl4ai |
 | `search_tool` | +2 | Grep, Glob, Task (understanding) |
-| `rules_update` | +15 | Edit CLAUDE.md or /rules/ (framework DNA) |
+| `rules_update` | +15 | Edit CLAUDE.md or /rules/ (framework DNA, cooldown 1) |
 | `lint_pass` | +3 | ruff check, eslint, cargo clippy passes |
 | `small_diff` | +3 | Diffs under 400 LOC (focused changes) |
 | `custom_script` | +5 | ~/.claude/ops/* scripts (audit, void, etc.) |
@@ -196,8 +196,8 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `build_success` | +5 | npm build/cargo build/tsc succeeds |
 | `memory_consult` | +10 | Read ~/.claude/memory/ files |
 | `bead_create` | +10 | bd create/update (task tracking) |
-| `git_explore` | +10 | git log/diff/status/show/blame |
-| `ask_user` | +20 | AskUserQuestion (epistemic humility) |
+| `git_explore` | +3 | git log/diff/status/show/blame (cooldown 5) |
+| `ask_user` | +8 | AskUserQuestion (cooldown 8, prevents spam) |
 | `user_ok` | +2 | Short positive feedback ("ok", "thanks") |
 | `trust_regained` | +15 | User says "CONFIDENCE_BOOST_APPROVED" |
 | `premise_challenge` | +5 | Suggested existing solution or challenged build-vs-buy |
