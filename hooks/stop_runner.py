@@ -406,174 +406,43 @@ def get_context_usage(transcript_path: str, context_window: int) -> tuple[int, i
         return 0, context_window
 
 
-def _format_resume_template(
-    state: SessionState, pct: float, used: int, total: int
-) -> str:
-    """Format the comprehensive resume prompt template with session state."""
-    # Gather files modified
-    files_modified = list(set(state.files_edited + state.files_created))[:20]
-    files_str = (
-        "\n".join(f"- {f}" for f in files_modified)
-        if files_modified
-        else "- None tracked"
-    )
+def _format_exhaustion_block(pct: float, used: int, total: int) -> str:
+    """Format the context exhaustion block message.
 
-    # Memory files consulted
-    memory_files = [
-        f for f in state.files_read if "/.claude/memory/" in f or "/memory/" in f
-    ][:10]
-    memory_str = (
-        "\n".join(f"- {Path(f).name}" for f in memory_files)
-        if memory_files
-        else "- None"
-    )
-
-    # Evidence ledger
-    evidence = state.evidence_ledger[-10:] if state.evidence_ledger else []
-    evidence_str = (
-        "\n".join(f"- {e.get('summary', str(e))[:100]}" for e in evidence)
-        if evidence
-        else "- None recorded"
-    )
-
-    # Approach history
-    approaches = state.approach_history[-5:] if state.approach_history else []
-    approach_str = (
-        "\n".join(
-            f"- {a.get('approach', 'unknown')}: {a.get('failures', 0)} failures"
-            for a in approaches
-        )
-        if approaches
-        else "- None tracked"
-    )
-
-    # Errors unresolved
-    errors = state.errors_unresolved[-5:] if state.errors_unresolved else []
-    errors_str = (
-        "\n".join(
-            f"- {e.get('type', 'error')}: {e.get('message', str(e))[:80]}"
-            for e in errors
-        )
-        if errors
-        else "- None"
-    )
-
-    # Blockers
-    blockers = state.handoff_blockers[-5:] if state.handoff_blockers else []
-    blockers_str = (
-        "\n".join(f"- {b}" for b in blockers) if blockers else "- None identified"
-    )
-
-    # Next steps from state
-    next_steps = state.handoff_next_steps[-5:] if state.handoff_next_steps else []
-    next_str = (
-        "\n".join(f"- {s}" for s in next_steps)
-        if next_steps
-        else "[Fill in priority next actions]"
-    )
-
-    # Work queue items
-    work_items = [w for w in state.work_queue if w.get("status") != "done"][:5]
-    work_str = (
-        "\n".join(
-            f"- [{w.get('type', 'task')}] {w.get('description', str(w))[:60]}"
-            for w in work_items
-        )
-        if work_items
-        else ""
-    )
-
-    # Progress log
-    progress = state.progress_log[-5:] if state.progress_log else []
-    progress_str = (
-        "\n".join(f"- {p.get('description', str(p))[:80]}" for p in progress)
-        if progress
-        else "[Describe what was accomplished]"
-    )
-
-    return f"""## 🔄 CONTEXT EXHAUSTION ({pct:.0f}%) - Resume Prompt Required
+    This is a BLOCK to prevent session end - not a resume template.
+    State is auto-persisted; `/resume` in the next session will recover it.
+    """
+    return f"""## 🛑 CONTEXT EXHAUSTION ({pct:.0%}) - Wrap Up Required
 
 **Context usage: {used:,} / {total:,} tokens**
 
-You MUST generate a comprehensive resume prompt before this session ends.
-Fill in the bracketed sections with specific details from this session.
+Session is approaching context limit. Complete these steps before stopping:
+
+### 1. Commit Your Work
+```bash
+git add -A && git commit -m "[auto] session checkpoint"
+```
+
+### 2. Sync Beads
+```bash
+bd sync
+```
+
+### 3. Verify State Saved
+Session state is auto-persisted to `~/.claude/memory/session_state_v3.json`.
+Check it includes your `original_goal` and `progress_log`.
 
 ---
 
-# Resume Prompt for New Session
+**Recovery:** In your NEXT session, run `/resume` to restore full context.
 
-## Original Goal
-{state.original_goal or "[Describe what the user originally asked for]"}
+The `/resume` command will:
+- Load session state (goals, progress, files modified)
+- Check beads status
+- Check git status
+- Activate Serena if available
 
-## Progress Summary
-{progress_str}
-
-## Files Modified
-{files_str}
-
-## Key Decisions Made
-[Document important architectural/implementation choices and their rationale]
-
-## Current Blockers
-{errors_str}
-{blockers_str}
-
-## Beads Status
-Run these commands to see current task state:
-```bash
-bd list --status=open
-bd list --status=in_progress
-```
-
-## Git State
-Run to capture uncommitted work:
-```bash
-git status --short
-git diff --stat
-```
-
-## Memory Files Consulted
-{memory_str}
-
-## Evidence Gathered
-{evidence_str}
-
-## Approaches Tried
-{approach_str}
-
-## Work Queue
-{work_str if work_str else "[Any discovered work items]"}
-
-## Next Steps (Priority Order)
-{next_str}
-
-## Critical Context
-[Information the next session MUST know:
-- Environment variables or config needed
-- Ports/services that should be running
-- API keys location or auth setup
-- Any workarounds or gotchas discovered]
-
-## Session Continuity Resources
-
-**Full Transcript:**
-- Location: `~/.claude/projects/` (by project/session ID)
-- Session ID: `{state.session_id or "[check session_state.json]"}`
-
-**Memory Systems:**
-- Framework: `~/.claude/memory/` (lessons, decisions, capabilities)
-- Serena: `~/.claude/.serena/memories/` (project-specific if Serena active)
-
-**Serena Activation:**
-If `.serena/` exists in working directory, activate with:
-```
-mcp__serena__activate_project
-```
-
----
-
-**Copy everything between the --- markers to start a new session.**
-"""
+**You can now wrap up and stop.** Context will be recoverable."""
 
 
 # =============================================================================
@@ -612,15 +481,20 @@ def check_context_warning(data: dict, state: SessionState) -> StopHookResult:
         "- Wrapping up current task\n"
         "- Running `bd sync` to save bead state\n"
         "- Committing work in progress\n\n"
-        f"**Hard cutoff at {CONTEXT_EXHAUSTION_THRESHOLD:.0%} will require resume prompt generation.**"
+        f"**At {CONTEXT_EXHAUSTION_THRESHOLD:.0%}, you'll be prompted to wrap up.** "
+        "Session state auto-persists; `/resume` in next session recovers context."
     )
 
 
 @register_hook("context_exhaustion", priority=4)
 def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
-    """Force resume prompt generation at 85% context usage."""
-    # Skip if resume already generated
-    if state.nudge_history.get("context_resume_generated"):
+    """Block session end at 85% context - prompt wrap-up actions.
+
+    State is auto-persisted; `/resume` in the NEXT session recovers it.
+    This hook just ensures Claude wraps up cleanly before context dies.
+    """
+    # Skip if already shown this session
+    if state.nudge_history.get("context_exhaustion_shown"):
         return StopHookResult.ok()
 
     transcript_path = data.get("transcript_path", "")
@@ -634,15 +508,10 @@ def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
     if pct < CONTEXT_EXHAUSTION_THRESHOLD:
         return StopHookResult.ok()
 
-    # Mark as triggered (will be set after user sees the block)
-    state.nudge_history["context_resume_generated"] = True
+    # Mark as shown (only block once per session)
+    state.nudge_history["context_exhaustion_shown"] = True
 
-    # Provide both: the template AND mention the command
-    template = _format_resume_template(state, pct * 100, used, total)
-    return StopHookResult.block(
-        template
-        + "\n\n💡 **TIP:** Run `/resume` to auto-generate this from session state."
-    )
+    return StopHookResult.block(_format_exhaustion_block(pct, used, total))
 
 
 @register_hook("auto_commit", priority=10)
