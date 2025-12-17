@@ -43,6 +43,7 @@ HOOKS INDEX (by priority):
     88 research_gate       - Block unverified libraries
     92 import_gate         - Warn on third-party imports
     95 modularization_nudge- Occasional modularization reminder
+    96 curiosity_injection - Metacognitive prompts before major edits
 
   SESSION (80-90):
     80 sunk_cost_detector  - Detect failure loops
@@ -2179,6 +2180,74 @@ def check_modularization(data: dict, state: SessionState) -> HookResult:
     return HookResult.approve(
         "📦 MODULARIZATION: Search first, separate concerns, use descriptive filenames."
     )
+
+
+# =============================================================================
+# CURIOSITY INJECTION (Priority 96) - Metacognitive prompts before major edits
+# =============================================================================
+
+
+@register_hook("curiosity_injection", "Edit|Write", priority=96)
+def inject_curiosity_prompt(data: dict, state: SessionState) -> HookResult:
+    """Inject metacognitive prompts to expand associative thinking.
+
+    Humans have automatic spreading activation - thinking "coffee" triggers
+    "morning", "caffeine", "mug". LLMs don't do this automatically.
+
+    This hook artificially triggers expanded thinking before significant edits
+    by injecting brief curiosity prompts that surface:
+    - Related concepts and patterns
+    - Unstated assumptions
+    - Alternative approaches
+
+    Fires sparingly to avoid noise (cooldown + file significance checks).
+    """
+    tool_input = data.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
+
+    if not file_path:
+        return HookResult.approve()
+
+    # Skip scratch files - no metacognition needed for throwaway code
+    if ".claude/tmp/" in file_path:
+        return HookResult.approve()
+
+    # Skip non-code files
+    CODE_EXT = {".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java"}
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in CODE_EXT:
+        return HookResult.approve()
+
+    # Cooldown: only fire every 8 code edits (not too frequent, not too rare)
+    key = "_curiosity_injection_count"
+    count = state.nudge_history.get(key, 0) + 1
+    state.nudge_history[key] = count
+
+    if count % 8 != 0:
+        return HookResult.approve()
+
+    # Context-aware prompts based on file type
+    prompts = []
+
+    # Framework self-surgery - extra careful
+    if ".claude/" in file_path and ("hooks" in file_path or "lib" in file_path):
+        prompts.append("🧬 Framework DNA edit - what side effects might this have?")
+        prompts.append("🔗 What other hooks/reducers might interact with this change?")
+
+    # Test files - think about coverage
+    elif "test" in file_path.lower():
+        prompts.append("🧪 What edge cases am I NOT testing?")
+        prompts.append("🎯 Does this test the behavior or the implementation?")
+
+    # General code - expand thinking
+    else:
+        prompts.append("🤔 What assumption am I making that might be wrong?")
+        prompts.append("🔄 Is there an existing pattern in this codebase I should follow?")
+
+    # Pick one prompt (rotate based on count)
+    prompt = prompts[count % len(prompts)]
+
+    return HookResult.approve(f"💡 CURIOSITY: {prompt}")
 
 
 # =============================================================================
