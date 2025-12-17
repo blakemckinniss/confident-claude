@@ -4,8 +4,8 @@
     "claude-mem@thedotmack": [
       {
         "scope": "project",
-        "projectPath": "/home/jinx",
-        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.2.3",
+        "projectPath": "/home/blake",
+        "installPath": "/home/blake/.claude/plugins/cache/thedotmack/claude-mem/7.2.3",
         "version": "7.2.3",
         "installedAt": "2025-12-15T16:06:34.988Z",
         "lastUpdated": "2025-12-15T18:59:36.879Z",
@@ -16,8 +16,8 @@
     "repomix-mcp@repomix": [
       {
         "scope": "project",
-        "projectPath": "/home/jinx",
-        "installPath": "/home/jinx/.claude/plugins/cache/repomix/repomix-mcp/1.0.1",
+        "projectPath": "/home/blake",
+        "installPath": "/home/blake/.claude/plugins/cache/repomix/repomix-mcp/1.0.1",
         "version": "1.0.1",
         "installedAt": "2025-12-15T18:59:36.879Z",
         "lastUpdated": "2025-12-15T18:59:36.879Z",
@@ -28,8 +28,8 @@
     "repomix-commands@repomix": [
       {
         "scope": "project",
-        "projectPath": "/home/jinx",
-        "installPath": "/home/jinx/.claude/plugins/cache/repomix/repomix-commands/1.0.2",
+        "projectPath": "/home/blake",
+        "installPath": "/home/blake/.claude/plugins/cache/repomix/repomix-commands/1.0.2",
         "version": "1.0.2",
         "installedAt": "2025-12-15T18:59:36.879Z",
         "lastUpdated": "2025-12-15T18:59:36.879Z",
@@ -40,8 +40,8 @@
     "repomix-explorer@repomix": [
       {
         "scope": "project",
-        "projectPath": "/home/jinx",
-        "installPath": "/home/jinx/.claude/plugins/cache/repomix/repomix-explorer/1.1.0",
+        "projectPath": "/home/blake",
+        "installPath": "/home/blake/.claude/plugins/cache/repomix/repomix-explorer/1.1.0",
         "version": "1.1.0",
         "installedAt": "2025-12-15T18:59:36.879Z",
         "lastUpdated": "2025-12-15T18:59:36.879Z",
@@ -52,7 +52,7 @@
     "frontend-design@claude-code-plugins": [
       {
         "scope": "user",
-        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-plugins/frontend-design/1.0.0",
+        "installPath": "/home/blake/.claude/plugins/cache/claude-code-plugins/frontend-design/1.0.0",
         "version": "1.0.0",
         "installedAt": "2025-12-15T20:36:48.153Z",
         "lastUpdated": "2025-12-15T20:36:48.153Z",
@@ -63,7 +63,7 @@
     "code-review@claude-code-plugins": [
       {
         "scope": "user",
-        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-plugins/code-review/1.0.0",
+        "installPath": "/home/blake/.claude/plugins/cache/claude-code-plugins/code-review/1.0.0",
         "version": "1.0.0",
         "installedAt": "2025-12-15T20:37:23.665Z",
         "lastUpdated": "2025-12-15T20:37:23.665Z",
@@ -74,7 +74,7 @@
     "commit-commands@claude-code-plugins": [
       {
         "scope": "user",
-        "installPath": "/home/jinx/.claude/plugins/cache/claude-code-plugins/commit-commands/1.0.0",
+        "installPath": "/home/blake/.claude/plugins/cache/claude-code-plugins/commit-commands/1.0.0",
         "version": "1.0.0",
         "installedAt": "2025-12-15T20:37:36.894Z",
         "lastUpdated": "2025-12-15T20:37:36.894Z",

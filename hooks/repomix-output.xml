@@ -5356,7 +5356,7 @@ def check_intention_tracker(data: dict, state: SessionState) -> HookResult:
 # PROMPT DISCLAIMER (priority 30)
 # =============================================================================
 
-DISCLAIMER = """⚠️ SYSTEM ASSISTANT MODE: Full access to /home/jinx & /mnt/c/. Ask if unsure. Read before edit. Verify before claiming. Use ~/projects/ for project work, ~/ai/ for AI projects/services, ~/.claude/tmp/ for scratch. For python scripts use /home/jinx/.claude/.venv/bin/python as interpreter. Always confirm file paths exist before referencing. For task tracking use `bd` (beads) NOT TodoWrite. ⚠️"""
+DISCLAIMER = """⚠️ SYSTEM ASSISTANT MODE: Full access to /home/blake & /mnt/c/. Ask if unsure. Read before edit. Verify before claiming. Use ~/projects/ for project work, ~/ai/ for AI projects/services, ~/.claude/tmp/ for scratch. For python scripts use /home/blake/.claude/.venv/bin/python as interpreter. Always confirm file paths exist before referencing. For task tracking use `bd` (beads) NOT TodoWrite. ⚠️"""
 
 TASK_CHECKLIST = """
 ## Task Checklist - Order of Operations
@@ -6910,7 +6910,7 @@ def check_self_heal_diagnostic(data: dict, state: SessionState) -> HookResult:
     # Path-specific diagnostics
     if "hook" in target.lower() or "runner" in target.lower():
         diagnostics.append(
-            "~/.claude/.venv/bin/python -c \"import sys; sys.path.insert(0, '/home/jinx/.claude/hooks'); import pre_tool_use_runner\"  # Test import"
+            "~/.claude/.venv/bin/python -c \"import sys; sys.path.insert(0, '/home/blake/.claude/hooks'); import pre_tool_use_runner\"  # Test import"
         )
     if "session_state" in target.lower() or "lib" in target.lower():
         diagnostics.append(
@@ -12256,7 +12256,7 @@ if __name__ == "__main__":
 """
 Session Init Hook v3: SessionStart hook for initialization.
 
-SYSTEM CONTEXT: Global WSL2 assistant at /home/jinx
+SYSTEM CONTEXT: Global WSL2 assistant at /home/blake
 - Full system access, not project-scoped
 - Can help with any task across the system
 - Projects live in ~/projects/, AI projects in ~/ai/
@@ -12848,7 +12848,7 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
     For autonomous agents, this is AUTOMATIC - no human input needed.
     """
     parts = [
-        "💻 **SYSTEM**: WSL2 global assistant @ /home/jinx | Full access | ~/projects/ for work | ~/ai/ for AI projects"
+        "💻 **SYSTEM**: WSL2 global assistant @ /home/blake | Full access | ~/projects/ for work | ~/ai/ for AI projects"
     ]
 
     if ctx := _build_project_context(project_context):
