@@ -462,24 +462,31 @@ def _extract_toolchain_from_response(response_text: str) -> list[dict] | None:
         return None
 
 
-def _create_beads_from_toolchain(toolchain: list[dict], session_id: str) -> list[str]:
-    """Create beads from toolchain steps. Returns list of created bead IDs."""
+def _create_beads_from_toolchain(
+    toolchain: list[dict], session_id: str
+) -> tuple[list[str], dict[str, dict]]:
+    """Create beads from toolchain steps.
+
+    Returns:
+        Tuple of (bead_ids, stage_map) where stage_map maps bead_id to stage metadata.
+    """
     import json
 
     bd_path = shutil.which("bd")
     if not bd_path:
-        return []
+        return [], {}
 
     bead_ids = []
+    stage_map = {}
+
     for step in toolchain[:5]:  # Max 5 steps
         stage = step.get("stage", "analyze")
         if stage not in TOOLCHAIN_STAGES:
             continue
 
         primary = step.get("primary", {})
-        rationale = step.get("rationale", "") or primary.get(
-            "capability_id", "Task step"
-        )
+        primary_tool = primary.get("capability_id", "")
+        rationale = step.get("rationale", "") or primary_tool or "Task step"
         rationale = rationale[:50]
 
         title = f"[{stage}] {rationale}"
@@ -497,6 +504,13 @@ def _create_beads_from_toolchain(toolchain: list[dict], session_id: str) -> list
                     bead_id = data.get("id") or data.get("bead_id")
                     if bead_id:
                         bead_ids.append(bead_id)
+                        # Store stage metadata for tracking
+                        stage_map[bead_id] = {
+                            "stage": stage,
+                            "primary_tool": primary_tool,
+                            "status": "open",
+                            "tool_uses": 0,
+                        }
                 except json.JSONDecodeError:
                     pass
         except (subprocess.TimeoutExpired, OSError):
@@ -513,7 +527,7 @@ def _create_beads_from_toolchain(toolchain: list[dict], session_id: str) -> list
         except (subprocess.TimeoutExpired, OSError):
             pass
 
-    return bead_ids
+    return bead_ids, stage_map
 
 
 @register_hook("toolchain_bead_creator", "mcp__pal__chat", priority=73)
@@ -549,11 +563,13 @@ def check_toolchain_bead_creator(
         return HookResult.none()
 
     session_id = getattr(state, "session_id", "unknown")
-    bead_ids = _create_beads_from_toolchain(toolchain, session_id)
+    bead_ids, stage_map = _create_beads_from_toolchain(toolchain, session_id)
 
     if bead_ids:
         tc_state["beads_created_this_session"] = True
         tc_state["bead_ids"] = bead_ids
+        tc_state["stage_map"] = stage_map
+        tc_state["current_stage_index"] = 0
         runner_state["toolchain_bead_state"] = tc_state
 
         stages = [s.get("stage", "?") for s in toolchain[: len(bead_ids)]]
@@ -561,6 +577,140 @@ def check_toolchain_bead_creator(
             f"📋 **Beads created from toolchain** ({len(bead_ids)} stages: {', '.join(stages)})\n"
             f"Run `bd list` to see tasks. First bead: `{bead_ids[0]}`"
         )
+
+    return HookResult.none()
+
+
+# =============================================================================
+# TOOLCHAIN STAGE TRACKER (priority 74)
+# =============================================================================
+
+# Map capability prefixes to stage types for tool->stage matching
+STAGE_TOOL_PATTERNS = {
+    "locate": ["mcp__serena__find", "mcp__serena__search", "Grep", "Glob", "Read"],
+    "analyze": ["mcp__pal__debug", "mcp__pal__thinkdeep", "mcp__serena__get_symbols"],
+    "modify": ["Edit", "Write", "mcp__serena__replace", "mcp__serena__insert"],
+    "validate": ["Bash", "mcp__pal__precommit", "mcp__pal__codereview"],
+    "report": ["mcp__pal__chat"],
+    "triage": ["mcp__pal__planner", "Task"],
+}
+
+
+def _tool_matches_stage(tool_name: str, stage: str) -> bool:
+    """Check if a tool matches a stage's expected tool patterns."""
+    patterns = STAGE_TOOL_PATTERNS.get(stage, [])
+    for pattern in patterns:
+        if tool_name.startswith(pattern) or tool_name == pattern:
+            return True
+    return False
+
+
+def _update_bead_status(bead_id: str, status: str) -> bool:
+    """Update a bead's status via bd CLI. Returns True on success."""
+    bd_path = shutil.which("bd")
+    if not bd_path:
+        return False
+    try:
+        result = subprocess.run(
+            [bd_path, "update", bead_id, f"--status={status}"],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def _close_bead(bead_id: str) -> bool:
+    """Close a bead via bd CLI. Returns True on success."""
+    bd_path = shutil.which("bd")
+    if not bd_path:
+        return False
+    try:
+        result = subprocess.run(
+            [bd_path, "close", bead_id],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+@register_hook("toolchain_stage_tracker", ".*", priority=74)
+def check_toolchain_stage_tracker(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Track tool usage and update toolchain beads automatically.
+
+    - Marks current stage bead as in_progress when matching tools are used
+    - Auto-closes previous stage when next stage's tools are detected
+    - Tracks tool usage counts per stage
+    """
+    tc_state = runner_state.get("toolchain_bead_state", {})
+    if not tc_state.get("beads_created_this_session"):
+        return HookResult.none()
+
+    bead_ids = tc_state.get("bead_ids", [])
+    stage_map = tc_state.get("stage_map", {})
+    current_idx = tc_state.get("current_stage_index", 0)
+
+    if not bead_ids or current_idx >= len(bead_ids):
+        return HookResult.none()
+
+    tool_name = data.get("tool_name", "")
+    if not tool_name:
+        return HookResult.none()
+
+    current_bead_id = bead_ids[current_idx]
+    current_meta = stage_map.get(current_bead_id, {})
+    current_stage = current_meta.get("stage", "")
+
+    messages = []
+
+    # Check if tool matches current stage
+    if _tool_matches_stage(tool_name, current_stage):
+        current_meta["tool_uses"] = current_meta.get("tool_uses", 0) + 1
+
+        # Mark as in_progress if still open
+        if current_meta.get("status") == "open":
+            if _update_bead_status(current_bead_id, "in_progress"):
+                current_meta["status"] = "in_progress"
+                messages.append(f"▶️ Stage [{current_stage}] started")
+
+    # Check if tool matches a LATER stage (indicates progression)
+    for future_idx in range(current_idx + 1, len(bead_ids)):
+        future_bead_id = bead_ids[future_idx]
+        future_meta = stage_map.get(future_bead_id, {})
+        future_stage = future_meta.get("stage", "")
+
+        if _tool_matches_stage(tool_name, future_stage):
+            # Close current stage (unless it's validate/report - terminal stages)
+            if current_stage not in ("validate", "report"):
+                if current_meta.get("status") != "closed":
+                    if _close_bead(current_bead_id):
+                        current_meta["status"] = "closed"
+                        messages.append(f"✅ Stage [{current_stage}] completed")
+
+            # Advance to new stage
+            tc_state["current_stage_index"] = future_idx
+            future_meta["tool_uses"] = future_meta.get("tool_uses", 0) + 1
+
+            if future_meta.get("status") == "open":
+                if _update_bead_status(future_bead_id, "in_progress"):
+                    future_meta["status"] = "in_progress"
+                    messages.append(f"▶️ Stage [{future_stage}] started")
+
+            stage_map[future_bead_id] = future_meta
+            break
+
+    # Persist state
+    stage_map[current_bead_id] = current_meta
+    tc_state["stage_map"] = stage_map
+    runner_state["toolchain_bead_state"] = tc_state
+
+    if messages:
+        return HookResult.with_context("\n".join(messages))
 
     return HookResult.none()
 

@@ -30,6 +30,7 @@ HOOKS INDEX (by priority):
     70 info_gain_tracker   - Detect reads without progress
     72 beads_auto_sync     - Auto-sync beads after git commit/push
     73 toolchain_bead_creator - Create beads from GPT-5.2 toolchain recommendations
+    74 toolchain_stage_tracker - Track tool usage, auto-update/close stage beads
     75 pattern_curiosity   - Pattern recognition prompts after 5+ file reads
     76 failure_curiosity   - Alternative approach prompts after tool failures
     77 low_confidence_curiosity - Uncertainty exploration at <70% confidence
