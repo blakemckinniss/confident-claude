@@ -1,12 +1,12 @@
 {
   "session_start_router": {
-    "enabled": false,
+    "enabled": true,
     "force_complex_when_uncertain": true,
     "uncertainty_threshold": 0.6,
     "risk_lexicon_override": true
   },
   "planner": {
-    "enabled": false,
+    "enabled": true,
     "model": "openai/gpt-5.2",
     "mini_mode_threshold": "trivial",
     "max_blueprint_tokens": 4000
@@ -41,7 +41,7 @@
     "redact_api_keys": true,
     "preserve_shape": true
   },
-  "rollout_phase": 0,
+  "rollout_phase": 1,
   "rollout_phases": {
     "0": "dark_launch",
     "1": "explicit_override_only",

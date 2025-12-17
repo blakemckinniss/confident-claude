@@ -68,6 +68,7 @@ from _prompt_registry import HOOKS
 
 # Import hook modules (triggers registration via decorators)
 import _prompt_gating  # noqa: F401 - Gating hooks (priority 0-10)
+import _prompt_mastermind  # noqa: F401 - Mastermind orchestration (priority 6)
 import _prompt_context  # noqa: F401 - Context hooks (priority 15-70)
 import _prompt_suggestions  # noqa: F401 - Suggestion hooks (priority 72-95)
 
