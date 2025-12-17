@@ -180,9 +180,9 @@ def process_user_prompt(
         "warnings": [],
     }
 
-    # Load or create session state (use mastermind's own turn counter)
+    # Load or create session state keyed by CURRENT session_id
+    # This ensures each Claude session gets fresh state
     state = load_state(session_id)
-    state.increment_turn()  # Mastermind tracks its own turns per-session
 
     # Parse user override
     clean_prompt, override = parse_user_override(prompt)
@@ -190,12 +190,17 @@ def process_user_prompt(
 
     # Check if routing applies:
     # - ALWAYS route if ^ override (user explicitly requested planning)
-    # - Otherwise, only on turn 0-1 using PASSED turn_count (not mastermind's internal counter)
-    # Using passed turn_count because mastermind's state may persist across Claude sessions
+    # - Otherwise, route on turn 0 of THIS session (using mastermind's own counter)
+    # We use mastermind's internal turn counter (pre-increment) since it's keyed by
+    # the actual CLAUDE_SESSION_ID, not the potentially stale global SessionState
+    is_session_start = state.turn_count == 0  # Before increment = first turn
     should_route = (
         (override == "^")  # User explicitly requested planning
-        or (turn_count <= 1 and config.router.enabled)  # Session start
+        or (is_session_start and config.router.enabled)  # First turn of this session
     )
+
+    # NOW increment turn counter (after routing check)
+    state.increment_turn()
     if should_route:
         result["routing_info"] = handle_session_start_routing(
             clean_prompt, override, state, cwd

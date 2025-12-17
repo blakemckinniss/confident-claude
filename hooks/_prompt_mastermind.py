@@ -8,6 +8,7 @@ Phase 1 (explicit_override_only): Only ^ prefix triggers planning
 Phase 2+: Auto-planning for complex tasks
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +16,16 @@ from pathlib import Path
 lib_path = Path(__file__).parent.parent / "lib"
 if str(lib_path) not in sys.path:
     sys.path.insert(0, str(lib_path))
+
+
+def _get_current_session_id() -> str | None:
+    """Get current Claude session ID from environment.
+
+    This is the ACTUAL current session, not the potentially stale
+    session_id from global SessionState which persists across sessions.
+    """
+    return os.environ.get("CLAUDE_SESSION_ID")
+
 
 from _prompt_registry import register_hook, HookResult  # noqa: E402
 
@@ -42,6 +53,10 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
     try:
         config = load_config()
 
+        # Get ACTUAL current session ID from env (not stale state)
+        # This ensures mastermind detects new sessions correctly
+        current_session_id = _get_current_session_id()
+
         # Check if system is enabled at all
         if config.rollout_phase == 0:
             # Dark launch - run but don't inject context
@@ -51,7 +66,7 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
                 process_user_prompt(
                     prompt=prompt,
                     turn_count=getattr(state, "turn_count", 0),
-                    session_id=getattr(state, "session_id", None),
+                    session_id=current_session_id,
                 )
                 # Log but don't inject
                 return HookResult(decision="allow", context=None)
@@ -65,7 +80,7 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         result = process_user_prompt(
             prompt=prompt,
             turn_count=getattr(state, "turn_count", 0),
-            session_id=getattr(state, "session_id", None),
+            session_id=current_session_id,
         )
 
         # Build context from result
