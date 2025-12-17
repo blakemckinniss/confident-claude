@@ -294,6 +294,22 @@ def handle_session_start_routing(
         policy = make_routing_decision(prompt, state.turn_count, router_response)
         result["should_plan"] = policy.should_plan
 
+        # If classified as complex AND planner enabled, enforce PAL mandate
+        # This creates the same hard lock as ^ override - Claude MUST call planner
+        if policy.should_plan and config.planner.enabled:
+            project = cwd.name if cwd else "unknown"
+            result["planner_mandate"] = True
+
+            # CREATE HARD LOCK - blocks ALL tools until PAL planner is called
+            create_pal_mandate_lock(
+                session_id=state.session_id,
+                project=project,
+                prompt=prompt,
+            )
+
+            # Inject MANDATORY PAL MCP planner directive
+            result["inject_context"] = generate_planner_mandate(prompt, state)
+
     else:
         # Dark launch - just log what would happen
         result["dark_launch"] = True
