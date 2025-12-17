@@ -26,6 +26,7 @@ from .executor_instructions import (
 )
 from .telemetry import log_router_decision, log_escalation
 from .variance import generate_variance_report, format_variance_for_user
+from .router_gpt import build_routing_prompt, load_capabilities_index
 
 
 def get_session_id() -> str:
@@ -108,6 +109,47 @@ If the suggested tool doesn't fit your assessment, you may use any of these inst
 **Proceed with the PAL tool that best fits this task.**
 """
 
+# Capability-aware routing template (uses GPT-5.2 for intelligent tool selection)
+CAPABILITY_ROUTING_TEMPLATE = """
+# Intelligent Capability Routing
+
+{trigger_reason}
+
+## Routing Request
+
+For optimal tool selection, call `mcp__pal__chat` with the following prompt:
+
+<routing_prompt>
+{routing_prompt}
+</routing_prompt>
+
+**Model:** Use "openai/gpt-5.2"
+
+The response will contain a staged toolchain recommendation with:
+- Primary tool for each stage
+- Rationale for selections
+- Fallback alternatives
+
+## Quick Reference
+
+| Stage | Purpose |
+|-------|---------|
+| triage | Classify and assess |
+| locate | Find relevant code |
+| analyze | Investigate root cause |
+| modify | Apply changes |
+| validate | Verify results |
+| report | Summarize findings |
+
+## User's Request
+
+{user_prompt}
+
+---
+
+**Call `mcp__pal__chat` with the routing prompt above, then follow the recommended toolchain.**
+"""
+
 # Hard mandate template for ^ override (user explicitly wants planner)
 PLANNER_MANDATE_TEMPLATE = """
 # 🚨 MANDATORY: PAL MCP PLANNER REQUIRED 🚨
@@ -131,18 +173,39 @@ def generate_pal_suggestion(
     state: MastermindState,
     task_type: str = "general",
     suggested_tool: str = "chat",
+    use_capability_routing: bool = True,
 ) -> str:
     """Generate PAL MCP tool suggestion (hybrid approach).
 
     Suggests a tool based on Groq classification but allows Claude
     to choose any PAL tool. Enforcement happens at completion gate.
 
+    When capability routing is enabled and the capabilities index exists,
+    generates a routing prompt for GPT-5.2 to recommend a staged toolchain.
+
     Args:
         prompt: User's original prompt
         state: Current mastermind session state
         task_type: Detected task type from Groq
         suggested_tool: Suggested PAL tool from Groq
+        use_capability_routing: Whether to use capability-aware routing
     """
+    # Try capability-aware routing first
+    if use_capability_routing:
+        index = load_capabilities_index()
+        if index.get("capabilities"):
+            routing_prompt = build_routing_prompt(prompt, task_type)
+            trigger_reason = (
+                f"Groq classified this as a **{task_type}** task. "
+                f"Using intelligent routing with {len(index['capabilities'])} capabilities."
+            )
+            return CAPABILITY_ROUTING_TEMPLATE.format(
+                trigger_reason=trigger_reason,
+                routing_prompt=routing_prompt,
+                user_prompt=prompt,
+            )
+
+    # Fall back to simple PAL tool suggestion
     tool_description = PAL_TOOL_DESCRIPTIONS.get(
         suggested_tool, PAL_TOOL_DESCRIPTIONS["chat"]
     )
