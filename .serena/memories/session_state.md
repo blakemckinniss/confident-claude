@@ -6,7 +6,10 @@
 
 ## Location
 - **Definition**: `lib/session_state.py`
-- **State file**: `~/.claude/cache/session_state.json`
+- **Constants**: `lib/_session_constants.py`
+- **State files** (checked in order):
+  1. Per-project: `~/.claude/memory/projects/{project_id}/session_state.json`
+  2. Global fallback: `~/.claude/memory/session_state_v3.json`
 
 ## Core State Categories
 

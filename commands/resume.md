@@ -10,7 +10,22 @@ Read the previous session's state and present it to continue work seamlessly.
 
 ### Step 1: Load Previous Session State
 
-Read `~/.claude/memory/session_state_v3.json` and extract:
+Session state is stored per-project. Check in order:
+
+1. **Per-project** (preferred): `~/.claude/memory/projects/{project_id}/session_state.json`
+   - Project ID is derived from current working directory
+2. **Global fallback**: `~/.claude/memory/session_state_v3.json`
+
+To find the right file:
+```bash
+# List recent project states
+ls -lt ~/.claude/memory/projects/*/session_state.json 2>/dev/null | head -5
+
+# Or check global fallback
+cat ~/.claude/memory/session_state_v3.json 2>/dev/null | head -20
+```
+
+Extract from the state file:
 - `original_goal` - What the user was trying to accomplish
 - `progress_log` - Work completed
 - `files_edited` and `files_created` - Files touched
