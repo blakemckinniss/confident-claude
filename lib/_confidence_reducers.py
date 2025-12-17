@@ -116,7 +116,9 @@ class UserCorrectionReducer(ConfidenceReducer):
             r"\bthat'?s?\s+(?:not\s+)?(?:wrong|incorrect)\b",
             r"\bno,?\s+(?:that|it)\b",
             r"\bactually\s+(?:it|that|you)\b",
-            r"\bfix\s+that\b",
+            # "fix that" but NOT when followed by task nouns (bug, issue, etc.)
+            # This prevents "fix that false positive" from triggering
+            r"\bfix\s+that\b(?!\s+(?:bug|issue|error|problem|false\s+positive|fp|reducer|hook|file|function|code|feature|test|logic))",
             r"\byou\s+(?:made|have)\s+(?:a\s+)?(?:mistake|error)\b",
             r"\bwrong\s+(?:file|path|function|approach)\b",
         ]

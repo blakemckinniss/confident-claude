@@ -647,6 +647,26 @@ class TestUserCorrectionReducer:
         # Assert
         assert should_trigger is True
 
+    def test_does_not_trigger_on_fix_that_task_assignment(self):
+        """Fix that + task noun (bug, issue, etc.) is a task, not a correction."""
+        # Arrange
+        reducer = UserCorrectionReducer()
+        state = MockSessionState()
+        task_prompts = [
+            "fix that false positive",
+            "fix that bug please",
+            "can you fix that issue",
+            "fix that reducer logic",
+            "fix that test",
+            "fix that code",
+        ]
+
+        # Act & Assert
+        for prompt in task_prompts:
+            context = {"prompt": prompt}
+            should_trigger = reducer.should_trigger(context, state, 0)
+            assert should_trigger is False, f"Should not trigger on: {prompt}"
+
     def test_does_not_trigger_on_normal_prompt(self):
         # Arrange
         reducer = UserCorrectionReducer()
