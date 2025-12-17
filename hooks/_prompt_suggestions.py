@@ -93,6 +93,12 @@ except ImportError:
     check_serena_mandate = None
     check_crawl4ai_mandate = None
 
+# Try to import Serena activation mandate
+try:
+    from _integration import get_serena_activation_mandate
+except ImportError:
+    get_serena_activation_mandate = None
+
 # Try to import ops tool stats
 try:
     from _ops_stats import get_unused_ops_tools, get_ops_tool_stats
@@ -1910,6 +1916,15 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
 
     if prompt.startswith("/"):
         return HookResult.allow()
+
+    # PRIORITY: Serena activation mandate (fires before PAL mandates)
+    # Auto-activates Serena when project has memories but isn't activated
+    if get_serena_activation_mandate is not None:
+        serena_mandate = get_serena_activation_mandate()
+        if serena_mandate:
+            state.set("active_pal_mandate", serena_mandate["tool"])
+            state.set("mandate_reason", serena_mandate["reason"])
+            return HookResult.allow(serena_mandate["directive"])
 
     confidence = state.get("confidence", 70)
     intent = state.get("detected_intent")

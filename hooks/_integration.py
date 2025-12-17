@@ -105,6 +105,61 @@ def is_serena_activated() -> bool:
         return False
 
 
+def has_serena_memories() -> bool:
+    """Check if Serena memories exist for this project."""
+    if "has_serena_memories" in _INTEGRATION_CACHE:
+        return _INTEGRATION_CACHE["has_serena_memories"]
+
+    serena_root = get_serena_root()
+    if not serena_root:
+        _INTEGRATION_CACHE["has_serena_memories"] = False
+        return False
+
+    memories_dir = serena_root / ".serena" / "memories"
+    if memories_dir.is_dir():
+        # Check for any .md files (actual memories, not just empty dir)
+        has_memories = any(memories_dir.glob("*.md"))
+        _INTEGRATION_CACHE["has_serena_memories"] = has_memories
+        return has_memories
+
+    _INTEGRATION_CACHE["has_serena_memories"] = False
+    return False
+
+
+def get_serena_activation_mandate() -> dict | None:
+    """
+    Return a Serena activation mandate if:
+    - Serena is available (.serena/ exists)
+    - Serena memories exist (worth activating)
+    - Serena is NOT yet activated this session
+
+    Returns dict with 'tool', 'directive', 'priority', 'reason' or None.
+    """
+    if not is_serena_available():
+        return None
+
+    if is_serena_activated():
+        return None
+
+    if not has_serena_memories():
+        return None
+
+    serena_root = get_serena_root()
+    project = serena_root.name if serena_root else "project"
+
+    return {
+        "tool": "mcp__serena__activate_project",
+        "directive": (
+            f"🔮 **SERENA ACTIVATION REQUIRED**: Project `{project}` has "
+            f"Serena memories. Activate with "
+            f'`mcp__serena__activate_project("{project}")` BEFORE any code '
+            "analysis. Serena provides semantic code navigation."
+        ),
+        "priority": 95,  # Higher than PAL mandates (89)
+        "reason": "Serena memories exist",
+    }
+
+
 def mark_serena_activated(project: str) -> None:
     """Mark Serena as activated (called from post_tool_use)."""
     try:
