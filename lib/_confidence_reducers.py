@@ -458,7 +458,11 @@ class VersionFileReducer(ConfidenceReducer):
 
 @dataclass
 class MarkdownCreationReducer(ConfidenceReducer):
-    """Triggers when creating markdown files (documentation theater)."""
+    """Triggers when creating NEW markdown files (documentation theater).
+
+    Does NOT trigger when editing existing markdown files (Write to file
+    that was previously read is an edit, not creation).
+    """
 
     name: str = "markdown_creation"
     delta: int = -8
@@ -469,6 +473,8 @@ class MarkdownCreationReducer(ConfidenceReducer):
         default_factory=lambda: [
             r"\.claude/memory/",  # Memory files OK
             r"\.claude/skills/",  # Skills OK
+            r"\.claude/commands/",  # Slash commands OK
+            r"\.serena/memories/",  # Serena memories OK
             r"/docs?/",  # Explicit docs folders OK
             r"README\.md$",  # README OK if explicitly requested
         ]
@@ -488,7 +494,13 @@ class MarkdownCreationReducer(ConfidenceReducer):
                 return False
         # Only trigger on Write (creation), not Edit
         tool_name = context.get("tool_name", "")
-        return tool_name == "Write"
+        if tool_name != "Write":
+            return False
+        # If file was read first, this is an edit not creation
+        files_read = getattr(state, "files_read", [])
+        if file_path in files_read:
+            return False  # Editing existing file, not creating new
+        return True
 
 
 @dataclass
