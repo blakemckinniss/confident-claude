@@ -39,6 +39,28 @@ bd doctor                  # Health check
 bd sync --from-main        # Pull from main branch
 ```
 
+## ⚠️ Claude Code Bash Limitation
+
+**Never use `$()` subshells or command chaining with bd commands.**
+
+Claude Code's Bash tool escapes special characters (`$`, `()`, `=`) for security, which breaks shell expansion:
+
+```bash
+# BROKEN - subshell gets mangled
+bd create --title="X" && bd update $(bd list | grep ...) --status=in_progress
+
+# CORRECT - separate Bash calls
+# Call 1:
+bd create --title="X" --type=feature
+# Call 2 (use ID from output):
+bd update beads-xxx --status=in_progress
+```
+
+**Pattern for create-then-claim:**
+1. Run `bd create --title="..." --type=task`
+2. Read the bead ID from output (e.g., `beads-abc123`)
+3. Run `bd update beads-abc123 --status=in_progress` in separate call
+
 ## Project Isolation
 
 - **Beads database**: GLOBAL (`~/.claude/.beads/beads.db`) - tasks visible everywhere

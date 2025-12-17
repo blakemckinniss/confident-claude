@@ -1126,14 +1126,15 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     if is_grace_period or is_trivial or is_small_edit:
         return HookResult.approve(
             "💡 **BEAD RECOMMENDED**: No in_progress bead. Consider:\n"
-            '`bd create --title="..." && bd update <id> --status=in_progress`'
+            "1. `bd create --title=\"...\" --type=task`\n"
+            "2. `bd update <id-from-output> --status=in_progress`"
         )
 
     # === HARD BLOCK ===
     state.bead_enforcement_blocks = state.bead_enforcement_blocks + 1
 
     return HookResult.deny(
-        "🚫 **BEAD REQUIRED**: Run `bd create` + `bd update <id> --status=in_progress` first. SUDO to bypass."
+        "🚫 **BEAD REQUIRED**: Run `bd create --title=\"...\"` then `bd update <id> --status=in_progress` (separate calls). SUDO to bypass."
     )
 
 
