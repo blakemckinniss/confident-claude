@@ -557,17 +557,22 @@ def check_session_close_protocol(data: dict, state: SessionState) -> StopHookRes
 
     # 1. Check bd sync ran (look for recent 'bd sync' in commands)
     recent_cmds = list(state.commands_succeeded)[-30:]
-    has_bd_sync = any("bd sync" in cmd or "bd sync" in cmd for cmd in recent_cmds)
+    has_bd_sync = any("bd sync" in cmd.lower() for cmd in recent_cmds)
     if not has_bd_sync:
-        violations.append("bd sync not run")
+        # Fallback: check transcript for bd sync
+        content = _read_tail_content(transcript_path, 20000)
+        if not content or "bd sync" not in content.lower():
+            violations.append("bd sync not run")
 
     # 2. Check next steps documented
     has_next_steps = bool(getattr(state, "handoff_next_steps", None))
-    # Also check if original_goal was set (indicates planning happened)
     has_goal = bool(getattr(state, "original_goal", None))
 
     if not has_next_steps and has_goal:
-        violations.append("next steps not documented")
+        # Fallback: check transcript for next steps heading
+        content = _read_tail_content(transcript_path, 15000)
+        if not content or not re.search(r"#{1,3}\s*next\s+steps", content, re.IGNORECASE):
+            violations.append("next steps not documented")
 
     if violations:
         return StopHookResult.block(
