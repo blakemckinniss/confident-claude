@@ -319,3 +319,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-16 18:36
 - [abandoned_stubs] ⚠️ ABANDONED WORK: test_live_integrations.py, test_e2e_ui.py contain stubs/TODOs
+
+### 2025-12-16 20:32
+- [abandoned_stubs] ⚠️ ABANDONED WORK: generate_monsters.py contain stubs/TODOs
