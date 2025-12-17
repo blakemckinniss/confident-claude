@@ -71,9 +71,18 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         # Build context from result
         context_parts = []
 
-        # Add routing info
+        # Get routing info
         routing = result.get("routing_info", {})
-        if routing:
+
+        # PRIORITY: Check for PAL mandate injection (^ override)
+        # This MUST be injected for the pre_tool_use block to make sense
+        inject_context = routing.get("inject_context") or result.get("inject_context")
+        if inject_context:
+            # PAL mandate or other injected context takes priority
+            context_parts.append(inject_context)
+
+        # Add routing classification info
+        if routing and not inject_context:  # Skip if mandate already shown
             classification = routing.get("classification", "unknown")
             confidence = routing.get("confidence", 0)
             if classification != "unknown":

@@ -188,8 +188,15 @@ def process_user_prompt(
     clean_prompt, override = parse_user_override(prompt)
     result["modified_prompt"] = clean_prompt
 
-    # Check if routing applies (turn 0-1 only, using mastermind's counter)
-    if state.turn_count <= 1 and config.router.enabled:
+    # Check if routing applies:
+    # - ALWAYS route if ^ override (user explicitly requested planning)
+    # - Otherwise, only on turn 0-1 using PASSED turn_count (not mastermind's internal counter)
+    # Using passed turn_count because mastermind's state may persist across Claude sessions
+    should_route = (
+        (override == "^")  # User explicitly requested planning
+        or (turn_count <= 1 and config.router.enabled)  # Session start
+    )
+    if should_route:
         result["routing_info"] = handle_session_start_routing(
             clean_prompt, override, state, cwd
         )
