@@ -1,31 +1,48 @@
 # Resume Previous Session
 
-**Purpose:** Recover context from a previous near-saturated session into this fresh session.
+**Purpose:** Recover context from the previous session for the CURRENT project.
 
 ---
 
 ## Instructions
 
-Read the previous session's state and present it to continue work seamlessly.
+### Step 1: Identify Current Project
 
-### Step 1: Load Previous Session State
-
-Session state is stored per-project. Check in order:
-
-1. **Per-project** (preferred): `~/.claude/memory/projects/{project_id}/session_state.json`
-   - Project ID is derived from current working directory
-2. **Global fallback**: `~/.claude/memory/session_state_v3.json`
-
-To find the right file:
+Run this to find the current project's session state:
 ```bash
-# List recent project states
-ls -lt ~/.claude/memory/projects/*/session_state.json 2>/dev/null | head -5
+# Get project info from index
+python3 -c "
+import json
+from pathlib import Path
 
-# Or check global fallback
-cat ~/.claude/memory/session_state_v3.json 2>/dev/null | head -20
+cwd = '$(pwd)'
+index_file = Path.home() / '.claude/memory/projects/_index.json'
+
+if not index_file.exists():
+    print('NO_INDEX')
+    exit()
+
+index = json.load(open(index_file))
+projects = index.get('projects', {})
+
+# Find project matching current directory
+for pid, info in projects.items():
+    root = info.get('root_path', '')
+    if cwd.startswith(root) or root.startswith(cwd):
+        state_file = Path.home() / f'.claude/memory/projects/{pid}/session_state.json'
+        if state_file.exists():
+            print(f'PROJECT_ID={pid}')
+            print(f'PROJECT_NAME={info.get(\"name\", \"unknown\")}')
+            print(f'STATE_FILE={state_file}')
+            exit()
+
+print('NO_MATCH')
+"
 ```
 
-Extract from the state file:
+### Step 2: Load Project Session State
+
+Read the state file identified above (NOT a random recent one). Extract:
 - `original_goal` - What the user was trying to accomplish
 - `progress_log` - Work completed
 - `files_edited` and `files_created` - Files touched
@@ -33,75 +50,77 @@ Extract from the state file:
 - `handoff_blockers` - Known blockers
 - `handoff_next_steps` - Planned next actions
 - `work_queue` - Discovered work items
-- `evidence_ledger` - Evidence gathered
-- `approach_history` - What was tried
-- `session_id` - For transcript lookup
+- `current_feature` - Feature in progress
 
-### Step 2: Check Beads Status
+### Step 3: Check Git State (This Project Only)
 
-Run these commands to see current task state:
-```bash
-bd list --status=open
-bd list --status=in_progress
-```
-
-### Step 3: Check Git State
-
-Run to see uncommitted work from previous session:
 ```bash
 git status --short
-git diff --stat
+git log --oneline -5
 ```
 
-### Step 4: Check Serena
+### Step 4: Check Beads (This Project Only)
 
-If `.serena/` exists in the working directory, activate Serena:
+Beads are project-isolated. Run from project directory:
+```bash
+bd list --status=in_progress
+bd list --status=open
+```
+
+### Step 5: Check Serena (If Available)
+
+If `.serena/` exists in project root:
 ```
 mcp__serena__activate_project
+mcp__serena__list_memories
 ```
 
-Also check Serena memories at `~/.claude/.serena/memories/` if relevant.
-
-### Step 5: Present Recovery Summary
-
-Output a structured summary:
+### Step 6: Present Recovery Summary
 
 ```
-## 🔄 SESSION RECOVERED
+## 🔄 SESSION RECOVERED - {project_name}
 
 ### Original Goal
 [From session_state.original_goal]
 
-### Progress Made (Previous Session)
-[From progress_log]
+### Current Feature
+[From session_state.current_feature]
+
+### Progress Made
+[From progress_log - last 5 entries]
 
 ### Files Modified
-[From files_edited + files_created]
+[From files_edited - deduplicated]
 
 ### Outstanding Issues
 [From errors_unresolved + handoff_blockers]
 
-### Next Steps (From Previous Session)
+### Next Steps
 [From handoff_next_steps or work_queue]
 
-### Current Beads
-[From bd list output]
-
 ### Git Status
-[From git status output]
+[From git status/log output]
+
+### Active Beads
+[From bd list output - IN_PROGRESS items only]
 
 ---
 
 **Ready to continue.** What would you like me to work on?
 ```
 
-### Step 6: Consult Memory Systems
+---
 
-If additional context needed, check:
-- `~/.claude/memory/` - Framework memories (lessons, decisions)
-- `~/.claude/.serena/memories/` - Serena project memories
-- Previous transcript at `~/.claude/projects/{project}/` by session ID
+## Fallback: No Project Match
+
+If Step 1 returns `NO_MATCH`, list recent states and ask user which project:
+```bash
+ls -lt ~/.claude/memory/projects/*/session_state.json 2>/dev/null | head -5
+cat ~/.claude/memory/projects/_index.json | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f'{k}: {v[\"name\"]} ({v[\"root_path\"]})') for k,v in d.get('projects',{}).items()]"
+```
+
+Then ask: "Which project would you like to resume?"
 
 ---
 
-**The goal is to bring this new session up to speed on everything the previous session knew.**
+**CRITICAL:** Always load the CURRENT project's state, not the most recently modified one across all projects.
