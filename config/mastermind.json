@@ -41,5 +41,5 @@
     "redact_api_keys": true,
     "preserve_shape": true
   },
-  "rollout_phase": 2
+  "rollout_phase": 3
 }
