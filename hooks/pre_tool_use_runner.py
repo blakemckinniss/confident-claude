@@ -801,6 +801,43 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
 
 
 # =============================================================================
+# PAL TOOL TRACKER - Track when any PAL MCP tool is used
+# =============================================================================
+
+
+@register_hook("pal_tool_tracker", "mcp__pal__", priority=1)
+def track_pal_tool_usage(data: dict, state: SessionState) -> HookResult:
+    """
+    Track when any PAL MCP tool is called.
+
+    Sets pal_consulted=True in mastermind state for completion gate enforcement.
+    This supports the hybrid routing approach where Claude can choose any PAL tool.
+    """
+    tool_name = data.get("tool_name", "")
+
+    # Only track actual PAL tool calls
+    if not tool_name.startswith("mcp__pal__"):
+        return HookResult.approve()
+
+    # Set pal_consulted flag in mastermind state
+    try:
+        from mastermind.state import load_state, save_state
+        import os
+
+        session_id = os.environ.get("CLAUDE_SESSION_ID", "")
+        if session_id:
+            mm_state = load_state(session_id)
+            if not getattr(mm_state, "pal_consulted", False):
+                mm_state.pal_consulted = True
+                save_state(mm_state)
+    except (ImportError, FileNotFoundError, AttributeError):
+        # Mastermind state unavailable - non-critical, continue
+        pass
+
+    return HookResult.approve()
+
+
+# =============================================================================
 # SELF-HEAL ENFORCER (Priority 2) - Framework must fix itself first
 # =============================================================================
 

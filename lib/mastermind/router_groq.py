@@ -61,13 +61,16 @@ Reason codes (pick 1-3):
 @dataclass
 class RouterResponse:
     """Parsed router classification response."""
+
     classification: str  # trivial, medium, complex
     confidence: float
     reason_codes: list[str]
     raw_response: str
     latency_ms: int
     task_type: str = "general"  # debugging, planning, review, architecture, research, validation, general
-    suggested_tool: str = "chat"  # debug, planner, codereview, consensus, apilookup, precommit, chat
+    suggested_tool: str = (
+        "chat"  # debug, planner, codereview, consensus, apilookup, precommit, chat
+    )
     error: str | None = None
 
     @property
@@ -137,6 +140,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             reason_codes=["no_api_key"],
             raw_response="",
             latency_ms=0,
+            task_type="general",
+            suggested_tool="chat",
             error="GROQ_API_KEY not set",
         )
 
@@ -204,6 +209,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             reason_codes=["http_error"],
             raw_response="",
             latency_ms=latency_ms,
+            task_type="general",
+            suggested_tool="chat",
             error=f"HTTP {e.code}: {e.reason}",
         )
     except urllib.error.URLError as e:
@@ -214,6 +221,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             reason_codes=["network_error"],
             raw_response="",
             latency_ms=latency_ms,
+            task_type="general",
+            suggested_tool="chat",
             error=f"Network error: {e.reason}",
         )
     except TimeoutError:
@@ -224,6 +233,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             reason_codes=["timeout"],
             raw_response="",
             latency_ms=latency_ms,
+            task_type="general",
+            suggested_tool="chat",
             error="Request timed out",
         )
 
@@ -239,11 +250,27 @@ def apply_risk_lexicon(prompt: str, response: RouterResponse) -> RouterResponse:
 
     # High-risk keywords that force complex classification
     risk_keywords = [
-        "security", "auth", "authentication", "authorization",
-        "password", "credential", "secret", "api key", "token",
-        "encrypt", "decrypt", "vulnerability", "injection",
-        "delete all", "drop table", "rm -rf", "sudo",
-        "production", "deploy", "migration", "rollback",
+        "security",
+        "auth",
+        "authentication",
+        "authorization",
+        "password",
+        "credential",
+        "secret",
+        "api key",
+        "token",
+        "encrypt",
+        "decrypt",
+        "vulnerability",
+        "injection",
+        "delete all",
+        "drop table",
+        "rm -rf",
+        "sudo",
+        "production",
+        "deploy",
+        "migration",
+        "rollback",
     ]
 
     prompt_lower = prompt.lower()
@@ -256,6 +283,8 @@ def apply_risk_lexicon(prompt: str, response: RouterResponse) -> RouterResponse:
             reason_codes=response.reason_codes + ["risk_lexicon_override"],
             raw_response=response.raw_response,
             latency_ms=response.latency_ms,
+            task_type=response.task_type,
+            suggested_tool=response.suggested_tool,
             error=response.error,
         )
 

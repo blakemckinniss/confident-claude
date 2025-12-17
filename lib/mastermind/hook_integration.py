@@ -34,58 +34,89 @@ def get_session_id() -> str:
 
 
 # =============================================================================
-# PAL MCP PLANNER MANDATE
+# PAL MCP CONSULTATION - HYBRID APPROACH
 # =============================================================================
-# This mandate is injected when user triggers ^ override.
-# Claude MUST obey these instructions - they are non-negotiable.
+# Groq suggests a tool, Claude can choose any PAL tool, but MUST use one.
+# Enforcement happens at completion gate if no PAL tool was used.
 # =============================================================================
 
+# Tool descriptions for the suggestion template
+PAL_TOOL_DESCRIPTIONS = {
+    "debug": "mcp__pal__debug - Deep debugging analysis, root cause investigation",
+    "planner": "mcp__pal__planner - Strategic planning for multi-step implementations",
+    "codereview": "mcp__pal__codereview - Code quality, security, and architecture review",
+    "consensus": "mcp__pal__consensus - Multi-model consultation for architecture decisions",
+    "apilookup": "mcp__pal__apilookup - API documentation and library usage research",
+    "precommit": "mcp__pal__precommit - Pre-commit validation and change verification",
+    "chat": "mcp__pal__chat - General discussion and brainstorming",
+    "thinkdeep": "mcp__pal__thinkdeep - Complex problem decomposition",
+}
+
+# Alternatives mapping for each tool type
+PAL_TOOL_ALTERNATIVES = {
+    "debug": ["thinkdeep", "chat"],
+    "planner": ["chat", "thinkdeep"],
+    "codereview": ["precommit", "chat"],
+    "consensus": ["planner", "chat"],
+    "apilookup": ["chat"],
+    "precommit": ["codereview", "chat"],
+    "chat": ["thinkdeep"],
+    "thinkdeep": ["debug", "chat"],
+}
+
+PAL_SUGGESTION_TEMPLATE = """
+# PAL MCP Consultation Suggested
+
+{trigger_reason}
+
+## Suggested Tool: `{suggested_tool_full}`
+
+{tool_description}
+
+**Task type detected:** {task_type}
+
+## Alternative Options
+
+If the suggested tool doesn't fit your assessment, you may use any of these instead:
+{alternatives_list}
+
+## Requirements
+
+1. **Use ONE PAL MCP tool** before completing this task (any from the list above)
+2. **Model:** Use "openai/gpt-5.2" or another capable model
+3. **You choose** which tool best fits the actual task context
+
+## Available PAL Tools
+
+| Tool | Best For |
+|------|----------|
+| `debug` | Bug investigation, error tracing |
+| `planner` | Implementation planning, multi-step work |
+| `codereview` | Code quality, refactoring assessment |
+| `consensus` | Architecture decisions, technology choices |
+| `apilookup` | API docs, library research |
+| `precommit` | Change validation, pre-commit checks |
+| `chat` | General discussion, brainstorming |
+| `thinkdeep` | Complex problem decomposition |
+
+## User's Request
+
+{user_prompt}
+
+---
+
+**Proceed with the PAL tool that best fits this task.**
+"""
+
+# Hard mandate template for ^ override (user explicitly wants planner)
 PLANNER_MANDATE_TEMPLATE = """
 # 🚨 MANDATORY: PAL MCP PLANNER REQUIRED 🚨
 
-**THIS IS A HARD REQUIREMENT. YOU MUST COMPLY.**
+**User explicitly requested strategic planning via `^` prefix.**
 
-{trigger_reason} You are REQUIRED to use the PAL MCP planner tool BEFORE doing ANY other work.
+You MUST call `mcp__pal__planner` with model "openai/gpt-5.2" BEFORE doing ANY other work.
 
-## MANDATORY FIRST ACTION
-
-You MUST call `mcp__pal__planner` with these EXACT parameters:
-
-```
-Tool: mcp__pal__planner
-Parameters:
-  - model: "openai/gpt-5.2" (MANDATORY - DO NOT SUBSTITUTE)
-  - step: <planning content analyzing the user's request>
-  - step_number: 1
-  - total_steps: 2
-  - next_step_required: true
-  - use_assistant_model: true
-```
-
-## WHAT YOU MUST DO
-
-1. **IMMEDIATELY** call `mcp__pal__planner` as your FIRST tool use
-2. Use model "openai/gpt-5.2" - NO SUBSTITUTIONS ALLOWED
-3. In your step content, analyze:
-   - What is the user's goal?
-   - What files will likely be touched?
-   - What constraints/invariants must be preserved?
-   - What are the acceptance criteria?
-4. Wait for GPT-5.2's strategic analysis
-5. Use the planner's output to guide your implementation
-
-## FORBIDDEN ACTIONS
-
-- ❌ DO NOT skip the planner call
-- ❌ DO NOT substitute a different model
-- ❌ DO NOT proceed with implementation before planning
-- ❌ DO NOT use your own judgment instead of calling the planner
-
-## WHY THIS MATTERS
-
-The user explicitly requested multi-model orchestration. GPT-5.2 provides strategic planning that complements your execution capabilities. This is not optional.
-
-## USER'S REQUEST
+## User's Request
 
 {user_prompt}
 
@@ -95,30 +126,57 @@ The user explicitly requested multi-model orchestration. GPT-5.2 provides strate
 """
 
 
-def generate_planner_mandate(
-    prompt: str, state: MastermindState, user_forced: bool = False
+def generate_pal_suggestion(
+    prompt: str,
+    state: MastermindState,
+    task_type: str = "general",
+    suggested_tool: str = "chat",
 ) -> str:
-    """Generate the mandatory PAL MCP planner directive.
+    """Generate PAL MCP tool suggestion (hybrid approach).
 
-    This creates an extremely strong instruction that Claude must
-    use PAL MCP with GPT-5.2 before proceeding with any work.
+    Suggests a tool based on Groq classification but allows Claude
+    to choose any PAL tool. Enforcement happens at completion gate.
 
     Args:
         prompt: User's original prompt
         state: Current mastermind session state
-        user_forced: True if triggered by ^ prefix, False if Groq-classified
+        task_type: Detected task type from Groq
+        suggested_tool: Suggested PAL tool from Groq
     """
-    if user_forced:
-        trigger_reason = "The user has requested strategic planning via the `^` prefix."
-    else:
-        trigger_reason = "Groq has classified this task as **complex** and requires strategic planning."
-
-    return PLANNER_MANDATE_TEMPLATE.format(
-        trigger_reason=trigger_reason,
-        user_prompt=prompt,
-        session_id=state.session_id,
-        turn=state.turn_count,
+    tool_description = PAL_TOOL_DESCRIPTIONS.get(
+        suggested_tool, PAL_TOOL_DESCRIPTIONS["chat"]
     )
+    suggested_tool_full = f"mcp__pal__{suggested_tool}"
+
+    alternatives = PAL_TOOL_ALTERNATIVES.get(suggested_tool, ["chat"])
+    alternatives_list = "\n".join(
+        f"- `mcp__pal__{alt}`: {PAL_TOOL_DESCRIPTIONS.get(alt, 'General purpose')}"
+        for alt in alternatives
+    )
+
+    trigger_reason = f"Groq classified this as a **{task_type}** task requiring external consultation."
+
+    return PAL_SUGGESTION_TEMPLATE.format(
+        trigger_reason=trigger_reason,
+        suggested_tool_full=suggested_tool_full,
+        tool_description=tool_description,
+        task_type=task_type,
+        alternatives_list=alternatives_list,
+        user_prompt=prompt,
+    )
+
+
+def generate_planner_mandate(
+    prompt: str, state: MastermindState, user_forced: bool = False
+) -> str:
+    """Generate mandatory PAL planner directive (for ^ override only).
+
+    Args:
+        prompt: User's original prompt
+        state: Current mastermind session state
+        user_forced: Should always be True (mandate only for explicit request)
+    """
+    return PLANNER_MANDATE_TEMPLATE.format(user_prompt=prompt)
 
 
 # =============================================================================
@@ -305,26 +363,25 @@ def handle_session_start_routing(
         result["classification"] = router_response.classification
         result["confidence"] = router_response.confidence
         result["reason_codes"] = router_response.reason_codes
+        result["task_type"] = router_response.task_type
+        result["suggested_tool"] = router_response.suggested_tool
 
         # Apply routing decision
         policy = make_routing_decision(prompt, state.turn_count, router_response)
         result["should_plan"] = policy.should_plan
 
-        # If classified as complex AND planner enabled, enforce PAL mandate
-        # This creates the same hard lock as ^ override - Claude MUST call planner
+        # If classified as complex AND planner enabled, SUGGEST PAL tool (hybrid approach)
+        # Claude can choose any PAL tool - enforcement at completion gate
         if policy.should_plan and config.planner.enabled:
-            project = cwd.name if cwd else "unknown"
-            result["planner_mandate"] = True
+            result["pal_suggestion"] = True
 
-            # CREATE HARD LOCK - blocks ALL tools until PAL planner is called
-            create_pal_mandate_lock(
-                session_id=state.session_id,
-                project=project,
-                prompt=prompt,
+            # Inject PAL MCP tool suggestion (not a hard mandate)
+            result["inject_context"] = generate_pal_suggestion(
+                prompt,
+                state,
+                task_type=router_response.task_type,
+                suggested_tool=router_response.suggested_tool,
             )
-
-            # Inject MANDATORY PAL MCP planner directive
-            result["inject_context"] = generate_planner_mandate(prompt, state)
 
     else:
         # Dark launch - just log what would happen

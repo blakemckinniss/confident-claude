@@ -924,6 +924,7 @@ class PlaceholderImplReducer(ConfidenceReducer):
     """Triggers when writing placeholder implementations.
 
     Catches incomplete work: pass, ..., NotImplementedError in new code.
+    Does NOT trigger on pass in exception handlers with specific exception types.
     """
 
     name: str = "placeholder_impl"
@@ -942,6 +943,25 @@ class PlaceholderImplReducer(ConfidenceReducer):
             r"#\s*FIXME[:\s].*implement",
         ]
 
+    def _is_pass_in_except_handler(self, content: str) -> bool:
+        """Check if pass is legitimately in an exception handler.
+
+        Returns True if pass appears after 'except (SpecificException):' pattern,
+        which is a legitimate pattern for intentional exception swallowing.
+        Does NOT allow bare 'except:' or 'except Exception:' (too broad).
+        """
+        # Pattern for specific exception handling followed by pass
+        # Matches: except (Error1, Error2): ... pass or except SpecificError: ... pass
+        # But NOT: except: pass, except Exception: pass
+        specific_except_pass = re.compile(
+            r"except\s+\([\w\s,]+\)\s*:\s*\n\s*#[^\n]*\n\s*pass"  # tuple with comment
+            r"|except\s+\([\w\s,]+\)\s*:\s*\n\s*pass"  # tuple without comment
+            r"|except\s+(?!Exception\b)(?!BaseException\b)\w+(?:Error|Exception|Warning)\s*:\s*\n\s*#[^\n]*\n\s*pass"  # specific with comment
+            r"|except\s+(?!Exception\b)(?!BaseException\b)\w+(?:Error|Exception|Warning)\s*:\s*\n\s*pass",  # specific without comment
+            re.MULTILINE,
+        )
+        return bool(specific_except_pass.search(content))
+
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
@@ -955,8 +975,15 @@ class PlaceholderImplReducer(ConfidenceReducer):
         tool_name = context.get("tool_name", "")
         if tool_name not in ("Write", "Edit"):
             return False
+
+        # Check each pattern
         for pattern in self._get_patterns():
             if re.search(pattern, new_content, re.MULTILINE | re.IGNORECASE):
+                # Special case: pass in specific exception handler is OK
+                if pattern == r"^\s*pass\s*$" and self._is_pass_in_except_handler(
+                    new_content
+                ):
+                    continue
                 return True
         return False
 
