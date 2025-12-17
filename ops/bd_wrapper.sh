@@ -39,7 +39,7 @@ PROJECT=$(get_project || echo "")
 # If no project detected or --global flag, pass through directly
 if [[ -z "$PROJECT" ]] || [[ " $* " == *" --global "* ]]; then
     # Remove --global flag if present and pass through
-    exec /home/blake/.local/bin/bd "${@//--global/}"
+    exec /home/jinx/.local/bin/bd "${@//--global/}"
 fi
 
 # Parse command (first non-flag argument)
@@ -53,21 +53,21 @@ done
 
 # Check if already has project label (don't double-add)
 if [[ " $* " == *"project:$PROJECT"* ]] || [[ " $* " == *"project:"* ]]; then
-    exec /home/blake/.local/bin/bd "$@"
+    exec /home/jinx/.local/bin/bd "$@"
 fi
 
 # Auto-inject project scope
 case "$CMD" in
     list|ready|blocked|count)
         # Auto-filter to current project
-        exec /home/blake/.local/bin/bd "$@" --label "project:$PROJECT"
+        exec /home/jinx/.local/bin/bd "$@" --label "project:$PROJECT"
         ;;
     create)
         # Auto-label new issues with project
-        exec /home/blake/.local/bin/bd "$@" --label "project:$PROJECT"
+        exec /home/jinx/.local/bin/bd "$@" --label "project:$PROJECT"
         ;;
     *)
         # Pass through unchanged
-        exec /home/blake/.local/bin/bd "$@"
+        exec /home/jinx/.local/bin/bd "$@"
         ;;
 esac
