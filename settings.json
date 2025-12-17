@@ -59,7 +59,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Read|Write|Edit|MultiEdit|Task|TodoWrite|NotebookEdit",
+        "matcher": "Bash|Read|Write|Edit|MultiEdit|Task|TodoWrite|NotebookEdit|mcp__pal__planner",
         "hooks": [
           {
             "type": "command",
