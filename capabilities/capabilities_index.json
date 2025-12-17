@@ -1,25 +1,56 @@
 {
   "schema_version": "1.0",
-  "inventory_version": "sha256:46a54af1e3a67e35",
-  "generated_at": "2025-12-17T23:12:44.902292+00:00",
+  "inventory_version": "sha256:2578f09ad97c3c15",
+  "generated_at": "2025-12-17T23:19:14.503979+00:00",
   "sources": [
     {
       "source_type": "ops_dir",
       "path": "/home/jinx/.claude/ops",
-      "fingerprint": "81568a64cc532b6c"
+      "fingerprint": "c6c97cea69adf62d"
     },
     {
       "source_type": "commands_dir",
       "path": "/home/jinx/.claude/commands",
-      "fingerprint": "d259303f7afab676"
+      "fingerprint": "b0209dfe700fde87"
     },
     {
       "source_type": "registry",
       "path": "/home/jinx/.claude/capabilities/registry.yaml",
-      "fingerprint": "file:18927:1766013090175224918"
+      "fingerprint": "file:25908:1766013546711229768"
     }
   ],
   "capabilities": [
+    {
+      "id": "agent__a11y_auditor",
+      "name": "Accessibility Auditor",
+      "summary": "Find accessibility issues - missing alt text, ARIA problems, keyboard traps.",
+      "stages": [
+        "analyze",
+        "validate",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "validation",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
     {
       "id": "agent__api_cartographer",
       "name": "API Cartographer",
@@ -33,6 +64,160 @@
         "docs_lookup",
         "repo_map",
         "summarize"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__background_watcher",
+      "name": "Background Watcher",
+      "summary": "Long-running background processes - dev servers, file watchers.",
+      "stages": [
+        "triage",
+        "validate"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "workflow",
+        "logging"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "high"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true
+      },
+      "scope": "local_machine",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__bundle_analyzer",
+      "name": "Bundle Analyzer",
+      "summary": "Analyze JavaScript bundle size, find heavy imports, code splitting.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "performance",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__ci_optimizer",
+      "name": "CI Optimizer",
+      "summary": "Analyze CI/CD pipelines for speed, caching, parallelization.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "ci",
+        "performance",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__claude_code_guide",
+      "name": "Claude Code Guide",
+      "summary": "Answer questions about Claude Code features, hooks, commands, MCP servers.",
+      "stages": [
+        "triage",
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "docs_lookup",
+        "explain"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "claude_runtime",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__config_auditor",
+      "name": "Config Auditor",
+      "summary": "Audit config consistency across environments, find missing env vars.",
+      "stages": [
+        "analyze",
+        "validate",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "validation",
+        "security_review",
+        "static_analysis"
       ],
       "cost": {
         "price_tier": "low",
@@ -178,6 +363,69 @@
       }
     },
     {
+      "id": "agent__docker_analyzer",
+      "name": "Docker Analyzer",
+      "summary": "Analyze Dockerfiles for security, size optimization, layer caching.",
+      "stages": [
+        "analyze",
+        "validate",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "security_review",
+        "performance",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__env_debugger",
+      "name": "Environment Debugger",
+      "summary": "Debug environment and runtime issues - wrong versions, missing deps.",
+      "stages": [
+        "triage",
+        "analyze"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "debugging",
+        "validation",
+        "local_exec"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true
+      },
+      "scope": "local_machine",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
       "id": "agent__error_tracer",
       "name": "Error Tracer",
       "summary": "Trace error propagation paths, find unhandled exceptions.",
@@ -276,6 +524,132 @@
       }
     },
     {
+      "id": "agent__git_archeologist",
+      "name": "Git Archeologist",
+      "summary": "Dig through git history to find when bugs were introduced.",
+      "stages": [
+        "locate",
+        "analyze"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "debugging",
+        "code_reading",
+        "root_cause"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__i18n_checker",
+      "name": "I18n Checker",
+      "summary": "Find hardcoded strings, missing translations, locale format issues.",
+      "stages": [
+        "analyze",
+        "validate",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "validation",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__license_scanner",
+      "name": "License Scanner",
+      "summary": "Scan dependency licenses for compliance issues.",
+      "stages": [
+        "analyze",
+        "validate",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "validation",
+        "security_review",
+        "static_analysis"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__log_analyzer",
+      "name": "Log Analyzer",
+      "summary": "Parse application logs, find error patterns, correlate events.",
+      "stages": [
+        "triage",
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "debugging",
+        "logging",
+        "root_cause"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "local_machine",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
       "id": "agent__migration_planner",
       "name": "Migration Planner",
       "summary": "Plan data migrations, schema changes, codebase migrations.",
@@ -289,6 +663,37 @@
         "migration",
         "planning",
         "large_change"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__orchestrate",
+      "name": "Orchestrate",
+      "summary": "Batch file operations, aggregate results, return only summary.",
+      "stages": [
+        "triage",
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "workflow",
+        "summarize"
       ],
       "cost": {
         "price_tier": "low",
@@ -403,6 +808,37 @@
       }
     },
     {
+      "id": "agent__schema_validator",
+      "name": "Schema Validator",
+      "summary": "Validate database schemas, find migration issues, detect type mismatches.",
+      "stages": [
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "validation",
+        "static_analysis",
+        "migration"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
       "id": "agent__scout",
       "name": "Scout",
       "summary": "Codebase exploration when you don't know where something is.",
@@ -434,6 +870,37 @@
       }
     },
     {
+      "id": "agent__state_mapper",
+      "name": "State Mapper",
+      "summary": "Map state management flows, find state mutations, trace data.",
+      "stages": [
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "code_reading",
+        "dependency_graph",
+        "debugging"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
       "id": "agent__test_analyzer",
       "name": "Test Analyzer",
       "summary": "Analyze test coverage gaps, test quality, flaky tests.",
@@ -458,6 +925,69 @@
         "executes_code": false
       },
       "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__type_migrator",
+      "name": "Type Migrator",
+      "summary": "Help migrate JavaScript to TypeScript, add types, fix type errors.",
+      "stages": [
+        "analyze",
+        "modify"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "migration",
+        "refactor",
+        "large_change"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": false
+      },
+      "scope": "repo",
+      "type": "agent",
+      "source": {
+        "source_type": "registry",
+        "ref": "registry.yaml"
+      }
+    },
+    {
+      "id": "agent__upgrade_scout",
+      "name": "Upgrade Scout",
+      "summary": "Framework/dependency upgrade planning - changelogs, breaking changes.",
+      "stages": [
+        "triage",
+        "analyze",
+        "reporting"
+      ],
+      "interaction_mode": "autonomous",
+      "tags": [
+        "migration",
+        "docs_lookup",
+        "release_notes"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": true,
+        "executes_code": false
+      },
+      "scope": "web",
       "type": "agent",
       "source": {
         "source_type": "registry",
@@ -2201,6 +2731,38 @@
       "source": {
         "source_type": "ops",
         "path": "/home/jinx/.claude/ops/orchestrate.py"
+      }
+    },
+    {
+      "id": "ops__patch_claude_mem_banner",
+      "type": "ops_script",
+      "name": "patch_claude_mem_banner.py",
+      "summary": "Patch claude-mem plugin to remove startup banner noise.",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [
+        "tests",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/patch_claude_mem_banner.py"
       }
     },
     {
@@ -4032,6 +4594,34 @@
       "source": {
         "source_type": "commands",
         "path": "/home/jinx/.claude/commands/orchestrate.md"
+      }
+    },
+    {
+      "id": "slash__/patch-mem",
+      "type": "slash_command",
+      "name": "/patch-mem",
+      "summary": "Patch claude-mem plugin to remove startup banner noise. Run this after plugin updates if the banner returns.",
+      "stages": [
+        "modify",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": false,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/patch-mem.md"
       }
     },
     {

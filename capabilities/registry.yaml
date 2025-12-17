@@ -181,6 +181,176 @@ agents:
     risk: { read_only: false, writes_repo: true, network: true, executes_code: true }
     scope: repo
 
+  - id: agent__ci_optimizer
+    name: CI Optimizer
+    summary: "Analyze CI/CD pipelines for speed, caching, parallelization."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [ci, performance, validation]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__git_archeologist
+    name: Git Archeologist
+    summary: "Dig through git history to find when bugs were introduced."
+    stages: [locate, analyze]
+    interaction_mode: autonomous
+    tags: [debugging, code_reading, root_cause]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__license_scanner
+    name: License Scanner
+    summary: "Scan dependency licenses for compliance issues."
+    stages: [analyze, validate, reporting]
+    interaction_mode: autonomous
+    tags: [validation, security_review, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__state_mapper
+    name: State Mapper
+    summary: "Map state management flows, find state mutations, trace data."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [code_reading, dependency_graph, debugging]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__env_debugger
+    name: Environment Debugger
+    summary: "Debug environment and runtime issues - wrong versions, missing deps."
+    stages: [triage, analyze]
+    interaction_mode: autonomous
+    tags: [debugging, validation, local_exec]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: true }
+    scope: local_machine
+
+  - id: agent__docker_analyzer
+    name: Docker Analyzer
+    summary: "Analyze Dockerfiles for security, size optimization, layer caching."
+    stages: [analyze, validate, reporting]
+    interaction_mode: autonomous
+    tags: [security_review, performance, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__schema_validator
+    name: Schema Validator
+    summary: "Validate database schemas, find migration issues, detect type mismatches."
+    stages: [analyze, validate]
+    interaction_mode: autonomous
+    tags: [validation, static_analysis, migration]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__log_analyzer
+    name: Log Analyzer
+    summary: "Parse application logs, find error patterns, correlate events."
+    stages: [triage, analyze, reporting]
+    interaction_mode: autonomous
+    tags: [debugging, logging, root_cause]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: local_machine
+
+  - id: agent__config_auditor
+    name: Config Auditor
+    summary: "Audit config consistency across environments, find missing env vars."
+    stages: [analyze, validate, reporting]
+    interaction_mode: autonomous
+    tags: [validation, security_review, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__orchestrate
+    name: Orchestrate
+    summary: "Batch file operations, aggregate results, return only summary."
+    stages: [triage, analyze, reporting]
+    interaction_mode: autonomous
+    tags: [workflow, summarize]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__bundle_analyzer
+    name: Bundle Analyzer
+    summary: "Analyze JavaScript bundle size, find heavy imports, code splitting."
+    stages: [analyze, reporting]
+    interaction_mode: autonomous
+    tags: [performance, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__type_migrator
+    name: Type Migrator
+    summary: "Help migrate JavaScript to TypeScript, add types, fix type errors."
+    stages: [analyze, modify]
+    interaction_mode: autonomous
+    tags: [migration, refactor, large_change]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: false, writes_repo: true, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__i18n_checker
+    name: I18n Checker
+    summary: "Find hardcoded strings, missing translations, locale format issues."
+    stages: [analyze, validate, reporting]
+    interaction_mode: autonomous
+    tags: [validation, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__upgrade_scout
+    name: Upgrade Scout
+    summary: "Framework/dependency upgrade planning - changelogs, breaking changes."
+    stages: [triage, analyze, reporting]
+    interaction_mode: autonomous
+    tags: [migration, docs_lookup, release_notes]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: true, executes_code: false }
+    scope: web
+
+  - id: agent__a11y_auditor
+    name: Accessibility Auditor
+    summary: "Find accessibility issues - missing alt text, ARIA problems, keyboard traps."
+    stages: [analyze, validate, reporting]
+    interaction_mode: autonomous
+    tags: [validation, static_analysis]
+    cost: { price_tier: low, latency_tier: medium }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: repo
+
+  - id: agent__background_watcher
+    name: Background Watcher
+    summary: "Long-running background processes - dev servers, file watchers."
+    stages: [triage, validate]
+    interaction_mode: autonomous
+    tags: [workflow, logging]
+    cost: { price_tier: low, latency_tier: high }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: true }
+    scope: local_machine
+
+  - id: agent__claude_code_guide
+    name: Claude Code Guide
+    summary: "Answer questions about Claude Code features, hooks, commands, MCP servers."
+    stages: [triage, analyze, reporting]
+    interaction_mode: autonomous
+    tags: [docs_lookup, explain]
+    cost: { price_tier: low, latency_tier: low }
+    risk: { read_only: true, writes_repo: false, network: false, executes_code: false }
+    scope: claude_runtime
+
 # ============================================================================
 # MCP TOOLS - PAL (External LLM)
 # ============================================================================
