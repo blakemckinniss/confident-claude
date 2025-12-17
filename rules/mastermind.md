@@ -211,7 +211,8 @@ Decisions logged to `~/.claude/tmp/mastermind/`:
   },
   "planner": {
     "enabled": true,
-    "model": "openai/gpt-5.2",
+    "model": "auto",
+    "preferred_models": ["openai/gpt-5.2", "google/gemini-3-pro-preview"],
     "mini_mode_threshold": "trivial",
     "max_blueprint_tokens": 4000
   },

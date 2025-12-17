@@ -41,6 +41,17 @@ def get_session_id() -> str:
 # Enforcement happens at completion gate if no PAL tool was used.
 # =============================================================================
 
+# Brief models summary for PAL auto-selection context
+# Derived from PAL MCP's openrouter_models.json - update if models change significantly
+PAL_MODELS_SUMMARY = """| Model | Score | Context | Best For |
+|-------|-------|---------|----------|
+| gpt-5.2 | 100 | 400K | Reasoning, code-gen, complex planning |
+| gemini-3-pro | 100 | 1M | Large context, multimodal, code-gen |
+| kimi-k2 | 94 | 256K | Long-horizon reasoning, coding |
+| gemini-3-flash | 91 | 1M | Fast reasoning, large context |
+| claude-haiku-4.5 | 68 | 200K | Efficient, quick tasks |"""
+
+
 # Tool descriptions for the suggestion template
 PAL_TOOL_DESCRIPTIONS = {
     "debug": "mcp__pal__debug - Deep debugging analysis, root cause investigation",
@@ -84,8 +95,11 @@ If the suggested tool doesn't fit your assessment, you may use any of these inst
 ## Requirements
 
 1. **Use ONE PAL MCP tool** before completing this task (any from the list above)
-2. **Model:** Use "openai/gpt-5.2" or another capable model
+2. **Model:** PAL auto-selects the best model, or specify one if task warrants it
 3. **You choose** which tool best fits the actual task context
+
+## Available Models (auto-selected by default)
+{models_summary}
 
 ## Available PAL Tools
 
@@ -109,7 +123,7 @@ If the suggested tool doesn't fit your assessment, you may use any of these inst
 **Proceed with the PAL tool that best fits this task.**
 """
 
-# Capability-aware routing template (uses GPT-5.2 for intelligent tool selection)
+# Capability-aware routing template (PAL auto-selects model)
 CAPABILITY_ROUTING_TEMPLATE = """
 # Intelligent Capability Routing
 
@@ -123,7 +137,7 @@ For optimal tool selection, call `mcp__pal__chat` with the following prompt:
 {routing_prompt}
 </routing_prompt>
 
-**Model:** Use "openai/gpt-5.2"
+**Model:** PAL auto-selects (or specify: gpt-5.2, gemini-3-pro, kimi-k2 for reasoning-heavy tasks)
 
 The response will contain a staged toolchain recommendation with:
 - Primary tool for each stage
@@ -156,7 +170,9 @@ PLANNER_MANDATE_TEMPLATE = """
 
 **User explicitly requested strategic planning via `^` prefix.**
 
-You MUST call `mcp__pal__planner` with model "openai/gpt-5.2" BEFORE doing ANY other work.
+You MUST call `mcp__pal__planner` BEFORE doing ANY other work.
+
+**Model:** PAL auto-selects (prefer gpt-5.2 or gemini-3-pro for complex planning)
 
 ## User's Request
 
@@ -164,7 +180,7 @@ You MUST call `mcp__pal__planner` with model "openai/gpt-5.2" BEFORE doing ANY o
 
 ---
 
-**NOW: Call `mcp__pal__planner` with model "openai/gpt-5.2" IMMEDIATELY.**
+**NOW: Call `mcp__pal__planner` IMMEDIATELY.**
 """
 
 
@@ -225,6 +241,7 @@ def generate_pal_suggestion(
         tool_description=tool_description,
         task_type=task_type,
         alternatives_list=alternatives_list,
+        models_summary=PAL_MODELS_SUMMARY,
         user_prompt=prompt,
     )
 

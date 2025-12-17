@@ -29,10 +29,10 @@ class RouterConfig:
 
 @dataclass
 class PlannerConfig:
-    """GPT-5.2 planner configuration."""
+    """Planner configuration. Model defaults to 'auto' for PAL auto-selection."""
 
     enabled: bool = False
-    model: str = "openai/gpt-5.2"
+    model: str = "auto"  # PAL auto-selects; can override with specific model
     mini_mode_threshold: str = "trivial"
     max_blueprint_tokens: int = 4000
 

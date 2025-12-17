@@ -1,4 +1,6 @@
-"""GPT-5.2 planner via PAL MCP for blueprint generation.
+"""Planner via PAL MCP for blueprint generation.
+
+Model selection: PAL auto-selects by default, can specify model for complex tasks.
 
 Generates execution blueprints with:
 - Goal statement

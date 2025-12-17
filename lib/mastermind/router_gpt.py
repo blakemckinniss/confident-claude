@@ -1,13 +1,16 @@
-"""GPT-5.2 capability router for intelligent tool selection.
+"""Capability router for intelligent tool selection.
 
 Builds routing prompts with capability inventory and parses toolchain responses.
 The actual PAL MCP call is made by the hook layer (Claude runtime context).
+
+Model selection: PAL auto-selects by default based on intelligence scores.
+Claude can override with specific model when task warrants it.
 
 Usage in hook_integration.py:
     from mastermind.router_gpt import build_routing_prompt, parse_toolchain
 
     prompt = build_routing_prompt(task)
-    # Hook calls: mcp__pal__chat(prompt=prompt, model="openai/gpt-5.2")
+    # Hook calls: mcp__pal__chat(prompt=prompt)  # PAL auto-selects model
     toolchain = parse_toolchain(response_text)
 """
 
