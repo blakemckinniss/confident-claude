@@ -16,6 +16,7 @@ from .drift import DriftSignal
 @dataclass
 class VarianceReport:
     """Structured variance report for delta consult."""
+
     epoch_id: int
     turn: int
     triggers: list[str]
@@ -104,12 +105,14 @@ def format_variance_for_planner(report: VarianceReport) -> str:
                     lines.append(f"- {k}: {v}")
         lines.append("")
 
-    lines.extend([
-        "## Options",
-        *report.options,
-        "",
-        f"**Recommendation:** {report.recommendation}",
-    ])
+    lines.extend(
+        [
+            "## Options",
+            *report.options,
+            "",
+            f"**Recommendation:** {report.recommendation}",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -120,7 +123,7 @@ def format_variance_for_user(report: VarianceReport) -> str:
 
 {report.what_changed}
 
-Triggers: {', '.join(report.triggers)}
+Triggers: {", ".join(report.triggers)}
 Recommendation: {report.recommendation}
 
 Use `^` prefix to force re-planning, or continue if drift is acceptable."""

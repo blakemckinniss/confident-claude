@@ -35,6 +35,7 @@ def truncate_to_budget(text: str, budget: int) -> str:
 @dataclass
 class PackedContext:
     """Packed context ready for router or planner."""
+
     prompt: str
     sections: dict[str, str]
     token_estimate: int
@@ -46,7 +47,14 @@ def get_repo_structure(cwd: Path, max_depth: int = 2) -> str:
     """Get repository structure via tree or ls."""
     try:
         result = subprocess.run(
-            ["tree", "-L", str(max_depth), "--noreport", "-I", "node_modules|__pycache__|.git|.venv"],
+            [
+                "tree",
+                "-L",
+                str(max_depth),
+                "--noreport",
+                "-I",
+                "node_modules|__pycache__|.git|.venv",
+            ],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -84,7 +92,10 @@ def get_git_diff(cwd: Path, max_lines: int = 100) -> str:
         if result.returncode == 0 and result.stdout.strip():
             lines = result.stdout.strip().split("\n")
             if len(lines) > max_lines:
-                return "\n".join(lines[:max_lines]) + f"\n... [{len(lines) - max_lines} more files]"
+                return (
+                    "\n".join(lines[:max_lines])
+                    + f"\n... [{len(lines) - max_lines} more files]"
+                )
             return result.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
@@ -104,7 +115,10 @@ def get_beads_summary(max_items: int = 5) -> str:
         if result.returncode == 0 and result.stdout.strip():
             lines = result.stdout.strip().split("\n")
             if len(lines) > max_items + 2:  # header + items
-                return "\n".join(lines[:max_items + 2]) + f"\n... [{len(lines) - max_items - 2} more]"
+                return (
+                    "\n".join(lines[: max_items + 2])
+                    + f"\n... [{len(lines) - max_items - 2} more]"
+                )
             return result.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
@@ -158,10 +172,10 @@ def pack_for_router(user_prompt: str, cwd: Path | None = None) -> PackedContext:
 
     # Build packed prompt
     packed = f"""## User Request
-{sections['prompt']}
+{sections["prompt"]}
 
 ## Repository
-Type: {sections['repo_type']}
+Type: {sections["repo_type"]}
 """
 
     if "structure" in sections:
@@ -200,7 +214,9 @@ def pack_for_planner(
 
     # Core sections
     sections["prompt"] = user_prompt
-    sections["routing"] = f"Classification: {routing_decision.get('classification', 'complex')}\nReason: {', '.join(routing_decision.get('reason_codes', []))}"
+    sections["routing"] = (
+        f"Classification: {routing_decision.get('classification', 'complex')}\nReason: {', '.join(routing_decision.get('reason_codes', []))}"
+    )
 
     # Repository context
     if config.context_packer.include_repo_structure:
@@ -217,22 +233,22 @@ def pack_for_planner(
 
     # Build packed prompt
     packed = f"""## User Request
-{sections['prompt']}
+{sections["prompt"]}
 
 ## Router Classification
-{sections['routing']}
+{sections["routing"]}
 
 ## Repository Structure
-{sections.get('structure', '[unavailable]')}
+{sections.get("structure", "[unavailable]")}
 
 ## Current Changes
-{sections.get('diff', '[none]')}
+{sections.get("diff", "[none]")}
 
 ## Open Tasks (Beads)
-{sections.get('beads', '[none]')}
+{sections.get("beads", "[none]")}
 
 ## Test Status
-{sections.get('tests', '[unknown]')}
+{sections.get("tests", "[unknown]")}
 """
 
     # Check budget and truncate if needed

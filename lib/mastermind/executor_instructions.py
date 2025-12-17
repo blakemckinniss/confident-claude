@@ -47,27 +47,31 @@ def generate_executor_instructions(
         lines.append("")
 
     # Escalation triggers
-    lines.extend([
-        "## Escalation Triggers",
-        f"- Modifying >{config.drift.file_count_trigger} files outside touch_set",
-        f"- {config.drift.test_failure_trigger}+ test failures",
-        "- Fundamental approach change from blueprint",
-        "",
-        "**On trigger:** Report variance, request delta consult.",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Escalation Triggers",
+            f"- Modifying >{config.drift.file_count_trigger} files outside touch_set",
+            f"- {config.drift.test_failure_trigger}+ test failures",
+            "- Fundamental approach change from blueprint",
+            "",
+            "**On trigger:** Report variance, request delta consult.",
+            "",
+        ]
+    )
 
     # Permission to challenge
-    lines.extend([
-        "## Permission to Challenge",
-        "You MAY challenge the blueprint if:",
-        "- Evidence shows a constraint is wrong",
-        "- A better approach becomes clear",
-        "- Requirements were misunderstood",
-        "",
-        "Challenge format: State evidence, propose alternative, request approval.",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Permission to Challenge",
+            "You MAY challenge the blueprint if:",
+            "- Evidence shows a constraint is wrong",
+            "- A better approach becomes clear",
+            "- Requirements were misunderstood",
+            "",
+            "Challenge format: State evidence, propose alternative, request approval.",
+            "",
+        ]
+    )
 
     # Current state
     if state.files_modified:
@@ -116,15 +120,17 @@ def generate_escalation_prompt(
         lines.append(f"  Original: {evidence.get('original', 'unknown')}")
         lines.append(f"  Current: {evidence.get('current', 'unknown')}")
 
-    lines.extend([
-        "",
-        "## Request",
-        "Please provide updated blueprint or guidance.",
-        "Options:",
-        "1. Approve current approach (expand touch_set)",
-        "2. Redirect to original approach",
-        "3. Provide new strategy",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Request",
+            "Please provide updated blueprint or guidance.",
+            "Options:",
+            "1. Approve current approach (expand touch_set)",
+            "2. Redirect to original approach",
+            "3. Provide new strategy",
+        ]
+    )
 
     return "\n".join(lines)
 

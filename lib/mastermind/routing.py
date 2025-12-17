@@ -19,6 +19,7 @@ from .router_groq import RouterResponse
 @dataclass
 class RoutingPolicy:
     """Policy decision for a routing request."""
+
     should_route: bool
     should_plan: bool
     reason: str

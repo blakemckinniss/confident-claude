@@ -88,6 +88,9 @@ class MastermindState:
     files_modified: list[str] = field(default_factory=list)
     test_failures: int = 0
     pal_bootstrapped: bool = False  # True once PAL planner has been called
+    pal_consulted: bool = (
+        False  # True once ANY PAL tool has been called (hybrid routing)
+    )
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -156,6 +159,7 @@ class MastermindState:
             "files_modified": self.files_modified,
             "test_failures": self.test_failures,
             "pal_bootstrapped": self.pal_bootstrapped,
+            "pal_consulted": self.pal_consulted,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -173,6 +177,7 @@ class MastermindState:
             files_modified=data.get("files_modified", []),
             test_failures=data.get("test_failures", 0),
             pal_bootstrapped=data.get("pal_bootstrapped", False),
+            pal_consulted=data.get("pal_consulted", False),
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
         )
