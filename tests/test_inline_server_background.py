@@ -129,3 +129,90 @@ class TestBackgroundingDetection:
 
         # Assert
         assert result is False
+
+
+# Patterns for strip_heredoc_content tests
+_HEREDOC_PATTERN = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
+_GIT_COMMIT_MSG_PATTERN = re.compile(
+    r'git\s+commit\s+[^-]*-m\s*["\']', re.IGNORECASE
+)
+
+
+def strip_heredoc_content(command: str) -> str:
+    """
+    Extract only the shell command portion, excluding heredoc/message content.
+
+    Extracted from pre_tool_use_runner for testing.
+    """
+    result = command
+    match = _HEREDOC_PATTERN.search(result)
+    if match:
+        result = result[:match.end()]
+    match = _GIT_COMMIT_MSG_PATTERN.search(result)
+    if match:
+        result = result[:match.end()]
+    return result
+
+
+class TestStripHeredocContent:
+    """Tests for stripping heredoc and git commit message content."""
+
+    def test_heredoc_content_stripped(self):
+        # Arrange
+        cmd = "cat > f << EOF\nnpm run dev\nEOF"
+
+        # Act
+        result = strip_heredoc_content(cmd)
+
+        # Assert
+        assert result == "cat > f << EOF"
+
+    def test_git_commit_double_quotes_stripped(self):
+        # Arrange
+        cmd = 'git commit -m "npm run dev & curl"'
+
+        # Act
+        result = strip_heredoc_content(cmd)
+
+        # Assert
+        assert result == 'git commit -m "'
+
+    def test_git_commit_single_quotes_stripped(self):
+        # Arrange
+        cmd = "git commit -m 'npm run dev & curl'"
+
+        # Act
+        result = strip_heredoc_content(cmd)
+
+        # Assert
+        assert result == "git commit -m '"
+
+    def test_git_add_then_commit_stripped(self):
+        # Arrange
+        cmd = 'git add . && git commit -m "npm run dev & curl"'
+
+        # Act
+        result = strip_heredoc_content(cmd)
+
+        # Assert
+        assert result == 'git add . && git commit -m "'
+
+    def test_non_git_command_unchanged(self):
+        # Arrange
+        cmd = "npm run dev 2>&1 | head"
+
+        # Act
+        result = strip_heredoc_content(cmd)
+
+        # Assert
+        assert result == cmd
+
+    def test_git_without_commit_unchanged(self):
+        # Arrange
+        cmd = "git status && npm run dev"
+
+        # Act
+        result = strip_heredoc_content(cmd)
+
+        # Assert
+        assert result == cmd
