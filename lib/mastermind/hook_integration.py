@@ -33,6 +33,122 @@ def get_session_id() -> str:
     return os.environ.get("CLAUDE_SESSION_ID", f"session_{int(time.time())}")
 
 
+# =============================================================================
+# PAL MCP PLANNER MANDATE
+# =============================================================================
+# This mandate is injected when user triggers ^ override.
+# Claude MUST obey these instructions - they are non-negotiable.
+# =============================================================================
+
+PLANNER_MANDATE_TEMPLATE = """
+# 🚨 MANDATORY: PAL MCP PLANNER REQUIRED 🚨
+
+**THIS IS A HARD REQUIREMENT. YOU MUST COMPLY.**
+
+The user has requested strategic planning via the `^` prefix. You are REQUIRED to use the PAL MCP planner tool BEFORE doing ANY other work.
+
+## MANDATORY FIRST ACTION
+
+You MUST call `mcp__pal__planner` with these EXACT parameters:
+
+```
+Tool: mcp__pal__planner
+Parameters:
+  - model: "openai/gpt-5.2" (MANDATORY - DO NOT SUBSTITUTE)
+  - step: <planning content analyzing the user's request>
+  - step_number: 1
+  - total_steps: 2
+  - next_step_required: true
+  - use_assistant_model: true
+```
+
+## WHAT YOU MUST DO
+
+1. **IMMEDIATELY** call `mcp__pal__planner` as your FIRST tool use
+2. Use model "openai/gpt-5.2" - NO SUBSTITUTIONS ALLOWED
+3. In your step content, analyze:
+   - What is the user's goal?
+   - What files will likely be touched?
+   - What constraints/invariants must be preserved?
+   - What are the acceptance criteria?
+4. Wait for GPT-5.2's strategic analysis
+5. Use the planner's output to guide your implementation
+
+## FORBIDDEN ACTIONS
+
+- ❌ DO NOT skip the planner call
+- ❌ DO NOT substitute a different model
+- ❌ DO NOT proceed with implementation before planning
+- ❌ DO NOT use your own judgment instead of calling the planner
+
+## WHY THIS MATTERS
+
+The user explicitly requested multi-model orchestration. GPT-5.2 provides strategic planning that complements your execution capabilities. This is not optional.
+
+## USER'S REQUEST
+
+{user_prompt}
+
+---
+
+**NOW: Call `mcp__pal__planner` with model "openai/gpt-5.2" IMMEDIATELY.**
+"""
+
+
+def generate_planner_mandate(prompt: str, state: MastermindState) -> str:
+    """Generate the mandatory PAL MCP planner directive.
+
+    This creates an extremely strong instruction that Claude must
+    use PAL MCP with GPT-5.2 before proceeding with any work.
+    """
+    return PLANNER_MANDATE_TEMPLATE.format(
+        user_prompt=prompt,
+        session_id=state.session_id,
+        turn=state.turn_count,
+    )
+
+
+# =============================================================================
+# PAL MANDATE LOCK FILE - Hard enforcement via pre_tool_use hook
+# =============================================================================
+
+PAL_MANDATE_LOCK_PATH = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
+
+
+def create_pal_mandate_lock(
+    session_id: str,
+    project: str,
+    prompt: str,
+) -> Path:
+    """Create lock file that blocks all tools until PAL planner is called.
+
+    The pre_tool_use hook checks this lock and HARD BLOCKS everything
+    except mcp__pal__planner with GPT-5.x model.
+    """
+    import json
+
+    lock_data = {
+        "session_id": session_id,
+        "project": project,
+        "prompt": prompt[:500],  # Truncate for readability
+        "created_at": time.time(),
+        "created_at_iso": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+
+    PAL_MANDATE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PAL_MANDATE_LOCK_PATH.write_text(json.dumps(lock_data, indent=2))
+
+    return PAL_MANDATE_LOCK_PATH
+
+
+def clear_pal_mandate_lock() -> bool:
+    """Clear the PAL mandate lock file."""
+    if PAL_MANDATE_LOCK_PATH.exists():
+        PAL_MANDATE_LOCK_PATH.unlink()
+        return True
+    return False
+
+
 def process_user_prompt(
     prompt: str,
     turn_count: int,
@@ -118,7 +234,21 @@ def handle_session_start_routing(
     if override == "^":
         result["forced"] = True
         result["classification"] = "complex"
-        # Would call planner here
+        result["routed"] = True
+        result["planner_mandate"] = True
+
+        # Get project from cwd
+        project = cwd.name if cwd else "unknown"
+
+        # CREATE HARD LOCK - blocks ALL tools until PAL planner is called
+        create_pal_mandate_lock(
+            session_id=state.session_id,
+            project=project,
+            prompt=prompt,
+        )
+
+        # Inject MANDATORY PAL MCP planner directive
+        result["inject_context"] = generate_planner_mandate(prompt, state)
         return result
 
     # Pack context for router

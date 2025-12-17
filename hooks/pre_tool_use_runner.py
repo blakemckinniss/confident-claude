@@ -150,9 +150,7 @@ _HEREDOC_PATTERN = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
 
 # Git commit message detection - matches -m "..." or -m '...' with multi-line content
 # Uses non-greedy match and handles escaped quotes
-_GIT_COMMIT_MSG_PATTERN = re.compile(
-    r'git\s+commit\s+[^-]*-m\s*["\']', re.IGNORECASE
-)
+_GIT_COMMIT_MSG_PATTERN = re.compile(r'git\s+commit\s+[^-]*-m\s*["\']', re.IGNORECASE)
 
 
 def strip_heredoc_content(command: str) -> str:
@@ -169,12 +167,12 @@ def strip_heredoc_content(command: str) -> str:
     # Strip heredoc content
     match = _HEREDOC_PATTERN.search(result)
     if match:
-        result = result[:match.end()]
+        result = result[: match.end()]
 
     # Strip git commit message content (keep just 'git commit -m "')
     match = _GIT_COMMIT_MSG_PATTERN.search(result)
     if match:
-        result = result[:match.end()]
+        result = result[: match.end()]
 
     return result
 
@@ -388,7 +386,7 @@ def check_inline_server_background(data: dict, state: SessionState) -> HookResul
         if not match:
             continue
         # Get text after the match to check for backgrounding &
-        after_match = cmd_to_check[match.end():]
+        after_match = cmd_to_check[match.end() :]
         # Look for standalone & (backgrounding), not redirect syntax
         # Backgrounding &: preceded by space/digit, followed by space/EOL/;
         # Redirects: 2>&1, >&, &>, &&
@@ -674,6 +672,100 @@ def check_read_cache(data: dict, state: SessionState) -> HookResult:
     except Exception as e:
         log_debug("pre_tool_use_runner", f"read cache lookup failed: {e}")
     return HookResult.approve()
+
+
+# =============================================================================
+# PAL PLANNER MANDATE ENFORCER (Priority 0) - Highest priority, runs first
+# =============================================================================
+
+# Lock file location for PAL mandate
+_PAL_MANDATE_LOCK = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
+
+
+def check_pal_mandate_lock() -> dict | None:
+    """Check if PAL mandate lock exists and return its contents."""
+    if _PAL_MANDATE_LOCK.exists():
+        try:
+            return json.loads(_PAL_MANDATE_LOCK.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return None
+
+
+def clear_pal_mandate_lock() -> None:
+    """Clear the PAL mandate lock file."""
+    if _PAL_MANDATE_LOCK.exists():
+        _PAL_MANDATE_LOCK.unlink()
+
+
+@register_hook("pal_mandate_enforcer", None, priority=0)
+def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
+    """
+    🚨 PRIORITY 0 HARD BLOCK: Enforce PAL MCP planner usage.
+
+    When user triggers ^ override, a lock file is created. This hook BLOCKS
+    ALL tools except mcp__pal__planner until Claude obeys.
+
+    ONLY WAY TO CLEAR:
+    1. Call mcp__pal__planner with model containing "gpt-5" or "gpt5"
+    2. User says SUDO (bypass)
+    3. Lock file manually deleted
+
+    This implements the mastermind multi-model orchestration mandate.
+    """
+    lock = check_pal_mandate_lock()
+    if not lock:
+        return HookResult.approve()
+
+    # SUDO bypass
+    if data.get("_sudo_bypass"):
+        clear_pal_mandate_lock()
+        return HookResult.approve("⚠️ PAL mandate bypassed via SUDO")
+
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Check if this IS the required PAL planner call
+    if tool_name == "mcp__pal__planner":
+        model = tool_input.get("model", "").lower()
+        # Accept gpt-5.2, gpt5.2, openai/gpt-5.2, etc.
+        if "gpt-5" in model or "gpt5" in model:
+            clear_pal_mandate_lock()
+            return HookResult.approve(
+                "✅ **PAL MANDATE SATISFIED** - GPT-5.x planner invoked. Lock cleared."
+            )
+        else:
+            # Wrong model - still block
+            return HookResult.deny(
+                f"🚨 **WRONG MODEL** - You must use GPT-5.x\n"
+                f"You specified: `{tool_input.get('model', 'none')}`\n"
+                f"Required: `openai/gpt-5.2` or similar GPT-5.x model\n\n"
+                f"**Fix your mcp__pal__planner call to use the correct model.**"
+            )
+
+    # Allow read-only investigation tools (can't cause harm)
+    if tool_name in ("Read", "Grep", "Glob", "LS"):
+        return HookResult.approve()
+
+    # BLOCK EVERYTHING ELSE
+    session_id = lock.get("session_id", "unknown")
+    project = lock.get("project", "unknown")
+    prompt_preview = lock.get("prompt", "")[:100]
+
+    return HookResult.deny(
+        f"🚨 **PAL MANDATE ENFORCED** (Priority 0 Hard Block)\n\n"
+        f"**The user requested strategic planning via `^` prefix.**\n"
+        f'You MUST call `mcp__pal__planner` with `model: "openai/gpt-5.2"` FIRST.\n\n'
+        f"**Blocked tool:** `{tool_name}`\n"
+        f"**Session:** `{session_id}`\n"
+        f"**Project:** `{project}`\n"
+        f"**Original request:** `{prompt_preview}...`\n\n"
+        f"**ONLY ALLOWED ACTIONS:**\n"
+        f"1. Call `mcp__pal__planner` with model `openai/gpt-5.2`\n"
+        f"2. Use Read/Grep/Glob/LS for investigation\n"
+        f"3. User says SUDO to bypass\n\n"
+        f"**ALL OTHER TOOLS ARE BLOCKED UNTIL YOU COMPLY.**"
+    )
 
 
 # =============================================================================
@@ -1126,7 +1218,7 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     if is_grace_period or is_trivial or is_small_edit:
         return HookResult.approve(
             "💡 **BEAD RECOMMENDED**: No in_progress bead. Consider:\n"
-            "1. `bd create --title=\"...\" --type=task`\n"
+            '1. `bd create --title="..." --type=task`\n'
             "2. `bd update <id-from-output> --status=in_progress`"
         )
 
@@ -1134,7 +1226,7 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     state.bead_enforcement_blocks = state.bead_enforcement_blocks + 1
 
     return HookResult.deny(
-        "🚫 **BEAD REQUIRED**: Run `bd create --title=\"...\"` then `bd update <id> --status=in_progress` (separate calls). SUDO to bypass."
+        '🚫 **BEAD REQUIRED**: Run `bd create --title="..."` then `bd update <id> --status=in_progress` (separate calls). SUDO to bypass.'
     )
 
 
@@ -1223,7 +1315,7 @@ def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
                     content = project_yml.read_text()
                     for line in content.splitlines():
                         if line.startswith("project_name:"):
-                            serena_project = line.split(":", 1)[1].strip().strip('"\'')
+                            serena_project = line.split(":", 1)[1].strip().strip("\"'")
                             break
                 except Exception:
                     pass
@@ -1741,7 +1833,9 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
         file_exists = path_obj.exists()
         if file_exists:
             # Overwriting existing file - check if read first
-            file_seen = was_file_read(state, file_path) or file_path in state.files_edited
+            file_seen = (
+                was_file_read(state, file_path) or file_path in state.files_edited
+            )
             if not file_seen:
                 filename = path_obj.name
                 return HookResult.deny(
@@ -2267,7 +2361,9 @@ def inject_curiosity_prompt(data: dict, state: SessionState) -> HookResult:
     # General code - expand thinking
     else:
         prompts.append("🤔 What assumption am I making that might be wrong?")
-        prompts.append("🔄 Is there an existing pattern in this codebase I should follow?")
+        prompts.append(
+            "🔄 Is there an existing pattern in this codebase I should follow?"
+        )
 
     # Pick one prompt (rotate based on count)
     prompt = prompts[count % len(prompts)]
