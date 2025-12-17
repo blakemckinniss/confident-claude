@@ -19,6 +19,7 @@ DEFAULT_STATE_DIR = Path.home() / ".claude" / "tmp"
 @dataclass
 class Blueprint:
     """GPT-5.2 generated execution blueprint."""
+
     goal: str = ""
     invariants: list[str] = field(default_factory=list)
     touch_set: list[str] = field(default_factory=list)
@@ -39,6 +40,7 @@ class Blueprint:
 @dataclass
 class RoutingDecision:
     """Record of router classification."""
+
     classification: str = "trivial"  # trivial, medium, complex
     confidence: float = 0.0
     reason_codes: list[str] = field(default_factory=list)
@@ -56,6 +58,7 @@ class RoutingDecision:
 @dataclass
 class EscalationRecord:
     """Record of a drift escalation event."""
+
     turn: int
     trigger: str  # file_count, test_failures, approach_change
     evidence: dict[str, Any] = field(default_factory=dict)
@@ -72,6 +75,7 @@ class EscalationRecord:
 @dataclass
 class MastermindState:
     """Complete mastermind session state."""
+
     session_id: str = ""
     turn_count: int = 0
     routing_decision: RoutingDecision | None = None
@@ -96,11 +100,13 @@ class MastermindState:
 
     def record_escalation(self, trigger: str, evidence: dict[str, Any]) -> None:
         """Record an escalation event."""
-        self.escalations.append(EscalationRecord(
-            turn=self.turn_count,
-            trigger=trigger,
-            evidence=evidence,
-        ))
+        self.escalations.append(
+            EscalationRecord(
+                turn=self.turn_count,
+                trigger=trigger,
+                evidence=evidence,
+            )
+        )
         self.escalation_count += 1
         self.last_escalation_turn = self.turn_count
         self.epoch_id += 1
@@ -117,12 +123,24 @@ class MastermindState:
         self.turn_count += 1
         self.updated_at = time.time()
 
+    def increment_test_failures(self, count: int = 1) -> None:
+        """Increment test failure counter."""
+        self.test_failures += count
+        self.updated_at = time.time()
+
+    def reset_test_failures(self) -> None:
+        """Reset test failure counter (e.g., after tests pass)."""
+        self.test_failures = 0
+        self.updated_at = time.time()
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "session_id": self.session_id,
             "turn_count": self.turn_count,
-            "routing_decision": self.routing_decision.to_dict() if self.routing_decision else None,
+            "routing_decision": self.routing_decision.to_dict()
+            if self.routing_decision
+            else None,
             "blueprint": self.blueprint.to_dict() if self.blueprint else None,
             "continuation_id": self.continuation_id,
             "epoch_id": self.epoch_id,
@@ -156,7 +174,9 @@ class MastermindState:
         if data.get("blueprint"):
             state.blueprint = Blueprint.from_dict(data["blueprint"])
         if data.get("escalations"):
-            state.escalations = [EscalationRecord.from_dict(e) for e in data["escalations"]]
+            state.escalations = [
+                EscalationRecord.from_dict(e) for e in data["escalations"]
+            ]
 
         return state
 

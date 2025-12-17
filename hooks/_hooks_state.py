@@ -95,7 +95,7 @@ def _track_mastermind_test_failure(state: SessionState) -> None:
             return
         session_id = _get_session_id(state)
         mm_state = load_mastermind_state(session_id)
-        mm_state.test_failures += 1
+        mm_state.increment_test_failures()
         save_mastermind_state(mm_state)
     except Exception:
         pass
