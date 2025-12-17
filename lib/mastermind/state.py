@@ -87,6 +87,7 @@ class MastermindState:
     last_escalation_turn: int = -100
     files_modified: list[str] = field(default_factory=list)
     test_failures: int = 0
+    pal_bootstrapped: bool = False  # True once PAL planner has been called
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -133,6 +134,11 @@ class MastermindState:
         self.test_failures = 0
         self.updated_at = time.time()
 
+    def mark_bootstrapped(self) -> None:
+        """Mark session as bootstrapped (PAL planner has been called)."""
+        self.pal_bootstrapped = True
+        self.updated_at = time.time()
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
@@ -149,6 +155,7 @@ class MastermindState:
             "last_escalation_turn": self.last_escalation_turn,
             "files_modified": self.files_modified,
             "test_failures": self.test_failures,
+            "pal_bootstrapped": self.pal_bootstrapped,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -165,6 +172,7 @@ class MastermindState:
             last_escalation_turn=data.get("last_escalation_turn", -100),
             files_modified=data.get("files_modified", []),
             test_failures=data.get("test_failures", 0),
+            pal_bootstrapped=data.get("pal_bootstrapped", False),
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
         )

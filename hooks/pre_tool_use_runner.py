@@ -698,6 +698,7 @@ def check_pal_mandate_lock() -> dict | None:
 
     # Check TTL - default 30 minutes
     import time
+
     created_at = lock_data.get("created_at", 0)
     ttl_minutes = 30  # Could be loaded from config if needed
 
@@ -751,8 +752,19 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
         # Accept gpt-5.2, gpt5.2, openai/gpt-5.2, etc.
         if "gpt-5" in model or "gpt5" in model:
             clear_pal_mandate_lock()
+            # Mark session as bootstrapped so Groq routing stops
+            try:
+                from mastermind.state import load_state, save_state
+                from mastermind.hook_integration import get_session_id
+
+                session_id = get_session_id()
+                mm_state = load_state(session_id)
+                mm_state.mark_bootstrapped()
+                save_state(mm_state)
+            except Exception as e:
+                log_debug(f"[mastermind] Failed to mark session bootstrapped: {e}")
             return HookResult.approve(
-                "✅ **PAL MANDATE SATISFIED** - GPT-5.x planner invoked. Lock cleared."
+                "✅ **PAL MANDATE SATISFIED** - GPT-5.x planner invoked. Session bootstrapped."
             )
         else:
             # Wrong model - still block

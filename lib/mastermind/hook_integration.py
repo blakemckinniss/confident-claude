@@ -190,13 +190,14 @@ def process_user_prompt(
 
     # Check if routing applies:
     # - ALWAYS route if ^ override (user explicitly requested planning)
-    # - Otherwise, route on turn 0 of THIS session (using mastermind's own counter)
-    # We use mastermind's internal turn counter (pre-increment) since it's keyed by
-    # the actual CLAUDE_SESSION_ID, not the potentially stale global SessionState
-    is_session_start = state.turn_count == 0  # Before increment = first turn
+    # - Route EVERY turn until PAL planner has been called (continuous monitoring)
+    # - Once PAL bootstraps the session, skip Groq routing (planner has taken over)
+    # This allows complexity to be detected even if a simple task evolves mid-session
     should_route = (
         (override == "^")  # User explicitly requested planning
-        or (is_session_start and config.router.enabled)  # First turn of this session
+        or (
+            not state.pal_bootstrapped and config.router.enabled
+        )  # Route until bootstrapped
     )
 
     # NOW increment turn counter (after routing check)
