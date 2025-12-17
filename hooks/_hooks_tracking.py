@@ -435,3 +435,89 @@ def inject_pattern_curiosity(
 
     runner_state["pattern_curiosity"] = pc_state
     return HookResult.none()
+
+
+# =============================================================================
+# FAILURE CURIOSITY (priority 76)
+# =============================================================================
+
+FAILURE_PROMPTS = [
+    "🔀 What related approaches could solve this differently?",
+    "🤔 What assumption led to this failure?",
+    "🔍 Is there an existing solution I'm not seeing?",
+    "💡 Would breaking this into smaller steps help?",
+]
+
+
+@register_hook("failure_curiosity", "Bash", priority=76)
+def inject_failure_curiosity(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Inject alternative thinking prompts after tool failures.
+
+    When a command fails, prompt expanded thinking about alternative
+    approaches rather than just retrying the same thing.
+    """
+    tool_result = data.get("tool_result", {})
+
+    # Check for failure
+    exit_code = None
+    if isinstance(tool_result, dict):
+        exit_code = tool_result.get("exit_code")
+    if exit_code is None or exit_code == 0:
+        return HookResult.none()
+
+    # Track consecutive failures
+    fc_state = runner_state.get("failure_curiosity", {})
+    fc_state["consecutive_failures"] = fc_state.get("consecutive_failures", 0) + 1
+    failures = fc_state["consecutive_failures"]
+
+    # Fire on first failure and every 2nd failure after
+    if failures == 1 or failures % 2 == 0:
+        prompt = FAILURE_PROMPTS[failures % len(FAILURE_PROMPTS)]
+        runner_state["failure_curiosity"] = fc_state
+        return HookResult.with_context(f"💡 CURIOSITY: {prompt}")
+
+    runner_state["failure_curiosity"] = fc_state
+    return HookResult.none()
+
+
+# =============================================================================
+# LOW CONFIDENCE CURIOSITY (priority 77)
+# =============================================================================
+
+UNCERTAINTY_PROMPTS = [
+    "❓ What specifically am I uncertain about?",
+    "🎯 What would increase my confidence here?",
+    "📚 What context am I missing?",
+    "🔬 What could I verify to reduce uncertainty?",
+]
+
+
+@register_hook("low_confidence_curiosity", None, priority=77)
+def inject_low_confidence_curiosity(
+    data: dict, state: SessionState, runner_state: dict
+) -> HookResult:
+    """Inject uncertainty exploration prompts when confidence drops below 70%.
+
+    When confidence is low, prompt explicit thinking about what's causing
+    the uncertainty rather than proceeding blindly.
+    """
+    # Check confidence level
+    if state.confidence >= 70:
+        return HookResult.none()
+
+    # Cooldown: only fire every 5 turns when in low confidence
+    lc_state = runner_state.get("low_confidence_curiosity", {})
+    last_prompt_turn = lc_state.get("last_prompt_turn", 0)
+
+    if state.turn_count - last_prompt_turn < 5:
+        return HookResult.none()
+
+    lc_state["last_prompt_turn"] = state.turn_count
+    prompt = UNCERTAINTY_PROMPTS[state.turn_count % len(UNCERTAINTY_PROMPTS)]
+    runner_state["low_confidence_curiosity"] = lc_state
+
+    return HookResult.with_context(
+        f"⚠️ LOW CONFIDENCE ({state.confidence}%)\n💡 CURIOSITY: {prompt}"
+    )
