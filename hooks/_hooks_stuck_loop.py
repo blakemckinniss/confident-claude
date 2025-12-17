@@ -54,11 +54,25 @@ STUCK_LOOP_STATE_FILE = (
 )
 
 # Patterns indicating debugging activity
+# IMPORTANT: These must be SPECIFIC to avoid false positives
+# "fix the bug" = debugging, "add error handling" = NOT debugging
 DEBUG_INTENT_PATTERNS = [
-    r"\b(?:fix|debug|solve|resolve|troubleshoot)\b",
-    r"\b(?:error|bug|issue|problem|broken|failing|blank|crash)\b",
+    r"\b(?:debug|troubleshoot)\b",  # Strong debugging signals
+    r"\bfix\s+(?:the|this|that|a|an)?\s*(?:bug|error|issue|problem|crash)\b",  # "fix the bug"
+    r"\b(?:error|bug|issue|problem|crash)\s+(?:with|in|on|when|while)\b",  # "error with X"
     r"\b(?:doesn't|doesn't|won't|can't|cannot)\s+(?:work|load|render|show|display|run)\b",
-    r"\b(?:still|again|same)\s+(?:broken|failing|error|blank|issue)\b",
+    r"\b(?:still|again|same)\s+(?:\w+\s+)*(?:broken|failing|error|blank|issue)\b",  # "still shows blank"
+    r"\bwhy\s+(?:is|isn't|does|doesn't)\s+(?:it|this|the)\b.*\?",  # "why doesn't it work?"
+]
+
+# Anti-patterns that should EXCLUDE from debugging context
+# These indicate feature work that happens to mention error-related words
+DEBUG_EXCLUSION_PATTERNS = [
+    r"\badd\s+(?:error|exception)\s+handling\b",  # Adding error handling
+    r"\bcreate\s+(?:an?\s+)?(?:issue|bug)\s+(?:tracker|system|feature)\b",  # Issue tracker feature
+    r"\b(?:error|exception)\s+(?:class|type|message|format)\b",  # Error class design
+    r"\bblank\s+(?:page|component|template)\s+(?:design|styling|layout)\b",  # Blank page as feature
+    r"\b(?:implement|build|create)\s+(?:error|issue|problem)\b",  # Implementing error features
 ]
 
 # Patterns indicating a fix attempt
@@ -112,19 +126,34 @@ def _text_similarity(a: str, b: str) -> float:
 
 
 def _is_debugging_context(state: SessionState) -> bool:
-    """Check if we're in a debugging context based on recent activity."""
+    """Check if we're in a debugging context based on recent activity.
+
+    IMPORTANT: Must avoid false positives for feature work that mentions
+    error-related words (e.g., "add error handling", "create issue tracker").
+    """
+
+    def _matches_debug_intent(text: str) -> bool:
+        """Check if text matches debug patterns but NOT exclusion patterns."""
+        text_lower = text.lower()
+        # First check exclusions - if any match, NOT debugging
+        if any(re.search(p, text_lower) for p in DEBUG_EXCLUSION_PATTERNS):
+            return False
+        # Then check for debug intent
+        return any(re.search(p, text_lower) for p in DEBUG_INTENT_PATTERNS)
+
     # Check if original goal mentions debugging
-    goal = (state.original_goal or "").lower()
-    if any(re.search(p, goal) for p in DEBUG_INTENT_PATTERNS):
+    goal = state.original_goal or ""
+    if _matches_debug_intent(goal):
         return True
 
     # Check recent prompts
-    last_prompt = (state.last_user_prompt or "").lower()
-    if any(re.search(p, last_prompt) for p in DEBUG_INTENT_PATTERNS):
+    last_prompt = state.last_user_prompt or ""
+    if _matches_debug_intent(last_prompt):
         return True
 
-    # Check for recent failures
-    if state.consecutive_failures >= 2:
+    # Check for recent failures - raised threshold from 2 to 3
+    # Two failures could be typos; three suggests actual debugging
+    if state.consecutive_failures >= 3:
         return True
 
     return False
@@ -198,6 +227,16 @@ def _check_recurring_symptom(
 # =============================================================================
 
 
+# Files exempt from fix attempt tracking (iterative refinement expected)
+FIX_TRACKING_EXEMPT_PATTERNS = (
+    "/.claude/",  # Framework files often need iterative work
+    "/rules/",  # Rule files are refined iteratively
+    "CLAUDE.md",  # Project config
+    "/.serena/",  # Serena memories
+    "/plans/",  # Plan mode files
+)
+
+
 @register_hook("fix_attempt_tracker", "Edit|Write", priority=78)
 def track_fix_attempt(
     data: dict, state: SessionState, runner_state: dict
@@ -209,6 +248,10 @@ def track_fix_attempt(
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
     if not file_path:
+        return HookResult.none()
+
+    # Exempt framework files from fix attempt tracking
+    if any(pattern in file_path for pattern in FIX_TRACKING_EXEMPT_PATTERNS):
         return HookResult.none()
 
     stuck = _get_stuck_state(runner_state)
@@ -418,6 +461,16 @@ def check_verification_needed(
 # =============================================================================
 
 
+# Files exempt from circuit breaker (iterative refinement expected)
+CIRCUIT_BREAKER_EXEMPT_PATTERNS = (
+    "/.claude/",  # Framework files often need iterative work
+    "/rules/",  # Rule files are refined iteratively
+    "CLAUDE.md",  # Project config
+    "/.serena/",  # Serena memories
+    "/plans/",  # Plan mode files
+)
+
+
 @register_hook("circuit_breaker", "Edit|Write", priority=82)
 def enforce_circuit_breaker(
     data: dict, state: SessionState, runner_state: dict
@@ -430,6 +483,10 @@ def enforce_circuit_breaker(
 
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
+
+    # Exempt framework files - iterative refinement is expected
+    if any(pattern in file_path for pattern in CIRCUIT_BREAKER_EXEMPT_PATTERNS):
+        return HookResult.none()
 
     # Allow edits to different files (might be legitimate other work)
     problem_files = [
