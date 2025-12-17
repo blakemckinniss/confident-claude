@@ -110,3 +110,33 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         # Never block on mastermind errors - fail silently
         print(f"[mastermind] Error: {e}", file=sys.stderr)
         return HookResult(decision="allow", context=None)
+
+
+@register_hook("mastermind_drift_check", priority=65)
+def mastermind_drift_check(data: dict, state) -> HookResult:
+    """
+    Check for drift from blueprint and warn if escalation needed.
+
+    Priority 65: Runs after context injection, before suggestions.
+    Only active when drift detection is enabled and blueprint exists.
+    """
+    if not MASTERMIND_AVAILABLE:
+        return HookResult(decision="allow", context=None)
+
+    try:
+        config = load_config()
+        if not config.drift.enabled:
+            return HookResult(decision="allow", context=None)
+
+        # Import drift check from hooks state module
+        from _hooks_state import check_mastermind_drift
+
+        drift_warning = check_mastermind_drift(state)
+        if drift_warning:
+            return HookResult(decision="allow", context=drift_warning)
+
+        return HookResult(decision="allow", context=None)
+
+    except Exception as e:
+        print(f"[mastermind-drift] Error: {e}", file=sys.stderr)
+        return HookResult(decision="allow", context=None)

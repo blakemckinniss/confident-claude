@@ -48,6 +48,96 @@ from confidence import (
     apply_rate_limit,
     format_confidence_change,
     get_tier_info,
+)
+
+# Mastermind drift tracking imports
+try:
+    from mastermind.state import (
+        load_state as load_mastermind_state,
+        save_state as save_mastermind_state,
+    )
+    from mastermind.drift import evaluate_drift, should_escalate
+    from mastermind.config import get_config as get_mastermind_config
+
+    MASTERMIND_AVAILABLE = True
+except ImportError:
+    MASTERMIND_AVAILABLE = False
+
+
+def _get_session_id(state: SessionState) -> str:
+    """Extract session ID for mastermind state."""
+    return getattr(state, "session_id", "") or f"session_{int(state.turn_count or 0)}"
+
+
+def _track_mastermind_file(filepath: str, state: SessionState) -> None:
+    """Track file modification in mastermind state for drift detection."""
+    if not MASTERMIND_AVAILABLE:
+        return
+    try:
+        config = get_mastermind_config()
+        if not config.drift.enabled:
+            return
+        session_id = _get_session_id(state)
+        mm_state = load_mastermind_state(session_id)
+        mm_state.record_file_modified(filepath)
+        save_mastermind_state(mm_state)
+    except Exception:
+        pass  # Don't break main flow
+
+
+def _track_mastermind_test_failure(state: SessionState) -> None:
+    """Increment test failure count in mastermind state."""
+    if not MASTERMIND_AVAILABLE:
+        return
+    try:
+        config = get_mastermind_config()
+        if not config.drift.enabled:
+            return
+        session_id = _get_session_id(state)
+        mm_state = load_mastermind_state(session_id)
+        mm_state.test_failures += 1
+        save_mastermind_state(mm_state)
+    except Exception:
+        pass
+
+
+def check_mastermind_drift(state: SessionState) -> str | None:
+    """Check for drift and return warning if escalation needed."""
+    if not MASTERMIND_AVAILABLE:
+        return None
+    try:
+        config = get_mastermind_config()
+        if not config.drift.enabled:
+            return None
+        session_id = _get_session_id(state)
+        mm_state = load_mastermind_state(session_id)
+
+        # No blueprint = no drift detection
+        if not mm_state.blueprint:
+            return None
+
+        signals = evaluate_drift(mm_state)
+        if signals and should_escalate(signals, mm_state):
+            # Record the escalation
+            trigger = signals[0].trigger
+            evidence = signals[0].evidence
+            mm_state.record_escalation(trigger, evidence)
+            save_mastermind_state(mm_state)
+
+            # Format warning
+            severity = signals[0].severity.upper()
+            return (
+                f"\n⚠️ **DRIFT DETECTED** [{severity}]: {trigger}\n"
+                f"Evidence: {json.dumps(evidence, indent=2)}\n"
+                f"Consider re-consulting the blueprint or calling mcp__pal__planner.\n"
+            )
+        return None
+    except Exception:
+        return None
+
+
+# Additional confidence imports (can't be at top due to mastermind try/except block)
+from confidence import (  # noqa: E402
     format_dispute_instructions,
     predict_trajectory,
     format_trajectory_warning,
@@ -72,7 +162,6 @@ def clear_pal_mandate_on_success(
     PostToolUse instead. Also captures the blueprint for mastermind state.
     """
     import sys
-    import time
 
     tool_input = data.get("tool_input", {})
     tool_result = data.get("tool_result", {})
@@ -87,19 +176,25 @@ def clear_pal_mandate_on_success(
     if is_gpt5 and _PAL_MANDATE_LOCK.exists():
         try:
             _PAL_MANDATE_LOCK.unlink()
-            context_parts.append("✅ **PAL MANDATE SATISFIED** - GPT-5.x planner called. Lock cleared.")
+            context_parts.append(
+                "✅ **PAL MANDATE SATISFIED** - GPT-5.x planner called. Lock cleared."
+            )
         except OSError as e:
             print(f"[pal_mandate_clear] Failed to clear lock: {e}", file=sys.stderr)
 
     # Capture blueprint from planner result for mastermind state
     try:
-        from mastermind.state import MastermindState, Blueprint, load_state, save_state
+        from mastermind.state import load_state, save_state
         from mastermind.hook_integration import get_session_id
 
         # Extract result content
         result_str = ""
         if isinstance(tool_result, dict):
-            result_str = tool_result.get("content", "") or tool_result.get("output", "") or str(tool_result)
+            result_str = (
+                tool_result.get("content", "")
+                or tool_result.get("output", "")
+                or str(tool_result)
+            )
         elif isinstance(tool_result, str):
             result_str = tool_result
         else:
@@ -118,7 +213,8 @@ def clear_pal_mandate_on_success(
 
             context_parts.append(
                 f"📋 **Blueprint Captured** - Goal: {blueprint.goal[:100]}..."
-                if len(blueprint.goal) > 100 else f"📋 **Blueprint Captured** - Goal: {blueprint.goal}"
+                if len(blueprint.goal) > 100
+                else f"📋 **Blueprint Captured** - Goal: {blueprint.goal}"
             )
 
             # Add invariants preview
@@ -146,7 +242,7 @@ def clear_pal_mandate_on_success(
     return HookResult.approve()
 
 
-def _parse_blueprint_from_planner(result_str: str, tool_input: dict) -> "Blueprint | None":
+def _parse_blueprint_from_planner(result_str: str, tool_input: dict):
     """Parse blueprint from PAL planner output.
 
     Extracts structured planning information from the planner response.
@@ -198,19 +294,43 @@ def _parse_blueprint_from_planner(result_str: str, tool_input: dict) -> "Bluepri
         goal = tool_input.get("step", "")[:200]
 
     # Look for invariants/constraints
-    inv_section = re.search(r"(?:Invariants?|Constraints?|Must not)[:\s]*\n((?:[-*]\s*[^\n]+\n?)+)", result_str, re.IGNORECASE)
+    inv_section = re.search(
+        r"(?:Invariants?|Constraints?|Must not)[:\s]*\n((?:[-*]\s*[^\n]+\n?)+)",
+        result_str,
+        re.IGNORECASE,
+    )
     if inv_section:
-        invariants = [line.strip().lstrip("-* ") for line in inv_section.group(1).split("\n") if line.strip()]
+        invariants = [
+            line.strip().lstrip("-* ")
+            for line in inv_section.group(1).split("\n")
+            if line.strip()
+        ]
 
     # Look for files/touch set
-    files_section = re.search(r"(?:Files?|Touch set|Will modify)[:\s]*\n((?:[-*]\s*[^\n]+\n?)+)", result_str, re.IGNORECASE)
+    files_section = re.search(
+        r"(?:Files?|Touch set|Will modify)[:\s]*\n((?:[-*]\s*[^\n]+\n?)+)",
+        result_str,
+        re.IGNORECASE,
+    )
     if files_section:
-        touch_set = [line.strip().lstrip("-* ") for line in files_section.group(1).split("\n") if line.strip()]
+        touch_set = [
+            line.strip().lstrip("-* ")
+            for line in files_section.group(1).split("\n")
+            if line.strip()
+        ]
 
     # Look for acceptance criteria
-    accept_section = re.search(r"(?:Acceptance|Done when|Success criteria)[:\s]*\n((?:[-*]\s*[^\n]+\n?)+)", result_str, re.IGNORECASE)
+    accept_section = re.search(
+        r"(?:Acceptance|Done when|Success criteria)[:\s]*\n((?:[-*]\s*[^\n]+\n?)+)",
+        result_str,
+        re.IGNORECASE,
+    )
     if accept_section:
-        acceptance_criteria = [line.strip().lstrip("-* ") for line in accept_section.group(1).split("\n") if line.strip()]
+        acceptance_criteria = [
+            line.strip().lstrip("-* ")
+            for line in accept_section.group(1).split("\n")
+            if line.strip()
+        ]
 
     if goal:
         return Blueprint(
@@ -439,6 +559,10 @@ def _handle_edit_tool(tool_input: dict, result: dict, state: SessionState) -> No
         _trigger_self_heal(state, target=filepath, error=edit_error)
 
     if filepath:
+        # Track for mastermind drift detection
+        if not edit_error:
+            _track_mastermind_file(filepath, state)
+
         old_code = tool_input.get("old_string", "")
         new_code = tool_input.get("new_string", "")
         track_file_edit(state, filepath, old_code, new_code)
@@ -472,6 +596,10 @@ def _handle_write_tool(
         _trigger_self_heal(state, target=filepath, error=write_error)
 
     if filepath:
+        # Track for mastermind drift detection
+        if not write_error:
+            _track_mastermind_file(filepath, state)
+
         is_new_file = filepath not in state.files_read
         if is_new_file:
             track_file_create(state, filepath)
@@ -608,7 +736,8 @@ def _track_bash_test_failures(command: str, output: str, state: SessionState) ->
     test_commands = ["pytest", "npm test", "jest", "cargo test"]
     if not any(tc in command for tc in test_commands):
         return
-    for failure in extract_test_failures(output):
+    failures = extract_test_failures(output)
+    for failure in failures:
         add_work_item(
             state,
             item_type="test_failure",
@@ -616,6 +745,9 @@ def _track_bash_test_failures(command: str, output: str, state: SessionState) ->
             description=failure.get("description", "Fix test failure"),
             priority=failure.get("priority", 80),
         )
+    # Track test failures for mastermind drift detection
+    if failures:
+        _track_mastermind_test_failure(state)
 
 
 def _handle_bash_tool(tool_input: dict, result: dict, state: SessionState) -> None:
