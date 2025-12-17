@@ -756,7 +756,10 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
             mm_state.pal_consulted = True
             save_state(mm_state)
         except (ImportError, FileNotFoundError, AttributeError) as e:
-            log_debug(f"[mastermind] Failed to mark session bootstrapped: {e}")
+            log_debug(
+                "pre_tool_use_runner",
+                f"[mastermind] Failed to mark session bootstrapped: {e}",
+            )
         return HookResult.approve(
             f"✅ **PAL MANDATE SATISFIED** - `{tool_name}` invoked. Session bootstrapped."
         )
@@ -795,7 +798,7 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 
-@register_hook("pal_tool_tracker", "mcp__pal__", priority=1)
+@register_hook("pal_tool_tracker", "mcp__pal__.*", priority=1)
 def track_pal_tool_usage(data: dict, state: SessionState) -> HookResult:
     """
     Track when any PAL MCP tool is called.
@@ -1197,6 +1200,9 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     - Small edits: Single-line changes get nudge, not block
     - SUDO bypass always available
     """
+    # Lazy import - only load _beads when this hook runs
+    from _beads import get_in_progress_beads, get_open_beads
+
     # SUDO bypass
     if data.get("_sudo_bypass"):
         return HookResult.approve()
@@ -1304,6 +1310,9 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     NOTE: Does NOT update task_spawns_this_turn - parallel_nudge handles that.
     Uses consecutive_single_tasks for escalation (shared counter).
     """
+    # Lazy import - only load _beads when this hook runs
+    from _beads import get_independent_beads, generate_parallel_task_calls
+
     tool_input = data.get("tool_input", {})
 
     # Skip if already running in background or resuming
@@ -1343,7 +1352,7 @@ def check_parallel_bead_delegation(data: dict, state: SessionState) -> HookResul
     return HookResult.approve()
 
 
-@register_hook("serena_activation_gate", "mcp__serena__", priority=6)
+@register_hook("serena_activation_gate", "mcp__serena__.*", priority=6)
 def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
     """Block Serena tools until project is activated.
 
@@ -1453,6 +1462,7 @@ def check_homeostatic_drive(data: dict, state: SessionState) -> HookResult:
     This is the "healing instinct" - the system actively seeks equilibrium.
     """
     from _confidence_constants import STASIS_FLOOR
+    from confidence import get_tier_info
 
     # Skip if confidence not initialized or in healthy zone
     if state.confidence == 0 or state.confidence >= STASIS_FLOOR:
@@ -1561,6 +1571,15 @@ def check_confidence_tool_gate(data: dict, state: SessionState) -> HookResult:
     if state.confidence == 0:
         return HookResult.approve()
 
+    # Lazy import - only load when actually gating
+    # Safety-critical: explicit deny on ImportError (not fail-open)
+    try:
+        from confidence import check_tool_permission
+    except ImportError as e:
+        return HookResult.deny(
+            f"⚠️ confidence_tool_gate unavailable ({e}). Refusing tool use. Say SUDO to bypass."
+        )
+
     # Check tool permission
     is_permitted, block_message = check_tool_permission(
         state.confidence, tool_name, tool_input
@@ -1639,6 +1658,9 @@ def check_confidence_external_suggestion(data: dict, state: SessionState) -> Hoo
     # Don't suggest for external consultation tools (that's what we're suggesting!)
     if tool_name.startswith("mcp__pal__"):
         return HookResult.approve()
+
+    # Lazy import - only load confidence utilities when needed
+    from confidence import should_mandate_external, suggest_alternatives, get_tier_info
 
     parts = []
 
@@ -2470,6 +2492,52 @@ def suggest_crawl4ai(data: dict, state: SessionState) -> HookResult:
 # MAIN RUNNER
 # =============================================================================
 
+# Pre-built lookup for fast hook filtering (built after HOOKS.sort())
+HOOKS_BY_TOOL: dict[str, list] = {}  # Populated by _build_hook_index()
+_HOOK_MATCHERS: dict[str, re.Pattern] = {}  # Pre-compiled regex patterns
+
+
+def _build_hook_index():
+    """Build optimized hook lookup index at module load.
+
+    Creates:
+    - _HOOK_MATCHERS: Pre-compiled regex for each unique matcher
+    - HOOKS_BY_TOOL["__all__"]: Hooks that match all tools (matcher=None)
+    """
+    global HOOKS_BY_TOOL, _HOOK_MATCHERS
+    HOOKS_BY_TOOL = {"__all__": []}
+    _HOOK_MATCHERS = {}
+
+    for hook in HOOKS:
+        name, matcher, check_func, priority = hook
+        if matcher is None:
+            HOOKS_BY_TOOL["__all__"].append(hook)
+        elif matcher not in _HOOK_MATCHERS:
+            # Pre-compile regex pattern
+            _HOOK_MATCHERS[matcher] = re.compile(f"^({matcher})$")
+
+
+def _get_hooks_for_tool(tool_name: str) -> list:
+    """Get applicable hooks for a tool, using cached lookup when possible."""
+    if tool_name not in HOOKS_BY_TOOL:
+        # Build list for this tool on first access
+        applicable = list(HOOKS_BY_TOOL["__all__"])  # Start with "match all" hooks
+
+        for hook in HOOKS:
+            name, matcher, check_func, priority = hook
+            if matcher is None:
+                continue  # Already included in __all__
+            # Use pre-compiled pattern
+            pattern = _HOOK_MATCHERS.get(matcher)
+            if pattern and pattern.match(tool_name):
+                applicable.append(hook)
+
+        # Sort by priority (should already be sorted, but ensure)
+        applicable.sort(key=lambda x: x[3])
+        HOOKS_BY_TOOL[tool_name] = applicable
+
+    return HOOKS_BY_TOOL[tool_name]
+
 
 def matches_tool(matcher: Optional[str], tool_name: str) -> bool:
     """Check if tool matches the hook's matcher pattern."""
@@ -2491,15 +2559,13 @@ def run_hooks(data: dict, state: SessionState) -> dict:
     else:
         data["_sudo_bypass"] = False
 
-    # Hooks pre-sorted at module load
+    # Use pre-filtered hook list (built at module load, cached per tool name)
+    applicable_hooks = _get_hooks_for_tool(tool_name)
 
     # Collect results
     contexts = []
 
-    for name, matcher, check_func, priority in HOOKS:
-        if not matches_tool(matcher, tool_name):
-            continue
-
+    for name, matcher, check_func, priority in applicable_hooks:
         try:
             result = check_func(data, state)
 
@@ -2548,6 +2614,9 @@ def run_hooks(data: dict, state: SessionState) -> dict:
 
 # Pre-sort hooks by priority at module load (avoid re-sorting on every call)
 HOOKS.sort(key=lambda x: x[3])
+
+# Build optimized hook index after sorting
+_build_hook_index()
 
 
 def main():
