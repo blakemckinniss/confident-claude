@@ -125,59 +125,75 @@ ERROR_CARRY_OVER_MAX = 600  # 10 minutes
 # =============================================================================
 
 
-def check_system_health() -> str | None:
-    """Quick system health check at session start.
+def start_health_check_async():
+    """Start system health check in background (non-blocking).
 
-    Returns warning message if resources are constrained, None otherwise.
+    Returns subprocess.Popen handle to collect later, or None if failed to start.
     """
     import subprocess
 
     try:
-        result = subprocess.run(
+        return subprocess.Popen(
             [
                 str(Path.home() / ".claude" / "hooks" / "py"),
                 str(Path.home() / ".claude" / "ops" / "sysinfo.py"),
                 "--quick",
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
-            timeout=3,
         )
-        if result.returncode != 0:
+    except Exception:
+        return None
+
+
+def collect_health_result(proc) -> str | None:
+    """Collect health check result from background process.
+
+    Args:
+        proc: Popen handle from start_health_check_async(), or None.
+
+    Returns warning message if resources are constrained, None otherwise.
+    """
+    import re
+
+    if proc is None:
+        return None
+
+    try:
+        # Wait with short timeout - process should be done by now
+        stdout, _ = proc.communicate(timeout=0.5)
+        if proc.returncode != 0:
             return None
 
-        output = result.stdout.strip()
+        output = stdout.strip()
         # Parse: "CPU: 2.26 2.02 2.02 | Mem: 22% | Disk: 48%"
         warnings = []
 
         # Check memory
-        if "Mem:" in output:
-            import re
-
-            mem_match = re.search(r"Mem:\s*(\d+)%", output)
-            if mem_match and int(mem_match.group(1)) > 85:
-                warnings.append(f"⚠️ Memory: {mem_match.group(1)}% used")
+        mem_match = re.search(r"Mem:\s*(\d+)%", output)
+        if mem_match and int(mem_match.group(1)) > 85:
+            warnings.append(f"⚠️ Memory: {mem_match.group(1)}% used")
 
         # Check disk
-        if "Disk:" in output:
-            import re
-
-            disk_match = re.search(r"Disk:\s*(\d+)%", output)
-            if disk_match and int(disk_match.group(1)) > 90:
-                warnings.append(f"⚠️ Disk: {disk_match.group(1)}% used")
+        disk_match = re.search(r"Disk:\s*(\d+)%", output)
+        if disk_match and int(disk_match.group(1)) > 90:
+            warnings.append(f"⚠️ Disk: {disk_match.group(1)}% used")
 
         # Check CPU load (first value is 1-min avg)
-        if "CPU:" in output:
-            import re
-
-            cpu_match = re.search(r"CPU:\s*([\d.]+)", output)
-            if cpu_match and float(cpu_match.group(1)) > 4.0:
-                warnings.append(f"⚠️ CPU Load: {cpu_match.group(1)}")
+        cpu_match = re.search(r"CPU:\s*([\d.]+)", output)
+        if cpu_match and float(cpu_match.group(1)) > 4.0:
+            warnings.append(f"⚠️ CPU Load: {cpu_match.group(1)}")
 
         return " | ".join(warnings) if warnings else None
 
     except Exception:
-        return None  # Non-critical, don't fail session start
+        # Timeout or other error - kill and move on
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return None
 
 
 # =============================================================================

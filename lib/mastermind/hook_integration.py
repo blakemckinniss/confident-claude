@@ -45,7 +45,7 @@ PLANNER_MANDATE_TEMPLATE = """
 
 **THIS IS A HARD REQUIREMENT. YOU MUST COMPLY.**
 
-The user has requested strategic planning via the `^` prefix. You are REQUIRED to use the PAL MCP planner tool BEFORE doing ANY other work.
+{trigger_reason} You are REQUIRED to use the PAL MCP planner tool BEFORE doing ANY other work.
 
 ## MANDATORY FIRST ACTION
 
@@ -95,13 +95,26 @@ The user explicitly requested multi-model orchestration. GPT-5.2 provides strate
 """
 
 
-def generate_planner_mandate(prompt: str, state: MastermindState) -> str:
+def generate_planner_mandate(
+    prompt: str, state: MastermindState, user_forced: bool = False
+) -> str:
     """Generate the mandatory PAL MCP planner directive.
 
     This creates an extremely strong instruction that Claude must
     use PAL MCP with GPT-5.2 before proceeding with any work.
+
+    Args:
+        prompt: User's original prompt
+        state: Current mastermind session state
+        user_forced: True if triggered by ^ prefix, False if Groq-classified
     """
+    if user_forced:
+        trigger_reason = "The user has requested strategic planning via the `^` prefix."
+    else:
+        trigger_reason = "Groq has classified this task as **complex** and requires strategic planning."
+
     return PLANNER_MANDATE_TEMPLATE.format(
+        trigger_reason=trigger_reason,
         user_prompt=prompt,
         session_id=state.session_id,
         turn=state.turn_count,
@@ -260,8 +273,10 @@ def handle_session_start_routing(
             prompt=prompt,
         )
 
-        # Inject MANDATORY PAL MCP planner directive
-        result["inject_context"] = generate_planner_mandate(prompt, state)
+        # Inject MANDATORY PAL MCP planner directive (user forced via ^)
+        result["inject_context"] = generate_planner_mandate(
+            prompt, state, user_forced=True
+        )
         return result
 
     # Pack context for router
