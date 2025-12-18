@@ -410,12 +410,21 @@ def get_context_usage(transcript_path: str, context_window: int) -> tuple[int, i
         return 0, context_window
 
 
-def _format_exhaustion_block(pct: float, used: int, total: int) -> str:
+def _format_exhaustion_block(
+    pct: float, used: int, total: int, next_steps: str | None = None
+) -> str:
     """Format the context exhaustion block message.
 
     This is a BLOCK to prevent session end - not a resume template.
     State is auto-persisted; `/resume` in the next session will recover it.
     """
+    next_steps_section = ""
+    if next_steps:
+        next_steps_section = f"""
+### Documented Next Steps
+{next_steps[:300]}
+"""
+
     return f"""## 🛑 CONTEXT EXHAUSTION ({pct:.0%}) - Wrap Up Required
 
 **Context usage: {used:,} / {total:,} tokens**
@@ -435,7 +444,7 @@ bd sync
 ### 3. Verify State Saved
 Session state is auto-persisted to `~/.claude/memory/session_state_v3.json`.
 Check it includes your `original_goal` and `progress_log`.
-
+{next_steps_section}
 ---
 
 **Recovery:** In your NEXT session, run `/resume` to restore full context.
@@ -516,8 +525,11 @@ def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
     # Mark as shown (only block once per session)
     state.nudge_history["context_exhaustion_shown"] = True
 
+    # Extract next steps to include in wrap-up message
+    next_steps = _extract_next_steps(transcript_path)
+
     pct = used / total
-    return StopHookResult.block(_format_exhaustion_block(pct, used, total))
+    return StopHookResult.block(_format_exhaustion_block(pct, used, total, next_steps))
 
 
 def _has_sudo_bypass(transcript_path: str) -> bool:
