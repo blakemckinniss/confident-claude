@@ -3,7 +3,7 @@
 Manage ComfyUI service. Argument: `start`, `restart`, or `stop`
 
 ## Paths
-- Script: `/home/jinx/ai/comfyui/start_optimized.sh`
+- Script: `/home/blake/ai/comfyui/start_optimized.sh`
 - Ports: 8188 (ComfyUI), 8189 (Wildcard Editor)
 
 ## Actions
@@ -15,7 +15,7 @@ fuser -k 8188/tcp 8189/tcp 2>/dev/null
 
 **start**: Run start script in background
 ```bash
-/home/jinx/ai/comfyui/start_optimized.sh
+/home/blake/ai/comfyui/start_optimized.sh
 ```
 Run in background, check output for "To see the GUI go to" to confirm success.
 

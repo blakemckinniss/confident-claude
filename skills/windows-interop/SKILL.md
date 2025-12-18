@@ -27,7 +27,7 @@ WSL2 integration with Windows host.
 
 ### WSL → Windows
 ```
-\\wsl$\Ubuntu\home\blake\     → /home/jinx/
+\\wsl$\Ubuntu\home\blake\     → /home/blake/
 ```
 
 ## Windows Package Management
@@ -66,7 +66,7 @@ cmd.exe /c start "" "https://example.com"
 
 ```bash
 # WSL path to Windows path
-wslpath -w /home/jinx/file.txt
+wslpath -w /home/blake/file.txt
 # Output: \\wsl$\Ubuntu\home\jinx\file.txt
 
 # Windows path to WSL path

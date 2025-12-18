@@ -36,7 +36,7 @@ radon>=6.0.0           # Complexity analysis
 ## Platform
 - **OS**: Linux (WSL2 Ubuntu 24.04)
 - **Host**: Windows 11
-- **Location**: `/home/jinx/.claude/`
+- **Location**: `/home/blake/.claude/`
 
 ## Architecture Summary
 

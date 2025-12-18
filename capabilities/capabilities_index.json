@@ -5,17 +5,17 @@
   "sources": [
     {
       "source_type": "ops_dir",
-      "path": "/home/jinx/.claude/ops",
+      "path": "/home/blake/.claude/ops",
       "fingerprint": "c6c97cea69adf62d"
     },
     {
       "source_type": "commands_dir",
-      "path": "/home/jinx/.claude/commands",
+      "path": "/home/blake/.claude/commands",
       "fingerprint": "b0209dfe700fde87"
     },
     {
       "source_type": "registry",
-      "path": "/home/jinx/.claude/capabilities/registry.yaml",
+      "path": "/home/blake/.claude/capabilities/registry.yaml",
       "fingerprint": "file:25908:1766013546711229768"
     }
   ],
@@ -1841,7 +1841,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/audit.py"
+        "path": "/home/blake/.claude/ops/audit.py"
       }
     },
     {
@@ -1877,7 +1877,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/audit_hooks.py"
+        "path": "/home/blake/.claude/ops/audit_hooks.py"
       }
     },
     {
@@ -1906,7 +1906,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/bd_bridge.py"
+        "path": "/home/blake/.claude/ops/bd_bridge.py"
       }
     },
     {
@@ -1935,7 +1935,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/bead_claim.py"
+        "path": "/home/blake/.claude/ops/bead_claim.py"
       }
     },
     {
@@ -1964,7 +1964,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/bead_lifecycle_daemon.py"
+        "path": "/home/blake/.claude/ops/bead_lifecycle_daemon.py"
       }
     },
     {
@@ -1997,7 +1997,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/bead_orphan_check.py"
+        "path": "/home/blake/.claude/ops/bead_orphan_check.py"
       }
     },
     {
@@ -2024,7 +2024,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/bead_release.py"
+        "path": "/home/blake/.claude/ops/bead_release.py"
       }
     },
     {
@@ -2056,7 +2056,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/capabilities.py"
+        "path": "/home/blake/.claude/ops/capabilities.py"
       }
     },
     {
@@ -2088,7 +2088,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/capability_inventory.py"
+        "path": "/home/blake/.claude/ops/capability_inventory.py"
       }
     },
     {
@@ -2117,7 +2117,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/coderabbit.py"
+        "path": "/home/blake/.claude/ops/coderabbit.py"
       }
     },
     {
@@ -2150,7 +2150,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/compress_session.py"
+        "path": "/home/blake/.claude/ops/compress_session.py"
       }
     },
     {
@@ -2179,7 +2179,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/council.py"
+        "path": "/home/blake/.claude/ops/council.py"
       }
     },
     {
@@ -2210,7 +2210,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/detour.py"
+        "path": "/home/blake/.claude/ops/detour.py"
       }
     },
     {
@@ -2241,7 +2241,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/docs.py"
+        "path": "/home/blake/.claude/ops/docs.py"
       }
     },
     {
@@ -2268,7 +2268,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/drift.py"
+        "path": "/home/blake/.claude/ops/drift.py"
       }
     },
     {
@@ -2295,7 +2295,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/evidence.py"
+        "path": "/home/blake/.claude/ops/evidence.py"
       }
     },
     {
@@ -2325,7 +2325,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/firecrawl.py"
+        "path": "/home/blake/.claude/ops/firecrawl.py"
       }
     },
     {
@@ -2352,7 +2352,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/fp.py"
+        "path": "/home/blake/.claude/ops/fp.py"
       }
     },
     {
@@ -2382,7 +2382,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/fp_analyze.py"
+        "path": "/home/blake/.claude/ops/fp_analyze.py"
       }
     },
     {
@@ -2411,7 +2411,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/gaps.py"
+        "path": "/home/blake/.claude/ops/gaps.py"
       }
     },
     {
@@ -2447,7 +2447,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/groq.py"
+        "path": "/home/blake/.claude/ops/groq.py"
       }
     },
     {
@@ -2478,7 +2478,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/health.py"
+        "path": "/home/blake/.claude/ops/health.py"
       }
     },
     {
@@ -2512,7 +2512,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/hooks.py"
+        "path": "/home/blake/.claude/ops/hooks.py"
       }
     },
     {
@@ -2543,7 +2543,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/housekeeping.py"
+        "path": "/home/blake/.claude/ops/housekeeping.py"
       }
     },
     {
@@ -2575,7 +2575,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/integration_install.py"
+        "path": "/home/blake/.claude/ops/integration_install.py"
       }
     },
     {
@@ -2604,7 +2604,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/inventory.py"
+        "path": "/home/blake/.claude/ops/inventory.py"
       }
     },
     {
@@ -2631,7 +2631,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/mastermind_rollout.py"
+        "path": "/home/blake/.claude/ops/mastermind_rollout.py"
       }
     },
     {
@@ -2661,7 +2661,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/new_project.py"
+        "path": "/home/blake/.claude/ops/new_project.py"
       }
     },
     {
@@ -2693,7 +2693,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/oracle.py"
+        "path": "/home/blake/.claude/ops/oracle.py"
       }
     },
     {
@@ -2730,7 +2730,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/orchestrate.py"
+        "path": "/home/blake/.claude/ops/orchestrate.py"
       }
     },
     {
@@ -2762,7 +2762,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/patch_claude_mem_banner.py"
+        "path": "/home/blake/.claude/ops/patch_claude_mem_banner.py"
       }
     },
     {
@@ -2791,7 +2791,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/probe.py"
+        "path": "/home/blake/.claude/ops/probe.py"
       }
     },
     {
@@ -2818,7 +2818,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/recruiter.py"
+        "path": "/home/blake/.claude/ops/recruiter.py"
       }
     },
     {
@@ -2845,7 +2845,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/remember.py"
+        "path": "/home/blake/.claude/ops/remember.py"
       }
     },
     {
@@ -2876,7 +2876,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/research.py"
+        "path": "/home/blake/.claude/ops/research.py"
       }
     },
     {
@@ -2903,7 +2903,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/scope.py"
+        "path": "/home/blake/.claude/ops/scope.py"
       }
     },
     {
@@ -2937,7 +2937,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/serena.py"
+        "path": "/home/blake/.claude/ops/serena.py"
       }
     },
     {
@@ -2967,7 +2967,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/serena_memory_lifecycle.py"
+        "path": "/home/blake/.claude/ops/serena_memory_lifecycle.py"
       }
     },
     {
@@ -2996,7 +2996,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/spark.py"
+        "path": "/home/blake/.claude/ops/spark.py"
       }
     },
     {
@@ -3023,7 +3023,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/state_migrate.py"
+        "path": "/home/blake/.claude/ops/state_migrate.py"
       }
     },
     {
@@ -3056,7 +3056,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/swarm.py"
+        "path": "/home/blake/.claude/ops/swarm.py"
       }
     },
     {
@@ -3085,7 +3085,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/sysinfo.py"
+        "path": "/home/blake/.claude/ops/sysinfo.py"
       }
     },
     {
@@ -3116,7 +3116,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/test_hooks.py"
+        "path": "/home/blake/.claude/ops/test_hooks.py"
       }
     },
     {
@@ -3143,7 +3143,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/think.py"
+        "path": "/home/blake/.claude/ops/think.py"
       }
     },
     {
@@ -3170,7 +3170,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/timekeeper.py"
+        "path": "/home/blake/.claude/ops/timekeeper.py"
       }
     },
     {
@@ -3199,7 +3199,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/unified_context.py"
+        "path": "/home/blake/.claude/ops/unified_context.py"
       }
     },
     {
@@ -3229,7 +3229,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/upkeep.py"
+        "path": "/home/blake/.claude/ops/upkeep.py"
       }
     },
     {
@@ -3259,7 +3259,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/verify.py"
+        "path": "/home/blake/.claude/ops/verify.py"
       }
     },
     {
@@ -3288,7 +3288,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/void.py"
+        "path": "/home/blake/.claude/ops/void.py"
       }
     },
     {
@@ -3317,7 +3317,7 @@
       "scope": "local_machine",
       "source": {
         "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/xray.py"
+        "path": "/home/blake/.claude/ops/xray.py"
       }
     },
     {
@@ -3346,7 +3346,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/README.md"
+        "path": "/home/blake/.claude/commands/README.md"
       }
     },
     {
@@ -3377,7 +3377,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/audit.md"
+        "path": "/home/blake/.claude/commands/audit.md"
       }
     },
     {
@@ -3408,7 +3408,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/audit-hooks.md"
+        "path": "/home/blake/.claude/commands/audit-hooks.md"
       }
     },
     {
@@ -3437,7 +3437,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/bd.md"
+        "path": "/home/blake/.claude/commands/bd.md"
       }
     },
     {
@@ -3469,7 +3469,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/bestway.md"
+        "path": "/home/blake/.claude/commands/bestway.md"
       }
     },
     {
@@ -3500,7 +3500,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/better.md"
+        "path": "/home/blake/.claude/commands/better.md"
       }
     },
     {
@@ -3527,7 +3527,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/capabilities.md"
+        "path": "/home/blake/.claude/commands/capabilities.md"
       }
     },
     {
@@ -3557,7 +3557,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/cc.md"
+        "path": "/home/blake/.claude/commands/cc.md"
       }
     },
     {
@@ -3589,7 +3589,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/comfy.md"
+        "path": "/home/blake/.claude/commands/comfy.md"
       }
     },
     {
@@ -3622,7 +3622,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/commit.md"
+        "path": "/home/blake/.claude/commands/commit.md"
       }
     },
     {
@@ -3653,7 +3653,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/compress.md"
+        "path": "/home/blake/.claude/commands/compress.md"
       }
     },
     {
@@ -3680,7 +3680,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/consult.md"
+        "path": "/home/blake/.claude/commands/consult.md"
       }
     },
     {
@@ -3707,7 +3707,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/council.md"
+        "path": "/home/blake/.claude/commands/council.md"
       }
     },
     {
@@ -3734,7 +3734,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/cr.md"
+        "path": "/home/blake/.claude/commands/cr.md"
       }
     },
     {
@@ -3761,7 +3761,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/critic.md"
+        "path": "/home/blake/.claude/commands/critic.md"
       }
     },
     {
@@ -3792,7 +3792,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/cs.md"
+        "path": "/home/blake/.claude/commands/cs.md"
       }
     },
     {
@@ -3826,7 +3826,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/cwms.md"
+        "path": "/home/blake/.claude/commands/cwms.md"
       }
     },
     {
@@ -3861,7 +3861,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/dc.md"
+        "path": "/home/blake/.claude/commands/dc.md"
       }
     },
     {
@@ -3895,7 +3895,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/deps.md"
+        "path": "/home/blake/.claude/commands/deps.md"
       }
     },
     {
@@ -3922,7 +3922,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/detour.md"
+        "path": "/home/blake/.claude/commands/detour.md"
       }
     },
     {
@@ -3954,7 +3954,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/docs.md"
+        "path": "/home/blake/.claude/commands/docs.md"
       }
     },
     {
@@ -3984,7 +3984,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/doit.md"
+        "path": "/home/blake/.claude/commands/doit.md"
       }
     },
     {
@@ -4014,7 +4014,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/drift.md"
+        "path": "/home/blake/.claude/commands/drift.md"
       }
     },
     {
@@ -4045,7 +4045,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/dyr.md"
+        "path": "/home/blake/.claude/commands/dyr.md"
       }
     },
     {
@@ -4072,7 +4072,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/evidence.md"
+        "path": "/home/blake/.claude/commands/evidence.md"
       }
     },
     {
@@ -4109,7 +4109,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/f.md"
+        "path": "/home/blake/.claude/commands/f.md"
       }
     },
     {
@@ -4139,7 +4139,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/find.md"
+        "path": "/home/blake/.claude/commands/find.md"
       }
     },
     {
@@ -4168,7 +4168,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/firecrawl.md"
+        "path": "/home/blake/.claude/commands/firecrawl.md"
       }
     },
     {
@@ -4205,7 +4205,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/fix.md"
+        "path": "/home/blake/.claude/commands/fix.md"
       }
     },
     {
@@ -4237,7 +4237,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/gaps.md"
+        "path": "/home/blake/.claude/commands/gaps.md"
       }
     },
     {
@@ -4267,7 +4267,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/groq.md"
+        "path": "/home/blake/.claude/commands/groq.md"
       }
     },
     {
@@ -4300,7 +4300,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/har.md"
+        "path": "/home/blake/.claude/commands/har.md"
       }
     },
     {
@@ -4332,7 +4332,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/hooks.md"
+        "path": "/home/blake/.claude/commands/hooks.md"
       }
     },
     {
@@ -4359,7 +4359,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/housekeeping.md"
+        "path": "/home/blake/.claude/commands/housekeeping.md"
       }
     },
     {
@@ -4388,7 +4388,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/imp.md"
+        "path": "/home/blake/.claude/commands/imp.md"
       }
     },
     {
@@ -4417,7 +4417,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/inventory.md"
+        "path": "/home/blake/.claude/commands/inventory.md"
       }
     },
     {
@@ -4444,7 +4444,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/judge.md"
+        "path": "/home/blake/.claude/commands/judge.md"
       }
     },
     {
@@ -4471,7 +4471,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/new-project.md"
+        "path": "/home/blake/.claude/commands/new-project.md"
       }
     },
     {
@@ -4498,7 +4498,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/no.md"
+        "path": "/home/blake/.claude/commands/no.md"
       }
     },
     {
@@ -4530,7 +4530,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/opt.md"
+        "path": "/home/blake/.claude/commands/opt.md"
       }
     },
     {
@@ -4557,7 +4557,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/oracle.md"
+        "path": "/home/blake/.claude/commands/oracle.md"
       }
     },
     {
@@ -4593,7 +4593,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/orchestrate.md"
+        "path": "/home/blake/.claude/commands/orchestrate.md"
       }
     },
     {
@@ -4621,7 +4621,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/patch-mem.md"
+        "path": "/home/blake/.claude/commands/patch-mem.md"
       }
     },
     {
@@ -4651,7 +4651,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/probe.md"
+        "path": "/home/blake/.claude/commands/probe.md"
       }
     },
     {
@@ -4681,7 +4681,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/recall.md"
+        "path": "/home/blake/.claude/commands/recall.md"
       }
     },
     {
@@ -4708,7 +4708,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/reddit.md"
+        "path": "/home/blake/.claude/commands/reddit.md"
       }
     },
     {
@@ -4735,7 +4735,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/remember.md"
+        "path": "/home/blake/.claude/commands/remember.md"
       }
     },
     {
@@ -4765,7 +4765,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/research.md"
+        "path": "/home/blake/.claude/commands/research.md"
       }
     },
     {
@@ -4792,7 +4792,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/resume.md"
+        "path": "/home/blake/.claude/commands/resume.md"
       }
     },
     {
@@ -4823,7 +4823,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/roi.md"
+        "path": "/home/blake/.claude/commands/roi.md"
       }
     },
     {
@@ -4853,7 +4853,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/scope.md"
+        "path": "/home/blake/.claude/commands/scope.md"
       }
     },
     {
@@ -4887,7 +4887,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/serena.md"
+        "path": "/home/blake/.claude/commands/serena.md"
       }
     },
     {
@@ -4917,7 +4917,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/serena-mem.md"
+        "path": "/home/blake/.claude/commands/serena-mem.md"
       }
     },
     {
@@ -4950,7 +4950,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/si.md"
+        "path": "/home/blake/.claude/commands/si.md"
       }
     },
     {
@@ -4978,7 +4978,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/skeptic.md"
+        "path": "/home/blake/.claude/commands/skeptic.md"
       }
     },
     {
@@ -5010,7 +5010,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/sm.md"
+        "path": "/home/blake/.claude/commands/sm.md"
       }
     },
     {
@@ -5037,7 +5037,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/spark.md"
+        "path": "/home/blake/.claude/commands/spark.md"
       }
     },
     {
@@ -5070,7 +5070,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/sv.md"
+        "path": "/home/blake/.claude/commands/sv.md"
       }
     },
     {
@@ -5099,7 +5099,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/swarm.md"
+        "path": "/home/blake/.claude/commands/swarm.md"
       }
     },
     {
@@ -5126,7 +5126,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/sysinfo.md"
+        "path": "/home/blake/.claude/commands/sysinfo.md"
       }
     },
     {
@@ -5156,7 +5156,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/test.md"
+        "path": "/home/blake/.claude/commands/test.md"
       }
     },
     {
@@ -5183,7 +5183,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/think.md"
+        "path": "/home/blake/.claude/commands/think.md"
       }
     },
     {
@@ -5213,7 +5213,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/upkeep.md"
+        "path": "/home/blake/.claude/commands/upkeep.md"
       }
     },
     {
@@ -5244,7 +5244,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/useful.md"
+        "path": "/home/blake/.claude/commands/useful.md"
       }
     },
     {
@@ -5275,7 +5275,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/verify.md"
+        "path": "/home/blake/.claude/commands/verify.md"
       }
     },
     {
@@ -5307,7 +5307,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/vo.md"
+        "path": "/home/blake/.claude/commands/vo.md"
       }
     },
     {
@@ -5339,7 +5339,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/void.md"
+        "path": "/home/blake/.claude/commands/void.md"
       }
     },
     {
@@ -5369,7 +5369,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/wcwd.md"
+        "path": "/home/blake/.claude/commands/wcwd.md"
       }
     },
     {
@@ -5398,7 +5398,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/win.md"
+        "path": "/home/blake/.claude/commands/win.md"
       }
     },
     {
@@ -5427,7 +5427,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/workflow.md"
+        "path": "/home/blake/.claude/commands/workflow.md"
       }
     },
     {
@@ -5458,7 +5458,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/worth.md"
+        "path": "/home/blake/.claude/commands/worth.md"
       }
     },
     {
@@ -5487,7 +5487,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/xray.md"
+        "path": "/home/blake/.claude/commands/xray.md"
       }
     },
     {
@@ -5520,7 +5520,7 @@
       "scope": "claude_runtime",
       "source": {
         "source_type": "commands",
-        "path": "/home/jinx/.claude/commands/yes.md"
+        "path": "/home/blake/.claude/commands/yes.md"
       }
     }
   ]
