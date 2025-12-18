@@ -810,6 +810,38 @@ class DebtBashReducer(ConfidenceReducer):
 
 
 @dataclass
+class ManualCommitReducer(ConfidenceReducer):
+    """Triggers on manual git commit attempts.
+
+    Since auto-commit hooks handle commits, manual commits are:
+    1. Unnecessary (auto-commit does the work)
+    2. A potential reward hacking vector (was +3, now -1)
+
+    Rate-limited to prevent stacking from retries.
+    Added v4.13 to close reward hacking loophole.
+    """
+
+    name: str = "manual_commit"
+    delta: int = -1
+    description: str = "Manual commit attempt (auto-commit handles this)"
+    cooldown_turns: int = 3  # Rate-limit to prevent stacking
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+        command = context.get("bash_command", "")
+        if not command:
+            return False
+        # Match git commit commands (not just mentions in heredocs)
+        # Exclude: git commit --amend in hook recovery scenarios
+        if re.match(r"^\s*git\s+commit\b", command):
+            return True
+        return False
+
+
+@dataclass
 class LargeDiffReducer(ConfidenceReducer):
     """Triggers when diffs exceed 400 LOC - risky large changes."""
 
@@ -2163,6 +2195,7 @@ REDUCERS: list[ConfidenceReducer] = [
     UnresolvedAntiPatternReducer(),
     SpottedIgnoredReducer(),
     DebtBashReducer(),
+    ManualCommitReducer(),  # v4.13: commits are auto-handled, manual = gaming
     LargeDiffReducer(),
     HookBlockReducer(),
     SequentialRepetitionReducer(),

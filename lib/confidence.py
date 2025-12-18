@@ -182,7 +182,7 @@ CONTEXT_FLAGS = {
     "custom_script_ran": ("Bash_path_check", "CustomScriptIncreaser"),
     "bead_created": ("Bash_output", "BeadCreateIncreaser"),
     "git_explored": ("Bash_command", "GitExploreIncreaser"),
-    "git_committed": ("Bash_command", "GitCommitIncreaser"),
+    # "git_committed": REMOVED (v4.13) - auto-commits shouldn't reward
     "productive_bash": ("Bash_command", "ProductiveBashIncreaser"),
     "small_diff": ("git_diff<400", "SmallDiffIncreaser"),
     "tests_passed": ("Bash_output", "PassedTestsIncreaser"),

@@ -1,6 +1,6 @@
 # Confidence Increasers
 
-**51 increaser classes** that apply automatic rewards for positive behaviors.
+**50 increaser classes** that apply automatic rewards for positive behaviors.
 
 ## Due Diligence Rewards
 
@@ -13,7 +13,6 @@
 | `lint_pass` | +3 | ruff check, eslint, cargo clippy passes | None |
 | `small_diff` | +3 | Diffs under 400 LOC (focused changes) | None |
 | `git_explore` | +3 | git log/diff/status/show/blame | 5 turns |
-| `git_commit` | +3 | Committed work with message | None |
 | `custom_script` | +5 | ~/.claude/ops/* scripts | None |
 | `test_pass` | +5 | pytest/jest/cargo test passes | None |
 | `build_success` | +5 | npm build/cargo build/tsc succeeds | None |
