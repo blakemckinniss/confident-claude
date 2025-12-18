@@ -841,24 +841,29 @@ def _normalize_result(result: any) -> dict:
 def check_serena_activation(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Track when Serena is activated for automatic memory management hints."""
-    tool_result = data.get("tool_result", {})
-    result_str = _extract_result_string(tool_result)
+    """Track when Serena is activated for automatic memory management hints.
 
-    # Check if activation succeeded (result contains "activated" or project info)
-    if (
-        "activated" in result_str.lower()
-        or "programming languages" in result_str.lower()
-    ):
-        # Extract project name from input or result
-        tool_input = data.get("tool_input", {})
-        project = tool_input.get("project", "")
+    Note: Claude Code doesn't pass tool_result for MCP tools, so we detect
+    activation by the presence of a project input (assumes success if called).
+    """
+    tool_input = data.get("tool_input", {})
+    project = tool_input.get("project", "")
 
-        # Mark in session state
+    # If we have a project input, assume activation succeeded
+    # (MCP errors would prevent PostToolUse from being called)
+    if project:
         state.serena_activated = True
         state.serena_project = project
+        return HookResult(
+            context=f"🔮 **SERENA ACTIVATED**: Project `{project}` ready for semantic analysis"
+        )
 
-        # Return confirmation context
+    # Fallback: check tool_result if available (for future compatibility)
+    tool_result = data.get("tool_result", {})
+    result_str = _extract_result_string(tool_result)
+    if "activated" in result_str.lower() or "programming languages" in result_str.lower():
+        state.serena_activated = True
+        state.serena_project = project
         return HookResult(
             context=f"🔮 **SERENA ACTIVATED**: Project `{project}` ready for semantic analysis"
         )
