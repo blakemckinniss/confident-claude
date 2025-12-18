@@ -42,7 +42,21 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 /home/user/confident-claude/.claude/hooks/user_prompt_submit_runner.py"
+          },
+          {
+            "type": "command",
             "command": "/root/.claude-mem/hooks/user-prompt-submit.js"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/user/confident-claude/.claude/hooks/pre_tool_use_runner.py"
           }
         ]
       }
@@ -50,6 +64,10 @@
     "PostToolUse": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/user/confident-claude/.claude/hooks/post_tool_use_runner.py"
+          },
           {
             "type": "command",
             "command": "/root/.claude-mem/hooks/post-tool-use.js"
@@ -60,6 +78,10 @@
     "Stop": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/user/confident-claude/.claude/hooks/stop_runner.py"
+          },
           {
             "type": "command",
             "command": "/root/.claude-mem/hooks/stop.js"
