@@ -490,46 +490,48 @@ def handle_session_start_routing(
             project = cwd.name if cwd else "unknown"
             result["pal_suggestion"] = True
 
-            # PHASE 3.1: Realistic confidence-gated PAL mandate lock
-            # Confidence almost never drops below 70-80% in practice.
-            # By <50% things are already a crisis - too late to help.
+            # PHASE 3.2: Three-tier PAL guidance system
             #
-            # HARD LOCK when:
-            # - Confidence < 70% - working zone floor, need external perspective
-            # - Confidence < 85% AND task is medium/complex - uncertain territory
-            # - Medium/complex + risky keywords - always lock regardless of confidence
-            # - First turn of session with medium/complex task - bootstrap with PAL
+            # TIER 1 - HARD BLOCK (conf < 75%):
+            #   Creates lock file, blocks all tools until PAL used
+            #   For: significant tasks when confidence is shaky
             #
-            # Soft suggestion only for trivial tasks or high confidence (>=85%)
+            # TIER 2 - WARNING (conf 75-85%):
+            #   Injects prominent warning but doesn't block
+            #   For: uncertain territory, strong encouragement to use PAL
+            #
+            # TIER 3 - SUGGESTION (conf >= 85%):
+            #   Normal context injection recommending PAL
+            #   For: high confidence, trust agent judgment
+            #
+            # Risk lexicon (security/auth/deploy/migration/destructive) always
+            # escalates to hard block regardless of confidence.
+            #
             should_hard_lock = False
+            should_warn = False
             classification = router_response.classification
             is_significant = classification in ("medium", "complex")
+            has_risk_keywords = is_significant and any(
+                code in (router_response.reason_codes or [])
+                for code in ["security", "auth", "deploy", "migration", "destructive"]
+            )
 
             if confidence is not None:
-                if confidence < 70:
-                    # Below working zone = always lock for non-trivial
-                    if is_significant:
-                        should_hard_lock = True
-                        result["lock_reason"] = "confidence_below_working"
-                elif confidence < 85 and is_significant:
-                    # Uncertain territory + significant task = lock
-                    should_hard_lock = True
-                    result["lock_reason"] = "confidence_uncertain_significant"
-                elif is_significant and any(
-                    code in (router_response.reason_codes or [])
-                    for code in [
-                        "security",
-                        "auth",
-                        "deploy",
-                        "migration",
-                        "destructive",
-                    ]
-                ):
-                    # Significant + risky keywords = always lock regardless of confidence
+                if has_risk_keywords:
+                    # Risk lexicon = always hard lock
                     should_hard_lock = True
                     result["lock_reason"] = "risk_lexicon_override"
+                elif confidence < 75 and is_significant:
+                    # Tier 1: Hard block - confidence below working threshold
+                    should_hard_lock = True
+                    result["lock_reason"] = "confidence_below_threshold"
+                elif confidence < 85 and is_significant:
+                    # Tier 2: Warning - uncertain territory
+                    should_warn = True
+                    result["warn_reason"] = "confidence_uncertain"
+                # else: Tier 3 - normal suggestion (no special flags)
             else:
-                # No confidence info = conservative (lock for medium/complex)
+                # No confidence info = conservative (hard lock for significant)
                 if is_significant:
                     should_hard_lock = True
                     result["lock_reason"] = "no_confidence_significant"
@@ -541,17 +543,41 @@ def handle_session_start_routing(
                     prompt=prompt,
                 )
                 result["hard_lock"] = True
+                result["pal_tier"] = 1
+            elif should_warn:
+                result["hard_lock"] = False
+                result["pal_warning"] = True
+                result["pal_tier"] = 2
             else:
                 result["hard_lock"] = False
                 result["soft_suggestion"] = True
+                result["pal_tier"] = 3
 
-            # Inject PAL MCP tool suggestion (lock enforces usage if created)
-            result["inject_context"] = generate_pal_suggestion(
+            # Inject PAL MCP tool suggestion with tier-appropriate framing
+            base_suggestion = generate_pal_suggestion(
                 prompt,
                 state,
                 task_type=router_response.task_type,
                 suggested_tool=router_response.suggested_tool,
             )
+
+            # Add tier-specific header
+            if should_hard_lock:
+                tier_header = (
+                    "🚨 **PAL CONSULTATION REQUIRED** (Tier 1 - Hard Lock)\n\n"
+                    "Tools are BLOCKED until you call a PAL MCP tool.\n"
+                    "This ensures external perspective for this task.\n\n"
+                )
+            elif should_warn:
+                tier_header = (
+                    "⚠️ **PAL CONSULTATION RECOMMENDED** (Tier 2 - Warning)\n\n"
+                    "Confidence is in uncertain territory (75-85%).\n"
+                    "Strongly consider using PAL before proceeding.\n\n"
+                )
+            else:
+                tier_header = ""  # Tier 3: Normal suggestion, no special header
+
+            result["inject_context"] = tier_header + base_suggestion
 
     else:
         # Dark launch - just log what would happen
