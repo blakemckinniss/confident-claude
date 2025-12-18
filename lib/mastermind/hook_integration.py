@@ -445,6 +445,8 @@ def handle_session_start_routing(
         result["reason_codes"] = router_response.reason_codes
         result["task_type"] = router_response.task_type
         result["suggested_tool"] = router_response.suggested_tool
+        result["needs_research"] = router_response.needs_research
+        result["research_topics"] = router_response.research_topics or []
 
         # Apply routing decision
         policy = make_routing_decision(prompt, state.turn_count, router_response)

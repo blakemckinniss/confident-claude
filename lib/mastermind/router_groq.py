@@ -35,13 +35,25 @@ Also identify the task TYPE and suggest the best PAL MCP tool:
 - validation: Pre-commit checks, change verification -> suggest "precommit"
 - general: Discussion, brainstorming, unclear category -> suggest "chat"
 
+Determine if web research should be done BEFORE the main task:
+- needs_research: true if current docs/APIs/versions needed
+- research_topics: specific search queries (max 3)
+
+Research triggers (set needs_research=true):
+- Version-specific: "latest", "v19", "new API", "deprecated", "breaking changes"
+- External tech: unfamiliar library/framework, integration questions
+- Best practices: "what's the best way", "recommended approach"
+- Error investigation: specific error messages with potential online solutions
+
 Output JSON only:
 {
   "classification": "trivial|medium|complex",
   "confidence": 0.0-1.0,
   "task_type": "debugging|planning|review|architecture|research|validation|general",
   "suggested_tool": "debug|planner|codereview|consensus|apilookup|precommit|chat",
-  "reason_codes": ["code1", "code2"]
+  "reason_codes": ["code1", "code2"],
+  "needs_research": false,
+  "research_topics": []
 }
 
 Reason codes (pick 1-3):
@@ -55,7 +67,9 @@ Reason codes (pick 1-3):
 - architecture: System design changes
 - config: Configuration changes
 - docs: Documentation only
-- test: Test-related work"""
+- test: Test-related work
+- external_api: Involves external services/APIs
+- version_specific: Depends on specific version behavior"""
 
 
 @dataclass
@@ -71,6 +85,8 @@ class RouterResponse:
     suggested_tool: str = (
         "chat"  # debug, planner, codereview, consensus, apilookup, precommit, chat
     )
+    needs_research: bool = False  # whether web research should be done first
+    research_topics: list[str] | None = None  # specific topics to search (max 3)
     error: str | None = None
 
     @property
@@ -187,6 +203,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 latency_ms=latency_ms,
                 task_type=parsed.get("task_type", "general"),
                 suggested_tool=parsed.get("suggested_tool", "chat"),
+                needs_research=bool(parsed.get("needs_research", False)),
+                research_topics=parsed.get("research_topics") or [],
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Parse error - default to complex (safe fallback)

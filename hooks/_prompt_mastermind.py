@@ -106,6 +106,16 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
                     f"(confidence: {confidence:.0%})"
                 )
 
+        # Add research recommendation if needed
+        needs_research = routing.get("needs_research", False) if routing else False
+        research_topics = routing.get("research_topics", []) if routing else []
+        if needs_research and research_topics:
+            topics_str = ", ".join(f'"{t}"' for t in research_topics[:3])
+            context_parts.append(
+                f"🔍 **Research Recommended**: Web search suggested before task. "
+                f"Topics: {topics_str}"
+            )
+
         # Add blueprint if generated
         blueprint = result.get("blueprint")
         if blueprint:
