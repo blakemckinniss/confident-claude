@@ -423,7 +423,7 @@ def get_beads_status() -> str:
             )
             count = cursor.fetchone()[0]
             if count > 0:
-                return f"{C.YELLOW}📋{count}{C.RESET}"
+                return f"{C.YELLOW}📋 {count}{C.RESET}"
         return ""
     except Exception:
         return ""
@@ -498,9 +498,9 @@ def get_confidence_status() -> str:
         # Streak indicator
         streak_str = ""
         if streak >= 5:
-            streak_str = f" 🔥{streak}"
+            streak_str = f" 🔥 {streak}"
         elif streak >= 2:
-            streak_str = f" ⚡{streak}"
+            streak_str = f" ⚡ {streak}"
 
         # Fatigue indicator (v4.9) - show when not fresh
         fatigue_str = ""
@@ -521,7 +521,7 @@ def get_confidence_status() -> str:
         if projected < STASIS_FLOOR and confidence >= STASIS_FLOOR:
             trajectory = " 📉"
 
-        return f"{emoji}{confidence}%{streak_str}{fatigue_str}{trajectory}"
+        return f"{emoji} {confidence}%{streak_str}{fatigue_str}{trajectory}"
     except Exception:
         return ""
 
