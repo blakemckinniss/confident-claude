@@ -7,6 +7,10 @@
     "pal": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"]
+    },
+    "beads": {
+      "command": "uvx",
+      "args": ["beads-mcp"]
     }
   }
 }
