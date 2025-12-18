@@ -16,6 +16,11 @@ from _confidence_streaks import (
 )
 from _confidence_constants import STASIS_FLOOR
 from _confidence_increasers import INCREASERS
+from _confidence_tool_debt import (
+    TOOL_DEBT_REDUCER,
+    TOOL_DEBT_RECOVERY_INCREASER,
+    get_debt_summary,
+)
 
 if TYPE_CHECKING:
     from session_state import SessionState
@@ -159,6 +164,7 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
     Apply all applicable reducers and return list of triggered ones.
 
     Resets streak counter on any reducer firing (v4.6).
+    Also applies tool debt penalties (v4.14).
 
     Returns:
         List of (reducer_name, delta, description) tuples
@@ -183,6 +189,14 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
 
             # Reset streak on failure (v4.6)
             update_streak(state, is_success=False)
+
+    # Tool debt penalties (v4.14) - special handling for variable delta
+    should_trigger, penalty, reason = TOOL_DEBT_REDUCER.should_trigger(
+        context, state, -999  # No cooldown for debt
+    )
+    if should_trigger and penalty > 0:
+        triggered.append(("tool_debt", -penalty, reason))
+        # Don't reset streak for debt - it's passive accumulation, not active failure
 
     return triggered
 
@@ -247,6 +261,19 @@ def apply_increasers(
                     current_debt = getattr(state, "reputation_debt", 0)
                     if current_debt > 0:
                         state.reputation_debt = current_debt - 1
+
+    # Tool debt recovery (v4.14) - special handling for variable delta
+    should_recover, recovery = TOOL_DEBT_RECOVERY_INCREASER.should_trigger(
+        context, state, -999  # No cooldown
+    )
+    if should_recover and recovery > 0:
+        triggered.append(
+            ("tool_debt_recovery", recovery, "Framework tool used (debt recovered)", False)
+        )
+        # Add to debt summary for visibility
+        debt_info = get_debt_summary(state)
+        if debt_info:
+            context["_tool_debt_info"] = debt_info
 
     return triggered
 

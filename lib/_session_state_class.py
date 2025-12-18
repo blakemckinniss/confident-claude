@@ -208,3 +208,15 @@ class SessionState:
     self_heal_error: str = ""  # Error message that triggered self-heal
     self_heal_attempts: int = 0  # Fix attempts for current error
     self_heal_max_attempts: int = 3  # After this, escalate to user
+
+    # ==========================================================================
+    # TOOL DEBT TRACKING (v4.14) - Pressure-to-remember mechanism
+    # ==========================================================================
+
+    # Tracks turns since each tool family was used
+    # Format: {family: {turns_without: int, last_used_turn: int}}
+    tool_debt: dict = field(default_factory=lambda: {
+        "pal": {"turns_without": 0, "last_used_turn": 0},
+        "serena": {"turns_without": 0, "last_used_turn": 0},
+        "beads": {"turns_without": 0, "last_used_turn": 0},
+    })
