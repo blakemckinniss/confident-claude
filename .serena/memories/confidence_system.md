@@ -11,10 +11,24 @@ The confidence system is a **mechanical behavioral regulation system** that prev
 **Key principle:** Claude cannot accurately judge its own confidence - it's mechanically regulated based on actual signals.
 
 ## Location
-- **Core module**: `lib/confidence.py`
-- **Applied in**: `hooks/post_tool_use_runner.py` (reducers/increasers)
-- **Gates in**: `hooks/pre_tool_use_runner.py` (tool permissions)
+- **Core module**: `lib/confidence.py` (facade)
+- **Reducers**: `lib/_confidence_reducers.py` (59 reducers)
+- **Increasers**: `lib/_confidence_increasers.py` (51 increasers)
+- **Applied in**: `hooks/post_tool_use_runner.py`
+- **Gates in**: `hooks/pre_tool_use_runner.py`
 - **Completion gate**: `hooks/stop_runner.py`
+
+## Stasis Target: 80-90%
+
+**Healthy operation means confidence stays in the 80-90% range.** This "stasis zone" represents balanced operation where small penalties balance with small rewards.
+
+**If confidence drops below 80%**, proactively recover by:
+1. Reading relevant files (+1 each)
+2. Running `git status/log/diff` (+3, cooldown 5)
+3. Consulting `~/.claude/memory/` files (+10)
+4. Creating beads with `bd create` (+10)
+5. Running lints/tests (+3/+5)
+6. Asking clarifying questions (+8)
 
 ## Confidence Zones
 
@@ -28,100 +42,90 @@ The confidence system is a **mechanical behavioral regulation system** that prev
 | EXPERT | 95-100 | 💎 | Maximum freedom |
 
 **Default starting confidence**: 70 (WORKING tier)
-**Stasis target**: 80-90% (healthy operation range)
 
-## Reducers (Penalties)
+## Reducer Categories (59 total)
 
-### Base Class
-```python
-@dataclass
-class ConfidenceReducer:
-    name: str
-    delta: int  # Negative value
-    description: str
-    cooldown_turns: int = 3
+| Category | Count | Examples |
+|----------|-------|----------|
+| Core (real problems) | 8 | tool_failure, cascade_block, sunk_cost |
+| Bad behavior (BANNED) | 12 | backup_file, deferral, sycophancy |
+| Sequential/efficiency | 3 | sequential_repetition, sequential_when_parallel |
+| Verification | 4 | unbacked_verification_claim, fixed_without_chain |
+| Code quality | 11 | placeholder_impl, silent_failure, deep_nesting |
+| Token efficiency | 6 | verbose_preamble, redundant_explanation |
+| Test coverage | 2 | test_ignored, change_without_test |
+| Framework alignment | 6 | todowrite_bypass, grep_over_serena |
+| Scripting | 2 | complex_bash_chain, bash_data_transform |
+| Stuck loop | 2 | stuck_loop, no_research_debug |
+| Mastermind drift | 3 | mastermind_file_drift, mastermind_approach_drift |
 
-    def should_trigger(self, context: dict, state: SessionState, last_trigger_turn: int) -> bool:
-        # Cooldown check first
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
-            return False
-        return False  # Override in subclasses
-```
+See `confidence_reducers` memory for full list.
 
-### Reducer Categories
+## Increaser Categories (51 total)
 
-**Core reducers** (detect real problems):
-- `tool_failure` (-5): Bash exit != 0
-- `cascade_block` (-15): Same hook blocks 3+ times
-- `sunk_cost` (-20): 3+ consecutive failures
-- `user_correction` (-10): User says "wrong", "fix that"
-- `edit_oscillation` (-12): Same file edited 3+ times in 5 turns
-- `goal_drift` (-8): Activity diverges from original goal
+| Category | Count | Examples |
+|----------|-------|----------|
+| Due diligence | 14 | file_read, test_pass, memory_consult |
+| User interaction | 3 | ask_user, user_ok, trust_regained |
+| Efficiency | 7 | parallel_tools, batch_fix, direct_action |
+| Completion quality | 6 | bead_close, first_attempt_success |
+| Workflow signals | 5 | pr_created, ci_pass, merge_complete |
+| Code quality | 6 | docstring_addition, security_fix |
+| Framework alignment | 6 | crawl4ai_used, serena_symbolic |
+| Scripting | 3 | tmp_script_created, background_script |
+| Self-improvement | 1 | framework_self_heal |
 
-**Bad behavior reducers** (BANNED patterns):
-- `backup_file` (-10): Creating .bak, .backup, .old files
-- `version_file` (-10): Creating _v2, _new, _copy files
-- `markdown_creation` (-8): Creating .md files unnecessarily
-- `overconfident_completion` (-15): "100% done", "completely finished"
-- `deferral` (-12): "skip for now", "come back later"
-- `sycophancy` (-8): "you're absolutely right"
+See `confidence_increasers` memory for full list.
 
-**Micro-penalties** (constant drag):
-- `bash-risk` (-1): Any bash command
-- `edit-risk` (-1): Any file edit
-- `decay` (-1): Natural drift toward uncertainty
+## Rate Limiting
 
-## Increasers (Rewards)
+- **Per-turn cap**: Maximum ±15 total change per turn normally
+- **Below stasis (< 80%)**: Positive cap raised to +30 for faster recovery
+- **Streak multiplier**: Consecutive successes earn 1.25x/1.5x/2x rewards
 
-**Due diligence rewards**:
-- `file_read` (+1): Read tool
-- `productive_bash` (+1): ls, pwd, which, tree, stat
-- `research` (+2): WebSearch, WebFetch, crawl4ai
-- `search_tool` (+2): Grep, Glob, Task
-- `lint_pass` (+3): ruff check passes
-- `test_pass` (+5): pytest/jest passes
-- `build_success` (+5): npm build/cargo build succeeds
-- `memory_consult` (+10): Read ~/.claude/memory/ files
-- `bead_create` (+10): bd create/update
-- `git_explore` (+10): git log/diff/status
-- `ask_user` (+20): AskUserQuestion
+## Hard Blocks
+
+### Pre-Tool Blocks (confidence_tool_gate)
+- **< 30%**: All writes blocked (Edit, Write, Bash state changes)
+- **< 51%**: Production writes blocked (only scratch allowed)
+
+### Completion Gate (Stop)
+- **< 70%**: Cannot claim task "complete", "done", "finished"
+- **< 75% with negative trend**: Also blocked
+
+## False Positive Handling
+
+When a reducer fires incorrectly:
+- **Claude**: Run `~/.claude/ops/fp.py <reducer> [reason]`
+- **User**: Say `FP: <reducer>` or `dispute <reducer>`
+
+Each FP recorded increases cooldown by 50% (max 3x original).
+
+## Fatigue System
+
+Session length affects decay rate:
+
+| Tier | Turns | Multiplier |
+|------|-------|------------|
+| Fresh | 0-29 | 1.0x |
+| Warming | 30-59 | 1.25x |
+| Working | 60-99 | 1.5x |
+| Tired | 100-149 | 2.0x |
+| Exhausted | 150+ | 2.5x |
 
 ## Key Functions
 
 ```python
-# lib/confidence.py
+# lib/confidence.py (facade)
 apply_reducers(context, state) -> list[tuple[str, int, str]]
 apply_increasers(context, state) -> list[tuple[str, int, str]]
-apply_rate_limit(delta) -> int  # Max ±15 per turn
-apply_mean_reversion(confidence, state) -> int  # Pulls toward 85%
+apply_rate_limit(delta) -> int
+apply_mean_reversion(confidence, state) -> int
 get_tier_info(confidence) -> tuple[str, str, str]
 check_tool_permission(tool, confidence, path) -> tuple[bool, str]
+predict_trajectory(state, planned_edits, planned_bash, turns) -> dict
+record_false_positive(reducer_name, reason)
+get_adaptive_cooldown(reducer_name) -> int
 ```
 
-## False Positive Handling
-
-```python
-# lib/confidence.py
-record_false_positive(reducer_name: str, reason: str)
-get_adaptive_cooldown(reducer_name: str) -> int  # Increases with FPs
-dispute_reducer(reducer_name: str) -> str  # User dispute
-```
-
-Each FP recorded increases cooldown by 50% (max 3x original).
-
-## Usage in Hooks
-
-```python
-# In post_tool_use_runner.py
-from lib.confidence import apply_reducers, apply_increasers
-
-# Check reducers
-reductions = apply_reducers(context, state)
-for name, delta, reason in reductions:
-    state.confidence += delta
-
-# Check increasers  
-boosts = apply_increasers(context, state)
-for name, delta, reason in boosts:
-    state.confidence += delta
-```
+*Updated: 2025-12-17*
