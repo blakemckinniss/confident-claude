@@ -1471,10 +1471,14 @@ def check_code_tools_require_serena(data: dict, state: SessionState) -> HookResu
         )
 
     # Check if searching in code directories
-    # Include both with and without trailing slash (paths may end with /lib or /lib/)
+    # Match: absolute (/lib/), relative (lib/), and end-of-path (/lib, lib)
     code_dirs = (
-        "/src/", "/src", "/lib/", "/lib", "/hooks/", "/hooks",
-        "/ops/", "/ops", "/components/", "/components", "/utils/", "/utils"
+        "/src/", "/src", "src/",
+        "/lib/", "/lib", "lib/",
+        "/hooks/", "/hooks", "hooks/",
+        "/ops/", "/ops", "ops/",
+        "/components/", "/components", "components/",
+        "/utils/", "/utils", "utils/",
     )
     if target_path and any(d in target_path for d in code_dirs):
         return HookResult.deny(

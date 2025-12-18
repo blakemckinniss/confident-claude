@@ -4,17 +4,27 @@ Packs context with strict token budgets:
 - Router: 1200 tokens (fast classification)
 - Planner: 4000 tokens (detailed blueprint)
 
-Includes: repo structure, git diff, beads, test status, serena context.
+Includes: repo structure, git diff, beads, test status, serena context, memories.
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .config import get_config
+
+
+# Memory files that contain decisions/lessons (high value for routing)
+CORE_MEMORY_FILES = [
+    "__decisions.md",
+    "__lessons.md",
+    "__capabilities.md",
+    "__integration_synergy.md",
+]
 
 
 def estimate_tokens(text: str) -> int:
