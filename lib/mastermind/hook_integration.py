@@ -490,23 +490,32 @@ def handle_session_start_routing(
             project = cwd.name if cwd else "unknown"
             result["pal_suggestion"] = True
 
-            # PHASE 3: Confidence-gated PAL mandate lock
-            # Only create HARD LOCK when:
-            # - Confidence is very low (<50%) - always need external help
-            # - Confidence is low (<70%) AND task is complex
-            # - Task is complex AND has risk lexicon triggers
-            # High confidence (>=70%) gets soft suggestion only (no blocking)
+            # PHASE 3.1: Realistic confidence-gated PAL mandate lock
+            # Confidence almost never drops below 70-80% in practice.
+            # By <50% things are already a crisis - too late to help.
+            #
+            # HARD LOCK when:
+            # - Confidence < 70% - working zone floor, need external perspective
+            # - Confidence < 85% AND task is medium/complex - uncertain territory
+            # - Medium/complex + risky keywords - always lock regardless of confidence
+            # - First turn of session with medium/complex task - bootstrap with PAL
+            #
+            # Soft suggestion only for trivial tasks or high confidence (>=85%)
             should_hard_lock = False
+            classification = router_response.classification
+            is_significant = classification in ("medium", "complex")
+
             if confidence is not None:
-                if confidence < 50:
-                    # Very low confidence = always lock
+                if confidence < 70:
+                    # Below working zone = always lock for non-trivial
+                    if is_significant:
+                        should_hard_lock = True
+                        result["lock_reason"] = "confidence_below_working"
+                elif confidence < 85 and is_significant:
+                    # Uncertain territory + significant task = lock
                     should_hard_lock = True
-                    result["lock_reason"] = "confidence_critical"
-                elif confidence < 70 and router_response.classification == "complex":
-                    # Low confidence + complex = lock
-                    should_hard_lock = True
-                    result["lock_reason"] = "confidence_low_complex"
-                elif router_response.classification == "complex" and any(
+                    result["lock_reason"] = "confidence_uncertain_significant"
+                elif is_significant and any(
                     code in (router_response.reason_codes or [])
                     for code in [
                         "security",
@@ -516,14 +525,14 @@ def handle_session_start_routing(
                         "destructive",
                     ]
                 ):
-                    # Complex + risky keywords = always lock regardless of confidence
+                    # Significant + risky keywords = always lock regardless of confidence
                     should_hard_lock = True
                     result["lock_reason"] = "risk_lexicon_override"
             else:
-                # No confidence info = conservative (lock for complex)
-                if router_response.classification == "complex":
+                # No confidence info = conservative (lock for medium/complex)
+                if is_significant:
                     should_hard_lock = True
-                    result["lock_reason"] = "no_confidence_complex"
+                    result["lock_reason"] = "no_confidence_significant"
 
             if should_hard_lock:
                 create_pal_mandate_lock(
