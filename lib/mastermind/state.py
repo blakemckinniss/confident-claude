@@ -13,7 +13,17 @@ from pathlib import Path
 from typing import Any
 
 # Default location for session state
-DEFAULT_STATE_DIR = Path.home() / ".claude" / "tmp"
+DEFAULT_STATE_DIR = Path.home() / ".claude" / "tmp" / "mastermind"
+
+
+def _get_project_id() -> str:
+    """Get current project ID for state isolation."""
+    try:
+        from project_detector import detect_project
+        ctx = detect_project()
+        return ctx.project_id if ctx else "ephemeral"
+    except (ImportError, Exception):
+        return "ephemeral"
 
 
 @dataclass
@@ -216,31 +226,69 @@ class MastermindState:
         return state
 
 
-def get_state_path(session_id: str, state_dir: Path | None = None) -> Path:
-    """Get path for session state file."""
+def get_state_path(
+    session_id: str,
+    project_id: str | None = None,
+    state_dir: Path | None = None,
+) -> Path:
+    """Get path for session state file with project isolation.
+    
+    New path structure: {state_dir}/{project_id}/{session_id}/state.json
+    """
     directory = state_dir or DEFAULT_STATE_DIR
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory / f"mastermind_{session_id}.json"
+    proj_id = project_id or _get_project_id()
+    
+    # New isolated path: {dir}/{project_id}/{session_id}/state.json
+    state_path = directory / proj_id / session_id
+    state_path.mkdir(parents=True, exist_ok=True)
+    return state_path / "state.json"
 
 
-def load_state(session_id: str, state_dir: Path | None = None) -> MastermindState:
-    """Load session state from disk."""
-    path = get_state_path(session_id, state_dir)
+def load_state(
+    session_id: str,
+    project_id: str | None = None,
+    state_dir: Path | None = None,
+) -> MastermindState:
+    """Load session state from disk with migration fallback.
+    
+    Tries new isolated path first, falls back to legacy path for migration.
+    """
+    # Try new isolated path first
+    path = get_state_path(session_id, project_id, state_dir)
+    
+    if path.exists():
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            return MastermindState.from_dict(data)
+        except (json.JSONDecodeError, OSError):
+            pass
+    
+    # Fallback: try legacy path (~/.claude/tmp/mastermind_{session_id}.json)
+    legacy_dir = state_dir or Path.home() / ".claude" / "tmp"
+    legacy_path = legacy_dir / f"mastermind_{session_id}.json"
+    
+    if legacy_path.exists():
+        try:
+            with open(legacy_path) as f:
+                data = json.load(f)
+            return MastermindState.from_dict(data)
+        except (json.JSONDecodeError, OSError):
+            pass
+    
+    return MastermindState(session_id=session_id)
 
-    if not path.exists():
-        return MastermindState(session_id=session_id)
 
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        return MastermindState.from_dict(data)
-    except (json.JSONDecodeError, OSError):
-        return MastermindState(session_id=session_id)
-
-
-def save_state(state: MastermindState, state_dir: Path | None = None) -> Path:
-    """Save session state to disk."""
-    path = get_state_path(state.session_id, state_dir)
+def save_state(
+    state: MastermindState,
+    project_id: str | None = None,
+    state_dir: Path | None = None,
+) -> Path:
+    """Save session state to disk with project isolation.
+    
+    Always writes to new isolated path structure.
+    """
+    path = get_state_path(state.session_id, project_id, state_dir)
     state.updated_at = time.time()
 
     with open(path, "w") as f:
@@ -249,8 +297,12 @@ def save_state(state: MastermindState, state_dir: Path | None = None) -> Path:
     return path
 
 
-def clear_state(session_id: str, state_dir: Path | None = None) -> None:
+def clear_state(
+    session_id: str,
+    project_id: str | None = None,
+    state_dir: Path | None = None,
+) -> None:
     """Remove session state file."""
-    path = get_state_path(session_id, state_dir)
+    path = get_state_path(session_id, project_id, state_dir)
     if path.exists():
         path.unlink()
