@@ -26,6 +26,100 @@ CORE_MEMORY_FILES = [
     "__integration_synergy.md",
 ]
 
+# TF-IDF cache for memory relevance scoring
+_idf_cache: dict[str, float] | None = None
+_idf_cache_time: float = 0
+_IDF_CACHE_TTL = 300  # 5 minutes
+
+
+def _compute_idf(documents: list[str]) -> dict[str, float]:
+    """Compute IDF values for all terms in document corpus."""
+    from math import log
+
+    doc_count = len(documents)
+    if doc_count == 0:
+        return {}
+
+    term_doc_counts: dict[str, int] = {}
+
+    for doc in documents:
+        terms = set(re.findall(r"\b[a-zA-Z]{3,}\b", doc.lower()))
+        for term in terms:
+            term_doc_counts[term] = term_doc_counts.get(term, 0) + 1
+
+    # IDF = log(N / df) where N = total docs, df = docs containing term
+    idf = {}
+    for term, df in term_doc_counts.items():
+        idf[term] = log(doc_count / df) if df > 0 else 0
+
+    return idf
+
+
+def _get_idf_values(cwd: Path | None = None) -> dict[str, float]:
+    """Get cached IDF values, recomputing if stale (>5 min)."""
+    global _idf_cache, _idf_cache_time
+    import time
+
+    now = time.time()
+    if _idf_cache is not None and (now - _idf_cache_time) < _IDF_CACHE_TTL:
+        return _idf_cache
+
+    # Collect all memory documents
+    documents = []
+    memory_dir = Path.home() / ".claude" / "memory"
+    if memory_dir.exists():
+        for f in memory_dir.glob("__*.md"):
+            if f.name in CORE_MEMORY_FILES:
+                try:
+                    documents.append(f.read_text(encoding="utf-8")[:2000])
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+    # Check serena memories
+    serena_dirs = []
+    if cwd:
+        serena_dirs.append(cwd / ".serena" / "memories")
+    serena_dirs.append(Path.home() / ".claude" / ".serena" / "memories")
+
+    for serena_dir in serena_dirs:
+        if not serena_dir.exists():
+            continue
+        for f in serena_dir.glob("*.md"):
+            if not f.name.startswith("session_"):
+                try:
+                    documents.append(f.read_text(encoding="utf-8")[:1000])
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+    _idf_cache = _compute_idf(documents) if documents else {}
+    _idf_cache_time = now
+    return _idf_cache
+
+
+def _tfidf_score(query_terms: set[str], doc_text: str, idf: dict[str, float]) -> float:
+    """Compute TF-IDF relevance score for document against query."""
+    doc_terms = re.findall(r"\b[a-zA-Z]{3,}\b", doc_text.lower())
+    doc_len = len(doc_terms)
+    if doc_len == 0:
+        return 0.0
+
+    # Term frequency in document
+    tf: dict[str, float] = {}
+    for term in doc_terms:
+        tf[term] = tf.get(term, 0) + 1
+
+    # Normalize TF by doc length
+    for term in tf:
+        tf[term] = tf[term] / doc_len
+
+    # Score = sum(tf * idf) for matching query terms
+    score = 0.0
+    for term in query_terms:
+        if term in tf:
+            score += tf[term] * idf.get(term, 1.0)
+
+    return score
+
 
 def estimate_tokens(text: str) -> int:
     """Rough token estimate (4 chars per token average)."""
