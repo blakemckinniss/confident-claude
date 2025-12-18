@@ -1,0 +1,122 @@
+{
+  "_comment": "Task-type specific priming packs - behavioral constraints injected based on Groq classification",
+  "_version": "1.0.0",
+
+  "debugging": {
+    "header": "🔍 **Debugging Protocol**",
+    "constraints": [
+      "Follow: hypothesis → reproduce → isolate → fix → regression test",
+      "State assumptions explicitly before investigating",
+      "Prefer minimal diffs - fix only what's broken",
+      "If stuck after 2 attempts, use `mcp__pal__debug` for external perspective"
+    ],
+    "anti_patterns": [
+      "Don't refactor unrelated code while debugging",
+      "Don't add defensive try/except - find root cause"
+    ]
+  },
+
+  "planning": {
+    "header": "📋 **Planning Protocol**",
+    "constraints": [
+      "Identify constraints first (runtime, deployment, compatibility, budget)",
+      "List tradeoffs explicitly before recommending",
+      "Prefer incremental rollout over big-bang changes",
+      "Create beads for each major milestone"
+    ],
+    "anti_patterns": [
+      "Don't start implementation without user approval",
+      "Don't over-engineer - solve stated problem only"
+    ]
+  },
+
+  "review": {
+    "header": "🔎 **Review Protocol**",
+    "constraints": [
+      "Check in order: correctness → security → performance → API stability",
+      "Flag missing tests and edge cases",
+      "Severity rating: 🔴critical 🟠high 🟡medium 🟢low",
+      "Suggest concrete fixes, not just problems"
+    ],
+    "anti_patterns": [
+      "Don't nitpick style if logic is the focus",
+      "Don't rewrite - suggest targeted improvements"
+    ]
+  },
+
+  "architecture": {
+    "header": "🏗️ **Architecture Protocol**",
+    "constraints": [
+      "Define blast radius and rollback strategy upfront",
+      "Consider: scalability, maintainability, team familiarity",
+      "Reference existing patterns in codebase before introducing new ones",
+      "Document decision rationale (ADR-style)"
+    ],
+    "anti_patterns": [
+      "Don't propose rewrites without migration path",
+      "Don't introduce unfamiliar tech without justification"
+    ]
+  },
+
+  "research": {
+    "header": "🔬 **Research Protocol**",
+    "constraints": [
+      "Separate known facts from speculation explicitly",
+      "Cite sources when available (links, docs, examples)",
+      "State uncertainty levels: ✓verified, ~likely, ?uncertain",
+      "Prefer official docs over Stack Overflow"
+    ],
+    "anti_patterns": [
+      "Don't hallucinate API signatures - verify first",
+      "Don't present speculation as fact"
+    ]
+  },
+
+  "validation": {
+    "header": "✅ **Validation Protocol**",
+    "constraints": [
+      "Specify exact commands to run",
+      "Define expected outputs and success criteria",
+      "Include stop conditions (when to escalate)",
+      "Run lightweight checks first, expensive checks after"
+    ],
+    "anti_patterns": [
+      "Don't skip tests to move faster",
+      "Don't ignore warnings - investigate or explain"
+    ]
+  },
+
+  "heavy_analysis": {
+    "header": "📊 **Analysis Protocol**",
+    "constraints": [
+      "Break into phases: scope → gather → analyze → synthesize",
+      "Use Task agents for parallel exploration",
+      "Summarize findings before deep-diving",
+      "Track which files/areas have been covered"
+    ],
+    "anti_patterns": [
+      "Don't read entire codebase - use targeted search",
+      "Don't get lost in details - maintain high-level view"
+    ]
+  },
+
+  "code_generation": {
+    "header": "⚡ **Code Generation Protocol**",
+    "constraints": [
+      "Match existing code style and patterns",
+      "Include error handling for edge cases",
+      "Write tests alongside implementation",
+      "Keep functions focused - single responsibility"
+    ],
+    "anti_patterns": [
+      "Don't generate placeholder/stub code",
+      "Don't ignore types - add proper annotations"
+    ]
+  },
+
+  "general": {
+    "header": null,
+    "constraints": [],
+    "anti_patterns": []
+  }
+}

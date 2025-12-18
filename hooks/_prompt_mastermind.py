@@ -8,6 +8,7 @@ Phase 1 (explicit_override_only): Only ^ prefix triggers planning
 Phase 2+: Auto-planning for complex tasks
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +16,51 @@ from pathlib import Path
 lib_path = Path(__file__).parent.parent / "lib"
 if str(lib_path) not in sys.path:
     sys.path.insert(0, str(lib_path))
+
+# Priming packs cache
+_PRIMING_PACKS: dict | None = None
+
+
+def _load_priming_packs() -> dict:
+    """Load task-type priming packs from config."""
+    global _PRIMING_PACKS
+    if _PRIMING_PACKS is not None:
+        return _PRIMING_PACKS
+
+    packs_path = Path(__file__).parent.parent / "config" / "task_priming_packs.json"
+    try:
+        if packs_path.exists():
+            _PRIMING_PACKS = json.loads(packs_path.read_text())
+        else:
+            _PRIMING_PACKS = {}
+    except Exception:
+        _PRIMING_PACKS = {}
+    return _PRIMING_PACKS
+
+
+def _format_priming_pack(task_type: str) -> str | None:
+    """Format priming pack for injection based on task type."""
+    packs = _load_priming_packs()
+    pack = packs.get(task_type, packs.get("general", {}))
+
+    if not pack or not pack.get("constraints"):
+        return None
+
+    parts = []
+    if pack.get("header"):
+        parts.append(pack["header"])
+
+    if pack.get("constraints"):
+        parts.append("**Do:**")
+        for constraint in pack["constraints"]:
+            parts.append(f"- {constraint}")
+
+    if pack.get("anti_patterns"):
+        parts.append("**Don't:**")
+        for anti in pack["anti_patterns"]:
+            parts.append(f"- {anti}")
+
+    return "\n".join(parts) if parts else None
 
 
 def _get_current_session_id(data: dict) -> str | None:
@@ -105,6 +151,12 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
                     f"🎯 **Mastermind**: Task classified as `{classification}` "
                     f"(confidence: {confidence:.0%})"
                 )
+
+        # Inject task-type priming pack (behavioral constraints)
+        task_type = routing.get("task_type", "general") if routing else "general"
+        priming_pack = _format_priming_pack(task_type)
+        if priming_pack:
+            context_parts.append(priming_pack)
 
         # Add research recommendation if needed
         needs_research = routing.get("needs_research", False) if routing else False
