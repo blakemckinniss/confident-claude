@@ -489,6 +489,276 @@ class RepetitionSmell(IntuitionSmell):
         return any(count >= 3 for count in patterns.values())
 
 
+class PrematureOptimizationSmell(IntuitionSmell):
+    """Optimizing without evidence of a performance problem."""
+
+    def __init__(self):
+        super().__init__(
+            name="premature_optimization",
+            description="Optimizing without profiling first",
+            reflection_prompts=[
+                "Is this actually slow?",
+                "Have I measured this bottleneck?",
+                "Am I optimizing based on assumption?",
+            ],
+            cooldown_turns=12,
+        )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if not super().should_trigger(context, state, last_trigger_turn):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Edit", "Write"):
+            return False
+
+        new_string = context.get("tool_input", {}).get("new_string", "")
+        content = context.get("tool_input", {}).get("content", "")
+        code = new_string or content
+
+        if not code:
+            return False
+
+        # Optimization keywords without profiling context
+        optimization_patterns = [
+            r"@lru_cache",
+            r"@cache",
+            r"@functools\.cache",
+            r"\.memoize",
+            r"lazy_",
+            r"_cached",
+            r"batch_size",
+            r"chunk_size",
+            r"pool_size",
+            r"threading\.",
+            r"multiprocessing\.",
+            r"asyncio\.",
+            r"# optimize",
+            r"# performance",
+            r"# faster",
+        ]
+
+        for pattern in optimization_patterns:
+            if re.search(pattern, code, re.IGNORECASE):
+                return True
+
+        return False
+
+
+class OverEngineeringSmell(IntuitionSmell):
+    """Creating abstractions for potentially single use cases."""
+
+    def __init__(self):
+        super().__init__(
+            name="over_engineering",
+            description="Creating complex abstractions",
+            reflection_prompts=[
+                "Do I need this abstraction?",
+                "YAGNI - will I actually use this elsewhere?",
+                "Is simpler code better here?",
+            ],
+            cooldown_turns=10,
+        )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if not super().should_trigger(context, state, last_trigger_turn):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Write":
+            return False
+
+        content = context.get("tool_input", {}).get("content", "")
+
+        if not content:
+            return False
+
+        # Signs of over-engineering
+        over_engineering_signs = [
+            r"class\s+\w*Factory",
+            r"class\s+\w*Builder",
+            r"class\s+\w*Strategy",
+            r"class\s+\w*Visitor",
+            r"class\s+\w*Adapter",
+            r"class\s+\w*Decorator",
+            r"class\s+Abstract\w+",
+            r"class\s+Base\w+.*:\s*$",
+            r"from abc import ABC",
+            r"@abstractmethod",
+            r"Protocol\[",
+            r"Generic\[",
+        ]
+
+        matches = sum(1 for p in over_engineering_signs if re.search(p, content))
+
+        # If multiple patterns detected, likely over-engineering
+        return matches >= 2
+
+
+class NamingSmell(IntuitionSmell):
+    """Poor variable or function names detected."""
+
+    def __init__(self):
+        super().__init__(
+            name="naming_smell",
+            description="Vague or non-descriptive names",
+            reflection_prompts=[
+                "Are these names self-documenting?",
+                "Will I understand these names tomorrow?",
+                "Could these names be more descriptive?",
+            ],
+            cooldown_turns=8,
+        )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if not super().should_trigger(context, state, last_trigger_turn):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Edit", "Write"):
+            return False
+
+        new_string = context.get("tool_input", {}).get("new_string", "")
+        content = context.get("tool_input", {}).get("content", "")
+        code = new_string or content
+
+        if not code or len(code) < 50:
+            return False
+
+        # Bad naming patterns
+        bad_names = [
+            r"\b(temp|tmp|foo|bar|baz|xxx|test1|test2)\s*=",
+            r"\bdata\s*=",
+            r"\bresult\s*=",
+            r"\bret\s*=",
+            r"\bval\s*=",
+            r"\bobj\s*=",
+            r"\bitem\s*=",
+            r"\bthing\s*=",
+            r"\bstuff\s*=",
+            r"def\s+(do|run|process|handle|manage)_?\(",
+            r"for\s+[a-z]\s+in",  # Single-letter loop variables (except i,j,k)
+        ]
+
+        # Exclude acceptable single-letter variables
+        acceptable_singles = r"for\s+[ijk]\s+in"
+
+        bad_count = sum(1 for p in bad_names if re.search(p, code))
+        acceptable = len(re.findall(acceptable_singles, code))
+
+        return (bad_count - acceptable) >= 2
+
+
+class HardcodedConfigSmell(IntuitionSmell):
+    """Configuration values hardcoded in logic."""
+
+    def __init__(self):
+        super().__init__(
+            name="hardcoded_config",
+            description="Config values in code instead of config file",
+            reflection_prompts=[
+                "Should this be in a config file?",
+                "Will this need to change per environment?",
+                "Is this value deployment-specific?",
+            ],
+            cooldown_turns=10,
+        )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if not super().should_trigger(context, state, last_trigger_turn):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Edit", "Write"):
+            return False
+
+        file_path = context.get("tool_input", {}).get("file_path", "")
+
+        # Skip actual config files
+        if any(
+            x in file_path.lower()
+            for x in ["config", "settings", "env", ".json", ".yaml", ".toml"]
+        ):
+            return False
+
+        new_string = context.get("tool_input", {}).get("new_string", "")
+        content = context.get("tool_input", {}).get("content", "")
+        code = new_string or content
+
+        if not code:
+            return False
+
+        # Config-like patterns in code
+        config_patterns = [
+            r'(host|hostname)\s*=\s*["\'][^"\']+["\']',
+            r"(port)\s*=\s*\d{4,5}",
+            r'(url|uri|endpoint)\s*=\s*["\']https?://',
+            r"(timeout|interval|delay)\s*=\s*\d+",
+            r"(max|min|limit)_\w+\s*=\s*\d+",
+            r'(api_key|secret|token|password)\s*=\s*["\']',
+            r'(database|db)_\w+\s*=\s*["\']',
+            r"(redis|mongo|postgres|mysql)_\w+\s*=",
+        ]
+
+        matches = sum(1 for p in config_patterns if re.search(p, code, re.IGNORECASE))
+        return matches >= 2
+
+
+class TodoLeftBehindSmell(IntuitionSmell):
+    """TODO/FIXME comments being added without tracking."""
+
+    def __init__(self):
+        super().__init__(
+            name="todo_left_behind",
+            description="Adding TODO without tracking",
+            reflection_prompts=[
+                "Should this TODO become a bead?",
+                "Will this TODO ever get done?",
+                "Can I just do this now instead?",
+            ],
+            cooldown_turns=5,
+        )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if not super().should_trigger(context, state, last_trigger_turn):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Edit", "Write"):
+            return False
+
+        new_string = context.get("tool_input", {}).get("new_string", "")
+        content = context.get("tool_input", {}).get("content", "")
+        code = new_string or content
+
+        if not code:
+            return False
+
+        # Check for TODO/FIXME patterns
+        todo_patterns = [
+            r"#\s*TODO",
+            r"#\s*FIXME",
+            r"#\s*HACK",
+            r"#\s*XXX",
+            r"//\s*TODO",
+            r"//\s*FIXME",
+            r"\*\s*TODO",
+            r"\*\s*FIXME",
+        ]
+
+        return any(re.search(p, code, re.IGNORECASE) for p in todo_patterns)
+
+
 # Registry of all intuition smells
 INTUITION_SMELLS: list[IntuitionSmell] = [
     QuickFixSmell(),
@@ -500,6 +770,11 @@ INTUITION_SMELLS: list[IntuitionSmell] = [
     ScopeDriftSmell(),
     EdgeCaseBlindSmell(),
     RepetitionSmell(),
+    PrematureOptimizationSmell(),
+    OverEngineeringSmell(),
+    NamingSmell(),
+    HardcodedConfigSmell(),
+    TodoLeftBehindSmell(),
 ]
 
 
