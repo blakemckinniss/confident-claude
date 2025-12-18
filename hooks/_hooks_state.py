@@ -651,7 +651,9 @@ def _handle_write_tool(
         if content:
             for lib in extract_libraries_from_code(content):
                 track_library_used(state, lib)
-            if is_new_file:
+            # Skip stub detection for command defs (search patterns, not stubs)
+            is_command_def = "/commands/" in filepath and filepath.endswith(".md")
+            if is_new_file and not is_command_def:
                 stubs = detect_stubs_in_content(content)
                 if stubs:
                     fname = Path(filepath).name
