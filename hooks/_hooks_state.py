@@ -136,6 +136,47 @@ def check_mastermind_drift(state: SessionState) -> str | None:
         return None
 
 
+def get_mastermind_drift_signals(state: SessionState) -> dict[str, bool]:
+    """Get active mastermind drift signals for confidence reducers.
+
+    Returns dict with keys: file_count, test_failures, approach_change
+    Values are True if that drift signal is active.
+
+    This feeds into context["mastermind_drift"] for the MastermindDriftReducers.
+    """
+    if not MASTERMIND_AVAILABLE:
+        return {}
+    try:
+        config = get_mastermind_config()
+        if not config.drift.enabled:
+            return {}
+
+        session_id = _get_session_id(state)
+        mm_state = load_mastermind_state(session_id)
+
+        # No blueprint = no drift detection
+        if not mm_state.blueprint:
+            return {}
+
+        signals = evaluate_drift(mm_state)
+        if not signals:
+            return {}
+
+        # Convert DriftSignal list to dict format for reducers
+        drift_dict = {}
+        for signal in signals:
+            if signal.trigger == "file_count":
+                drift_dict["file_count"] = True
+            elif signal.trigger == "test_failures":
+                drift_dict["test_failures"] = True
+            elif signal.trigger == "approach_change":
+                drift_dict["approach_change"] = True
+
+        return drift_dict
+    except Exception:
+        return {}
+
+
 # Additional confidence imports (can't be at top due to mastermind try/except block)
 from confidence import (  # noqa: E402
     format_dispute_instructions,
@@ -861,7 +902,10 @@ def check_serena_activation(
     # Fallback: check tool_result if available (for future compatibility)
     tool_result = data.get("tool_result", {})
     result_str = _extract_result_string(tool_result)
-    if "activated" in result_str.lower() or "programming languages" in result_str.lower():
+    if (
+        "activated" in result_str.lower()
+        or "programming languages" in result_str.lower()
+    ):
         state.serena_activated = True
         state.serena_project = project
         return HookResult(
@@ -1625,6 +1669,10 @@ def check_confidence_reducer(
     _detect_change_without_test(tool_name, tool_input, state, context)
     _detect_contradiction(tool_result, state, context)
     _detect_trivial_question(state, context)
+    # Mastermind drift signals (v4.10) - unified nervous system
+    drift_signals = get_mastermind_drift_signals(state)
+    if drift_signals:
+        context["mastermind_drift"] = drift_signals
 
     # Apply reducers
     triggered = apply_reducers(state, context)

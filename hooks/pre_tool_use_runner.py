@@ -1471,7 +1471,11 @@ def check_code_tools_require_serena(data: dict, state: SessionState) -> HookResu
         )
 
     # Check if searching in code directories
-    code_dirs = ("/src/", "/lib/", "/hooks/", "/ops/", "/components/", "/utils/")
+    # Include both with and without trailing slash (paths may end with /lib or /lib/)
+    code_dirs = (
+        "/src/", "/src", "/lib/", "/lib", "/hooks/", "/hooks",
+        "/ops/", "/ops", "/components/", "/components", "/utils/", "/utils"
+    )
     if target_path and any(d in target_path for d in code_dirs):
         return HookResult.deny(
             f"🔮 **SERENA REQUIRED**: `.serena/` detected. Activate before code search.\n"
