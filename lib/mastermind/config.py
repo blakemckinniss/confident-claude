@@ -60,6 +60,9 @@ class ContextPackerConfig:
     include_beads: bool = True
     include_test_status: bool = True
     include_serena_context: bool = True
+    include_memory_hints: bool = True  # Path B: lightweight signals for router
+    include_memory_content: bool = True  # Path A: full content for planner
+    memory_token_budget: int = 800  # Max tokens for memory content
 
 
 @dataclass
@@ -222,6 +225,9 @@ def save_config(config: MastermindConfig, path: Path | None = None) -> Path:
             "include_beads": config.context_packer.include_beads,
             "include_test_status": config.context_packer.include_test_status,
             "include_serena_context": config.context_packer.include_serena_context,
+            "include_memory_hints": config.context_packer.include_memory_hints,
+            "include_memory_content": config.context_packer.include_memory_content,
+            "memory_token_budget": config.context_packer.memory_token_budget,
         },
         "telemetry": {
             "enabled": config.telemetry.enabled,

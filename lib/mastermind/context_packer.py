@@ -166,9 +166,7 @@ def get_memory_hints(cwd: Path | None = None) -> dict[str, Any]:
     # Check ~/.claude/memory/
     memory_dir = Path.home() / ".claude" / "memory"
     if memory_dir.exists():
-        memories = [
-            f for f in memory_dir.glob("__*.md") if f.name in CORE_MEMORY_FILES
-        ]
+        memories = [f for f in memory_dir.glob("__*.md") if f.name in CORE_MEMORY_FILES]
         if memories:
             hints["file_memories_available"] = True
             hints["memory_count"] += len(memories)
@@ -205,15 +203,47 @@ def get_memory_content(prompt: str, budget: int = 800, cwd: Path | None = None) 
     top matches within token budget.
     """
     # Extract keywords from prompt (alphanumeric words, 3+ chars)
-    keywords = set(
-        w.lower() for w in re.findall(r"\b[a-zA-Z]{3,}\b", prompt.lower())
-    )
+    keywords = set(w.lower() for w in re.findall(r"\b[a-zA-Z]{3,}\b", prompt.lower()))
     # Remove common stop words
     stop_words = {
-        "the", "and", "for", "are", "but", "not", "you", "all", "can", "had",
-        "her", "was", "one", "our", "out", "has", "have", "been", "this", "that",
-        "with", "they", "from", "would", "could", "should", "what", "when", "where",
-        "which", "there", "their", "about", "into", "some", "than", "them", "then",
+        "the",
+        "and",
+        "for",
+        "are",
+        "but",
+        "not",
+        "you",
+        "all",
+        "can",
+        "had",
+        "her",
+        "was",
+        "one",
+        "our",
+        "out",
+        "has",
+        "have",
+        "been",
+        "this",
+        "that",
+        "with",
+        "they",
+        "from",
+        "would",
+        "could",
+        "should",
+        "what",
+        "when",
+        "where",
+        "which",
+        "there",
+        "their",
+        "about",
+        "into",
+        "some",
+        "than",
+        "them",
+        "then",
     }
     keywords -= stop_words
 
@@ -357,9 +387,10 @@ def pack_for_router(
         sections["confidence"] = get_confidence_context(confidence)
 
     # Add memory hints (Path B - lightweight signals)
-    memory_hints = get_memory_hints(cwd)
-    if memory_hints["memory_count"] > 0:
-        sections["memory_hints"] = memory_hints
+    if config.context_packer.include_memory_hints:
+        memory_hints = get_memory_hints(cwd)
+        if memory_hints["memory_count"] > 0:
+            sections["memory_hints"] = memory_hints
 
     # Build packed prompt
     packed = f"""## User Request
@@ -436,9 +467,11 @@ def pack_for_planner(
         sections["tests"] = get_test_status(cwd)
 
     # Add relevant memories (Path A - full content for complex tasks)
-    # Reserve ~800 tokens of the 4000 budget for memories
-    memory_budget = min(800, budget // 5)
-    sections["memories"] = get_memory_content(user_prompt, budget=memory_budget, cwd=cwd)
+    if config.context_packer.include_memory_content:
+        memory_budget = config.context_packer.memory_token_budget
+        memories = get_memory_content(user_prompt, budget=memory_budget, cwd=cwd)
+        if memories and memories != "[no relevant memories]":
+            sections["memories"] = memories
 
     # Build packed prompt
     packed = f"""## User Request
