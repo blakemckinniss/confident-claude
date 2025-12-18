@@ -189,17 +189,33 @@ def get_recent_reductions(state: "SessionState", turns: int = 3) -> list[str]:
 
 
 def format_dispute_instructions(reducer_names: list[str]) -> str:
-    """Format instructions for disputing a reduction."""
+    """Format instructions for disputing a reduction, including remedies."""
     if not reducer_names:
         return ""
 
+    # Build reducer info with remedies
+    reducer_info = []
+    for name in reducer_names:
+        reducer = next((r for r in REDUCERS if r.name == name), None)
+        if reducer and reducer.remedy:
+            reducer_info.append(f"{name} → {reducer.remedy}")
+        else:
+            reducer_info.append(name)
+
     reducers_str = ", ".join(reducer_names)
-    return (
+    remedies_str = "\n   ".join(reducer_info) if any("→" in r for r in reducer_info) else ""
+
+    base = (
         f"\n💡 **False positive?** Options:\n"
         f"   • Claude: Run `~/.claude/ops/fp.py <reducer> [reason]`\n"
         f"   • User: Say `FP: <reducer>` or `dispute <reducer>`\n"
         f"   Recent reducers: {reducers_str}"
     )
+
+    if remedies_str:
+        base += f"\n   **Instead:** {remedies_str}"
+
+    return base
 
 
 def generate_approval_prompt(

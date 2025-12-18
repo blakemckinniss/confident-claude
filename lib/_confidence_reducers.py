@@ -22,6 +22,7 @@ class ConfidenceReducer:
     name: str
     delta: int  # Negative value
     description: str
+    remedy: str = ""  # What to do instead (actionable guidance)
     cooldown_turns: int = 3  # Minimum turns between triggers
     penalty_class: str = "PROCESS"  # "PROCESS" (recoverable) or "INTEGRITY" (not recoverable)
     max_recovery_fraction: float = 0.5  # Max % of penalty that can be recovered (0.0 for INTEGRITY)
@@ -43,6 +44,7 @@ class ToolFailureReducer(ConfidenceReducer):
     name: str = "tool_failure"
     delta: int = -5
     description: str = "Tool execution failed (exit code != 0)"
+    remedy: str = "check command syntax, verify paths exist"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -74,6 +76,7 @@ class CascadeBlockReducer(ConfidenceReducer):
     name: str = "cascade_block"
     delta: int = -15
     description: str = "Same hook blocked 3+ times recently"
+    remedy: str = "fix the root cause the hook is flagging"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -95,6 +98,7 @@ class SunkCostReducer(ConfidenceReducer):
     name: str = "sunk_cost"
     delta: int = -20
     description: str = "3+ consecutive failures on same approach"
+    remedy: str = "run /think, try different approach"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -112,6 +116,7 @@ class UserCorrectionReducer(ConfidenceReducer):
     name: str = "user_correction"
     delta: int = -10
     description: str = "User corrected or contradicted response"
+    remedy: str = "acknowledge and fix the specific issue"
     cooldown_turns: int = 3
     patterns: list = field(
         default_factory=lambda: [
@@ -216,6 +221,7 @@ class GoalDriftReducer(ConfidenceReducer):
     name: str = "goal_drift"
     delta: int = -8
     description: str = "Activity diverged from original goal"
+    remedy: str = "refocus on original goal, or ask to change scope"
     cooldown_turns: int = 8
 
     def should_trigger(
@@ -256,6 +262,7 @@ class EditOscillationReducer(ConfidenceReducer):
     name: str = "edit_oscillation"
     delta: int = -12
     description: str = "Edits reverting previous changes (back-forth pattern)"
+    remedy: str = "step back, research the right solution first"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -301,6 +308,7 @@ class ContradictionReducer(ConfidenceReducer):
     name: str = "contradiction"
     delta: int = -10
     description: str = "Made contradictory claims"
+    remedy: str = "review previous statements, clarify position"
     cooldown_turns: int = 5
 
     # Patterns that suggest user noticed a contradiction
@@ -352,6 +360,7 @@ class FollowUpQuestionReducer(ConfidenceReducer):
     name: str = "follow_up_question"
     delta: int = -5
     description: str = "User asked follow-up question (answer was incomplete)"
+    remedy: str = "provide complete answers upfront"
     cooldown_turns: int = 2
     # More specific patterns to reduce false positives
     # Removed: r"\?$" (too broad - catches all questions)
@@ -401,6 +410,7 @@ class BackupFileReducer(ConfidenceReducer):
     name: str = "backup_file"
     delta: int = -10
     description: str = "Created backup file (technical debt)"
+    remedy: str = "use git for versioning, or edit in place"
     cooldown_turns: int = 1
     patterns: list = field(
         default_factory=lambda: [
@@ -434,6 +444,7 @@ class VersionFileReducer(ConfidenceReducer):
     name: str = "version_file"
     delta: int = -10
     description: str = "Created versioned file (technical debt)"
+    remedy: str = "use git branches, or edit original file"
     cooldown_turns: int = 1
     patterns: list = field(
         default_factory=lambda: [
@@ -483,6 +494,7 @@ class MarkdownCreationReducer(ConfidenceReducer):
     name: str = "markdown_creation"
     delta: int = -8
     description: str = "Created markdown file (documentation theater)"
+    remedy: str = "use inline comments, or add to existing docs"
     cooldown_turns: int = 1
     # Exempt paths where markdown is acceptable
     exempt_paths: list = field(
@@ -529,6 +541,7 @@ class OverconfidentCompletionReducer(ConfidenceReducer):
     name: str = "overconfident_completion"
     delta: int = -15
     description: str = "Claimed '100% done' or similar overconfidence"
+    remedy: str = "say 'changes complete, verified with [test]'"
     cooldown_turns: int = 3
     penalty_class: str = "INTEGRITY"
     max_recovery_fraction: float = 0.0
@@ -563,6 +576,7 @@ class DeferralReducer(ConfidenceReducer):
     name: str = "deferral"
     delta: int = -12
     description: str = "Deferred work ('skip for now', 'come back later')"
+    remedy: str = "do it now, or delete the thought entirely"
     cooldown_turns: int = 3
     patterns: list = field(
         default_factory=lambda: [
@@ -599,6 +613,7 @@ class ApologeticReducer(ConfidenceReducer):
     name: str = "apologetic"
     delta: int = -5
     description: str = "Used apologetic language (banned)"
+    remedy: str = "say 'Fix:' followed by the action"
     cooldown_turns: int = 2
     penalty_class: str = "INTEGRITY"
     max_recovery_fraction: float = 0.0
@@ -633,6 +648,7 @@ class SycophancyReducer(ConfidenceReducer):
     name: str = "sycophancy"
     delta: int = -8
     description: str = "Sycophantic agreement ('you're absolutely right')"
+    remedy: str = "just proceed with the work"
     cooldown_turns: int = 2
     penalty_class: str = "INTEGRITY"
     max_recovery_fraction: float = 0.0
@@ -668,6 +684,7 @@ class UnresolvedAntiPatternReducer(ConfidenceReducer):
     name: str = "unresolved_antipattern"
     delta: int = -10
     description: str = "Identified anti-pattern without resolution"
+    remedy: str = "fix the issue, or create a bead to track it"
     cooldown_turns: int = 3
     # Anti-pattern mentions
     antipattern_signals: list = field(
@@ -727,6 +744,7 @@ class SpottedIgnoredReducer(ConfidenceReducer):
     name: str = "spotted_ignored"
     delta: int = -15
     description: str = "Explicitly spotted issue but didn't fix it"
+    remedy: str = "fix it now, or create bead to track"
     cooldown_turns: int = 3
     # Explicit "I spotted this" patterns
     spotted_signals: list = field(
@@ -783,6 +801,7 @@ class DebtBashReducer(ConfidenceReducer):
     name: str = "debt_bash"
     delta: int = -10
     description: str = "Ran debt-creating bash command"
+    remedy: str = "solve the underlying issue instead of forcing"
     cooldown_turns: int = 1
     # Commands that create debt or are dangerous
     debt_patterns: list = field(
@@ -832,6 +851,7 @@ class ManualCommitReducer(ConfidenceReducer):
     name: str = "manual_commit"
     delta: int = -1
     description: str = "Manual commit attempt (auto-commit handles this)"
+    remedy: str = "let auto-commit handle it"
     cooldown_turns: int = 3  # Rate-limit to prevent stacking
 
     def should_trigger(
@@ -856,6 +876,7 @@ class LargeDiffReducer(ConfidenceReducer):
     name: str = "large_diff"
     delta: int = -8
     description: str = "Large diff (>400 LOC) - risky change"
+    remedy: str = "break into smaller, focused changes"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -873,6 +894,7 @@ class HookBlockReducer(ConfidenceReducer):
     name: str = "hook_block"
     delta: int = -5
     description: str = "Hook blocked action (soft/hard)"
+    remedy: str = "fix what the hook flagged"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -916,6 +938,7 @@ class UnbackedVerificationClaimReducer(ConfidenceReducer):
     name: str = "unbacked_verification"
     delta: int = -15
     description: str = "Claimed verification without tool evidence"
+    remedy: str = "run the actual test/lint command"
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -937,6 +960,7 @@ class FixedWithoutChainReducer(ConfidenceReducer):
     name: str = "fixed_without_chain"
     delta: int = -8
     description: str = "Claimed 'fixed' without write or verification"
+    remedy: str = "verify with test after claiming fixed"
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -957,6 +981,7 @@ class GitSpamReducer(ConfidenceReducer):
     name: str = "git_spam"
     delta: int = -2
     description: str = "Git command spam (>3 in 5 turns without writes)"
+    remedy: str = "do actual work between git commands"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -983,6 +1008,7 @@ class PlaceholderImplReducer(ConfidenceReducer):
     name: str = "placeholder_impl"
     delta: int = -8
     description: str = "Placeholder implementation (incomplete work)"
+    remedy: str = "implement fully, or delete the placeholder"
     cooldown_turns: int = 1
 
     def _get_patterns(self) -> list:
@@ -1051,6 +1077,7 @@ class SilentFailureReducer(ConfidenceReducer):
     name: str = "silent_failure"
     delta: int = -8
     description: str = "Silent exception swallowing (error suppression)"
+    remedy: str = "handle specifically, or let it crash"
     cooldown_turns: int = 1
     patterns: list = field(
         default_factory=lambda: [
@@ -1090,6 +1117,7 @@ class HallmarkPhraseReducer(ConfidenceReducer):
     name: str = "hallmark_phrase"
     delta: int = -3
     description: str = "AI-speak hallmark phrase"
+    remedy: str = "just do the thing directly"
     cooldown_turns: int = 2
     patterns: list = field(
         default_factory=lambda: [
@@ -1130,6 +1158,7 @@ class ScopeCreepReducer(ConfidenceReducer):
     name: str = "scope_creep"
     delta: int = -8
     description: str = "Scope creep (adding unrequested functionality)"
+    remedy: str = "stay focused, create bead for extras"
     cooldown_turns: int = 3
     indicators: list = field(
         default_factory=lambda: [
@@ -1170,6 +1199,7 @@ class IncompleteRefactorReducer(ConfidenceReducer):
     name: str = "incomplete_refactor"
     delta: int = -10
     description: str = "Incomplete refactor (changes in some places but not all)"
+    remedy: str = "grep all usages, update in same pass"
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -1196,6 +1226,7 @@ class RereadUnchangedReducer(ConfidenceReducer):
     name: str = "reread_unchanged"
     delta: int = -3
     description: str = "Re-read unchanged file (already in context)"
+    remedy: str = "use info already in context"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -1216,6 +1247,7 @@ class VerbosePreambleReducer(ConfidenceReducer):
     name: str = "verbose_preamble"
     delta: int = -3
     description: str = "Verbose preamble (fluff before action)"
+    remedy: str = "start with the action, skip preamble"
     cooldown_turns: int = 2
     patterns: list = field(
         default_factory=lambda: [
@@ -1251,6 +1283,7 @@ class HugeOutputDumpReducer(ConfidenceReducer):
     name: str = "huge_output_dump"
     delta: int = -2
     description: str = "Huge output dump without summarizing"
+    remedy: str = "summarize key findings instead"
     cooldown_turns: int = 2
 
     def should_trigger(
@@ -1271,6 +1304,7 @@ class RedundantExplanationReducer(ConfidenceReducer):
     name: str = "redundant_explanation"
     delta: int = -2
     description: str = "Redundant explanation (already explained)"
+    remedy: str = "skip re-explaining, just proceed"
     cooldown_turns: int = 3
     patterns: list = field(
         default_factory=lambda: [
@@ -1305,6 +1339,7 @@ class TrivialQuestionReducer(ConfidenceReducer):
     name: str = "trivial_question"
     delta: int = -5
     description: str = "Trivial question (read code instead)"
+    remedy: str = "read the code first"
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -1326,6 +1361,7 @@ class ObviousNextStepsReducer(ConfidenceReducer):
     name: str = "obvious_next_steps"
     delta: int = -5
     description: str = "Obvious/useless next steps (filler)"
+    remedy: str = "only suggest paths needing user input"
     cooldown_turns: int = 1
     patterns: list = field(
         default_factory=lambda: [
@@ -1380,6 +1416,7 @@ class SequentialWhenParallelReducer(ConfidenceReducer):
     name: str = "sequential_when_parallel"
     delta: int = -2
     description: str = "Sequential single-tool calls (could parallelize)"
+    remedy: str = "batch independent reads/operations"
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -1402,6 +1439,7 @@ class TestIgnoredReducer(ConfidenceReducer):
     name: str = "test_ignored"
     delta: int = -5
     description: str = "Modified test files without running tests"
+    remedy: str = "run pytest/jest after editing tests"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -1424,6 +1462,7 @@ class ChangeWithoutTestReducer(ConfidenceReducer):
     name: str = "change_without_test"
     delta: int = -3
     description: str = "Production code changed without test coverage"
+    remedy: str = "add or run tests for changed code"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -1452,9 +1491,8 @@ class UnverifiedEditsReducer(ConfidenceReducer):
 
     name: str = "unverified_edits"
     delta: int = -5
-    description: str = (
-        f">{VERIFICATION_THRESHOLD} edits without verification (run tests/lint)"
-    )
+    description: str = f">{VERIFICATION_THRESHOLD} edits without verification"
+    remedy: str = "run pytest, ruff check, or tsc"
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -1507,6 +1545,7 @@ class DeepNestingReducer(ConfidenceReducer):
     name: str = "deep_nesting"
     delta: int = -3
     description: str = "Deep nesting (>4 levels) - hard to read/test"
+    remedy: str = "extract nested logic to helper functions"
     cooldown_turns: int = 2
     max_depth: int = 4
 
@@ -1560,6 +1599,7 @@ class LongFunctionReducer(ConfidenceReducer):
     name: str = "long_function"
     delta: int = -5
     description: str = "Long function (>80 lines) - split into smaller units"
+    remedy: str = "split into smaller focused functions"
     cooldown_turns: int = 2
     max_lines: int = 80
 
@@ -1599,6 +1639,7 @@ class MutableDefaultArgReducer(ConfidenceReducer):
     name: str = "mutable_default_arg"
     delta: int = -5
     description: str = "Mutable default argument (list/dict/set) - Python gotcha"
+    remedy: str = "use None default, create in function body"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -1637,6 +1678,7 @@ class ImportStarReducer(ConfidenceReducer):
     name: str = "import_star"
     delta: int = -3
     description: str = "Star import (from X import *) - pollutes namespace"
+    remedy: str = "import specific names needed"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -1673,6 +1715,7 @@ class BareRaiseReducer(ConfidenceReducer):
     name: str = "bare_raise"
     delta: int = -3
     description: str = "Bare raise outside except block - will fail at runtime"
+    remedy: str = "raise specific exception with context"
     cooldown_turns: int = 1
 
     def should_trigger(
@@ -1712,6 +1755,7 @@ class CommentedCodeReducer(ConfidenceReducer):
     name: str = "commented_code"
     delta: int = -5
     description: str = "Commented-out code block - delete it, git remembers"
+    remedy: str = "delete it, git remembers"
     cooldown_turns: int = 2
     min_consecutive_lines: int = 5
 
@@ -1773,6 +1817,7 @@ class WebFetchOverCrawlReducer(ConfidenceReducer):
     name: str = "webfetch_over_crawl"
     delta: int = -1
     description: str = "WebFetch used (prefer crawl4ai)"
+    remedy: str = "use mcp__crawl4ai__crawl instead"
     cooldown_turns: int = 0  # No cooldown - frequency is the point
 
     def should_trigger(
@@ -1792,6 +1837,7 @@ class WebSearchBasicReducer(ConfidenceReducer):
     name: str = "websearch_basic"
     delta: int = -1
     description: str = "WebSearch used (prefer crawl4ai.ddg_search)"
+    remedy: str = "use mcp__crawl4ai__ddg_search instead"
     cooldown_turns: int = 0  # No cooldown - frequency is the point
 
     def should_trigger(
@@ -1812,6 +1858,7 @@ class TodoWriteBypassReducer(ConfidenceReducer):
     name: str = "todowrite_bypass"
     delta: int = -2
     description: str = "TodoWrite used (beads required)"
+    remedy: str = "use bd create/update instead"
     cooldown_turns: int = 0  # No cooldown - every use is a violation
 
     def should_trigger(
@@ -1832,6 +1879,7 @@ class RawSymbolHuntReducer(ConfidenceReducer):
     name: str = "raw_symbol_hunt"
     delta: int = -1
     description: str = "Reading code file without serena (use symbolic tools)"
+    remedy: str = "activate serena, use find_symbol"
     cooldown_turns: int = 0  # No cooldown - frequency is the point
 
     def should_trigger(
@@ -1864,6 +1912,7 @@ class GrepOverSerenaReducer(ConfidenceReducer):
     name: str = "grep_over_serena"
     delta: int = -1
     description: str = "Grep on code (serena has semantic search)"
+    remedy: str = "use serena search_for_pattern instead"
     cooldown_turns: int = 0  # No cooldown - frequency is the point
 
     def should_trigger(
@@ -1897,6 +1946,7 @@ class FileReeditReducer(ConfidenceReducer):
     name: str = "file_reedit"
     delta: int = -2
     description: str = "Re-editing file (get it right first time)"
+    remedy: str = "get it right the first time"
     cooldown_turns: int = 0  # No cooldown - every re-edit counts
 
     # Files exempt from re-edit penalty (iterative refinement expected)
@@ -1951,6 +2001,7 @@ class SequentialFileOpsReducer(ConfidenceReducer):
     name: str = "sequential_file_ops"
     delta: int = -1
     description: str = "Sequential file ops (batch or parallelize)"
+    remedy: str = "parallelize independent file ops"
     cooldown_turns: int = 3
 
     def should_trigger(
@@ -1977,7 +2028,8 @@ class ComplexBashChainReducer(ConfidenceReducer):
 
     name: str = "complex_bash_chain"
     delta: int = -2
-    description: str = "Complex bash chain (3+ pipes/semicolons) - use tmp script"
+    description: str = "Complex bash chain (3+ pipes/semicolons)"
+    remedy: str = "write to ~/.claude/tmp/<task>.py instead"
     cooldown_turns: int = 2
 
     def should_trigger(
@@ -2023,6 +2075,7 @@ class BashDataTransformReducer(ConfidenceReducer):
     name: str = "bash_data_transform"
     delta: int = -3
     description: str = "Complex bash data transform - use Python script"
+    remedy: str = "write Python script to ~/.claude/tmp/"
     cooldown_turns: int = 2
     # Patterns indicating complex transforms (not simple usage)
     complex_patterns: list = field(
@@ -2077,6 +2130,7 @@ class StuckLoopReducer(ConfidenceReducer):
     name: str = "stuck_loop"
     delta: int = -15
     description: str = "Stuck in debug loop - research required"
+    remedy: str = "use WebSearch, PAL debug, or mcp__pal__apilookup"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -2099,6 +2153,7 @@ class NoResearchDebugReducer(ConfidenceReducer):
     name: str = "no_research_debug"
     delta: int = -10
     description: str = "Extended debugging without research"
+    remedy: str = "consult external LLM or search for solutions"
     cooldown_turns: int = 8
 
     def should_trigger(
@@ -2129,6 +2184,7 @@ class MastermindFileDriftReducer(ConfidenceReducer):
     name: str = "mm_drift_files"
     delta: int = -8
     description: str = "5+ files modified outside blueprint touch_set"
+    remedy: str = "stay within blueprint touch_set"
     cooldown_turns: int = 8
 
     def should_trigger(
@@ -2151,6 +2207,7 @@ class MastermindTestDriftReducer(ConfidenceReducer):
     name: str = "mm_drift_tests"
     delta: int = -10
     description: str = "3+ consecutive test failures"
+    remedy: str = "fix failing tests before continuing"
     cooldown_turns: int = 5
 
     def should_trigger(
@@ -2173,6 +2230,7 @@ class MastermindApproachDriftReducer(ConfidenceReducer):
     name: str = "mm_drift_pivot"
     delta: int = -12
     description: str = "Approach diverged from blueprint"
+    remedy: str = "return to original blueprint approach"
     cooldown_turns: int = 10
 
     def should_trigger(

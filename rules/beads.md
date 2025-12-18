@@ -1,6 +1,6 @@
 # Beads Task Tracking
 
-**All task tracking uses beads (`bd`).** The TodoWrite tool is FORBIDDEN.
+**Task tracking:** TodoWrite → use `bd` (beads) instead.
 
 ## Quick Reference
 
@@ -41,7 +41,7 @@ bd sync --from-main        # Pull from main branch
 
 ## ⚠️ Claude Code Bash Limitation
 
-**Never use `$()` subshells or command chaining with bd commands.**
+**`$()` subshells or chaining → separate Bash calls:**
 
 Claude Code's Bash tool escapes special characters (`$`, `()`, `=`) for security, which breaks shell expansion:
 

@@ -49,7 +49,7 @@ This "stasis zone" represents balanced operation where:
 
 **Question format**: Use `AskUserQuestion` with 2-4 structured options. Users can always select "Other" for custom input. This is faster for users than open-ended questions and earns +8 confidence.
 
-**Do NOT spam SUDO** - use the increasers to earn confidence back legitimately.
+**SUDO spam → earn it back:** Use increasers (file_read, research, tests) to recover legitimately.
 
 ## Entity Model Self-Regulation (v4.9)
 
@@ -132,22 +132,22 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `edit-risk` | -1 | Any file edit | 3 turns |
 | `decay` | -1 | Natural drift toward uncertainty | None |
 
-**Bad behavior reducers (BANNED patterns):**
+**Pattern substitutions (penalties with what to do instead):**
 
-| Reducer | Delta | Trigger | Cooldown |
-|---------|-------|---------|----------|
-| `backup_file` | -10 | Creating .bak, .backup, .old files | 1 turn |
-| `version_file` | -10 | Creating _v2, _new, _copy files | 1 turn |
-| `debt_bash` | -10 | --force, --hard, --no-verify commands | 1 turn |
-| `markdown_creation` | -8 | Creating .md files (except memory/docs) | 1 turn |
-| `large_diff` | -8 | Diffs over 400 LOC (risky changes) | 1 turn |
-| `overconfident_completion` | -15 | "100% done", "completely finished" | 3 turns |
-| `deferral` | -12 | "skip for now", "come back later" | 3 turns |
-| `apologetic` | -5 | "sorry", "my mistake", "I apologize" | 2 turns |
-| `sycophancy` | -8 | "you're absolutely right", "great point" | 2 turns |
-| `unresolved_antipattern` | -10 | Mentioning issues without fixing | 3 turns |
-| `hook_block` | -5 | When hooks block actions | 1 turn |
-| `surrender_pivot` | -20 | Abandoning user's goal for "easier" alternative | NO LIMIT |
+| Reducer | Delta | Instead of → Do | Cooldown |
+|---------|-------|-----------------|----------|
+| `backup_file` | -10 | `.bak/.backup/.old` → use git or edit in place | 1 turn |
+| `version_file` | -10 | `_v2/_new/_copy` → use git branches or edit original | 1 turn |
+| `debt_bash` | -10 | `--force/--hard/--no-verify` → solve underlying issue | 1 turn |
+| `markdown_creation` | -8 | new `.md` → inline comments or add to existing docs | 1 turn |
+| `large_diff` | -8 | 400+ LOC change → break into smaller focused changes | 1 turn |
+| `overconfident_completion` | -15 | "100% done" → "Changes complete, verified with [test]" | 3 turns |
+| `deferral` | -12 | "skip for now" → do it now or delete the thought | 3 turns |
+| `apologetic` | -5 | "sorry" → "Fix:" + action | 2 turns |
+| `sycophancy` | -8 | "you're absolutely right" → (just proceed with work) | 2 turns |
+| `unresolved_antipattern` | -10 | mentioning issues → fix them or create bead | 3 turns |
+| `hook_block` | -5 | blocked by hook → fix the issue hook flagged | 1 turn |
+| `surrender_pivot` | -20 | switching to "easier" → ask user first or solve problem | NO LIMIT |
 
 **Code quality reducers (v4.4):**
 
@@ -362,14 +362,14 @@ When a reducer fires incorrectly, this is a **bug in framework DNA**. Do NOT dis
 3. Test that the fix works
 4. ONLY THEN resume original work
 
-**FORBIDDEN:** Running `fp.py` and immediately continuing without fixing root cause.
+**fp.py → fix, not dismiss:** Running `fp.py` then immediately continuing = framework regression.
 
 **As Claude:**
 ```bash
 # Step 1: Record the FP (restores confidence)
 ~/.claude/ops/fp.py <reducer_name> "reason"
 
-# Step 2: STOP and fix (MANDATORY - do not skip)
+# Step 2: Fix the root cause (don't skip)
 # Read the reducer, understand why it fired, fix the logic
 ```
 
