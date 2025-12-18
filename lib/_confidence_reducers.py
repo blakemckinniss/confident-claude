@@ -1330,6 +1330,11 @@ class ObviousNextStepsReducer(ConfidenceReducer):
             r"try\s+it\s+out",
             r"see\s+how\s+it\s+(?:works|performs)",
             r"test\s+the\s+(?:new\s+)?(?:patterns?|changes?|implementation)",
+            # v4.13: Git ops are auto-handled - never suggest as next steps
+            r"commit\s+(?:the\s+)?(?:changes?|v\d|now)",
+            r"push\s+(?:to\s+)?(?:remote|origin|main|master)",
+            r"git\s+(?:add|commit|push)",
+            r"ready\s+(?:to\s+)?commit",
         ]
     )
 
