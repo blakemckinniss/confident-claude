@@ -104,6 +104,7 @@ mutation_cooldown = CooldownManager("mutation")
 toolchain_cooldown = CooldownManager("toolchain")
 tool_awareness_cooldown = CooldownManager("tool_awareness")
 large_file_cooldown = CooldownManager("large_file")
+intuition_cooldown = CooldownManager("intuition")
 
 
 # =============================================================================

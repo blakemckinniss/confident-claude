@@ -18,6 +18,7 @@ from _cooldown import (
     large_file_keyed,
     tool_awareness_keyed,
     crawl4ai_promo_keyed,
+    intuition_cooldown,
 )
 from _patterns import is_scratch_path
 from _config import get_magic_number
@@ -757,5 +758,55 @@ def check_tool_awareness(
         if matches >= config["threshold"]:
             tool_awareness_keyed.reset(tool_name)
             return HookResult.with_context(config["reminder"])
+
+    return HookResult.none()
+
+
+# =============================================================================
+# INTUITION SYSTEM (v4.17) - Soft reflection prompts
+# =============================================================================
+
+# Import intuition system
+try:
+    from _intuition import check_smells, format_intuition_prompt
+
+    INTUITION_AVAILABLE = True
+except ImportError:
+    INTUITION_AVAILABLE = False
+    check_smells = None
+    format_intuition_prompt = None
+
+
+@register_hook("intuition_reflection", "Edit|Write", priority=23)
+def check_intuition(data: dict, state: SessionState, runner_state: dict) -> HookResult:
+    """Inject reflection prompts for code/logic smells (no penalty)."""
+    if not INTUITION_AVAILABLE:
+        return HookResult.none()
+
+    tool_input = data.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
+
+    # Skip scratch/temp files
+    if is_scratch_path(file_path):
+        return HookResult.none()
+
+    # Check cooldown (don't spam)
+    if intuition_cooldown.is_active():
+        return HookResult.none()
+
+    # Build context for smell detection
+    context = {
+        "tool_name": data.get("tool_name", ""),
+        "tool_input": tool_input,
+        "tool_result": data.get("tool_result", {}),
+    }
+
+    # Check for smells
+    triggered = check_smells(context, state)
+
+    if triggered:
+        intuition_cooldown.reset()
+        prompt = format_intuition_prompt(triggered)
+        return HookResult.with_context(prompt)
 
     return HookResult.none()
