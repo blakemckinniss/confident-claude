@@ -1316,11 +1316,27 @@ class TmpScriptRunIncreaser(ConfidenceIncreaser):
             return False
 
         command = context.get("bash_command", "")
-        # Check if running a tmp script
-        if ".claude/tmp/" in command and ".py" in command:
-            return True
-        if "/tmp/.claude-scratch/" in command and ".py" in command:
-            return True
+
+        # Strip heredoc content to avoid false positives on commit messages etc.
+        # Heredocs: << EOF ... EOF or << 'EOF' ... EOF
+        import re
+
+        heredoc_match = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", command)
+        if heredoc_match:
+            # Only check command before heredoc
+            command = command[: heredoc_match.start()]
+
+        # Must be actually running a script (python prefix or direct execution)
+        # Patterns: python script.py, python3 script.py, ./script.py, bash script.sh
+        tmp_patterns = [
+            r"python[3]?\s+[^\s]*\.claude/tmp/[^\s]+\.py",
+            r"python[3]?\s+[^\s]*/tmp/\.claude-scratch/[^\s]+\.py",
+            r"\./[^\s]*\.claude/tmp/[^\s]+\.py",
+            r"~/.claude/tmp/[^\s]+\.py",
+        ]
+        for pattern in tmp_patterns:
+            if re.search(pattern, command):
+                return True
         return False
 
 
