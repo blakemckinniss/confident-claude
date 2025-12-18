@@ -1,8 +1,8 @@
 """
 Bead (task tracking) helpers for hook runners.
 
-Provides caching and utility functions for interacting with beads.
-Uses beads_mcp_wrapper for MCP-based access (with JSONL fallback).
+Provides caching and utility functions for interacting with the `bd` CLI.
+Extracted from pre_tool_use_runner.py to reduce file size and improve reusability.
 
 Integration Synergy:
 - Uses project_context for project-aware operations
@@ -10,7 +10,10 @@ Integration Synergy:
 - Can fire observations to claude-mem
 """
 
+import json
+import os
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,18 +28,6 @@ LIB_DIR = Path(__file__).parent.parent / "lib"
 if str(LIB_DIR) not in sys.path:
     sys.path.insert(0, str(LIB_DIR))
 
-# Import beads wrapper (MCP-based with JSONL fallback)
-try:
-    from beads_mcp_wrapper import (
-        get_open_beads as _wrapper_get_open_beads,
-        get_in_progress_beads as _wrapper_get_in_progress_beads,
-        blocked as _wrapper_blocked,
-        get_backend,
-    )
-    _WRAPPER_AVAILABLE = True
-except ImportError:
-    _WRAPPER_AVAILABLE = False
-
 # Simple per-process cache (hooks run as subprocesses, so this resets each call)
 _BD_CACHE: list | None = None
 
@@ -44,7 +35,7 @@ _BD_CACHE: list | None = None
 def get_open_beads(state: "SessionState") -> list:
     """Get open beads. Caches within single hook invocation.
 
-    Uses beads_mcp_wrapper (MCP with JSONL fallback) instead of bd CLI.
+    Note: Uses temp file + os.system instead of subprocess.run due to bd pipe issues.
     """
     global _BD_CACHE
 
@@ -52,28 +43,41 @@ def get_open_beads(state: "SessionState") -> list:
     if _BD_CACHE is not None:
         return _BD_CACHE
 
+    # Query bd for both open and in_progress beads
+    # Using temp file approach because bd has issues with subprocess pipes
     all_beads = []
     try:
-        if _WRAPPER_AVAILABLE:
-            all_beads = _wrapper_get_open_beads()
-            log_debug("_beads", f"Got {len(all_beads)} beads via {get_backend()}")
-        else:
-            log_debug("_beads", "beads_mcp_wrapper not available")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            tmp_path = f.name
+
+        for status in ["open", "in_progress"]:
+            exit_code = os.system(
+                f'bd list --status={status} --json > "{tmp_path}" 2>/dev/null'
+            )
+            if exit_code == 0:
+                try:
+                    with open(tmp_path) as f:
+                        content = f.read().strip()
+                    if content:
+                        all_beads.extend(json.loads(content))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
         _BD_CACHE = all_beads
     except Exception as e:
-        log_debug("_beads", f"beads query failed: {e}")
+        log_debug("_beads", f"bd list parsing failed: {e}")
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(tmp_path)
+        except Exception as e:
+            log_debug("_beads", f"temp file cleanup failed: {e}")
 
     return all_beads
 
 
 def get_in_progress_beads(state: "SessionState") -> list:
     """Get beads currently being worked on."""
-    if _WRAPPER_AVAILABLE:
-        try:
-            return _wrapper_get_in_progress_beads()
-        except Exception as e:
-            log_debug("_beads", f"get_in_progress failed: {e}")
-    # Fallback
     beads = get_open_beads(state)
     return [b for b in beads if b.get("status") == "in_progress"]
 
@@ -92,14 +96,21 @@ def get_independent_beads(state: "SessionState") -> list:
     if not beads:
         return []
 
-    # Get blocked beads to exclude
+    # Get blocked beads to exclude (using temp file due to bd pipe issues)
     blocked_ids = set()
     try:
-        if _WRAPPER_AVAILABLE:
-            blocked_beads = _wrapper_blocked()
-            blocked_ids = {b.get("id") for b in blocked_beads}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            tmp_path = f.name
+        exit_code = os.system(f'bd blocked --json > "{tmp_path}" 2>/dev/null')
+        if exit_code == 0:
+            with open(tmp_path) as f:
+                content = f.read().strip()
+            if content:
+                blocked = json.loads(content)
+                blocked_ids = {b.get("id") for b in blocked}
+        os.unlink(tmp_path)
     except Exception as e:
-        log_debug("_beads", f"blocked query failed: {e}")
+        log_debug("_beads", f"bd blocked parsing failed: {e}")
 
     # Filter to independent beads
     independent = [b for b in beads if b.get("id") not in blocked_ids]
