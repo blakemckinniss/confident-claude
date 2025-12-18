@@ -196,6 +196,12 @@ def generate_pal_suggestion(
     task_type: str = "general",
     suggested_tool: str = "chat",
     use_capability_routing: bool = True,
+    *,
+    classification: str = "medium",
+    groq_confidence: float = 0.0,
+    reason_codes: list[str] | None = None,
+    needs_research: bool = False,
+    research_topics: list[str] | None = None,
 ) -> str:
     """Generate PAL MCP tool suggestion (hybrid approach).
 
@@ -211,6 +217,11 @@ def generate_pal_suggestion(
         task_type: Detected task type from Groq
         suggested_tool: Suggested PAL tool from Groq
         use_capability_routing: Whether to use capability-aware routing
+        classification: Groq's complexity classification (trivial/medium/complex)
+        groq_confidence: Groq's confidence in classification (0-1)
+        reason_codes: Groq's reason codes explaining classification
+        needs_research: Whether Groq detected research is needed
+        research_topics: Specific topics to research if needed
     """
     # Build continuation hint if available for suggested tool
     continuation_hint = ""
@@ -223,6 +234,36 @@ def generate_pal_suggestion(
             continuation_hint = (
                 f"\n\n📎 **PAL continuations available**: {', '.join(available)}"
             )
+
+    # Build Groq analysis summary - maximize value from classification
+    groq_summary_parts = []
+    if reason_codes:
+        codes_str = ", ".join(reason_codes[:5])  # Limit to 5 for brevity
+        groq_summary_parts.append(f"**Signals**: {codes_str}")
+    if groq_confidence > 0:
+        conf_pct = f"{groq_confidence:.0%}"
+        groq_summary_parts.append(f"**Groq confidence**: {conf_pct}")
+
+    groq_summary = ""
+    if groq_summary_parts:
+        groq_summary = (
+            f"\n\n## Groq Classification Summary\n"
+            f"- **Type**: {task_type} | **Complexity**: {classification}\n"
+            f"- {' | '.join(groq_summary_parts)}\n"
+        )
+
+    # Build research directive if Groq detected need
+    research_directive = ""
+    if needs_research and research_topics:
+        topics_list = "\n".join(f"  - `{topic}`" for topic in research_topics[:4])
+        research_directive = (
+            f"\n\n## 🔍 Research Required (Groq-detected)\n\n"
+            f"Before calling PAL, gather current information on:\n{topics_list}\n\n"
+            f"**Suggested approach**:\n"
+            f"1. `mcp__crawl4ai__ddg_search` for each topic\n"
+            f"2. Include top findings in your PAL prompt\n"
+            f"3. This ensures PAL has current context, not stale training data\n"
+        )
 
     # Try capability-aware routing first
     if use_capability_routing:
@@ -238,7 +279,8 @@ def generate_pal_suggestion(
                 routing_prompt=routing_prompt,
                 user_prompt=prompt,
             )
-            return result + continuation_hint
+            # Prepend research (do first) and append Groq summary + continuation
+            return research_directive + result + groq_summary + continuation_hint
 
     # Fall back to simple PAL tool suggestion
     tool_description = PAL_TOOL_DESCRIPTIONS.get(
@@ -263,7 +305,8 @@ def generate_pal_suggestion(
         models_summary=PAL_MODELS_SUMMARY,
         user_prompt=prompt,
     )
-    return result + continuation_hint
+    # Prepend research (do first) and append Groq summary + continuation
+    return research_directive + result + groq_summary + continuation_hint
 
 
 def generate_planner_mandate(
@@ -554,11 +597,17 @@ def handle_session_start_routing(
                 result["pal_tier"] = 3
 
             # Inject PAL MCP tool suggestion with tier-appropriate framing
+            # Pass ALL Groq intelligence to maximize value from classification
             base_suggestion = generate_pal_suggestion(
                 prompt,
                 state,
                 task_type=router_response.task_type,
                 suggested_tool=router_response.suggested_tool,
+                classification=router_response.classification,
+                groq_confidence=router_response.confidence,
+                reason_codes=router_response.reason_codes,
+                needs_research=router_response.needs_research,
+                research_topics=router_response.research_topics,
             )
 
             # Add tier-specific header
@@ -578,6 +627,19 @@ def handle_session_start_routing(
                 tier_header = ""  # Tier 3: Normal suggestion, no special header
 
             result["inject_context"] = tier_header + base_suggestion
+
+        else:
+            # Trivial task - still inject research directive if detected
+            # Maximizes value from Groq call even when PAL isn't needed
+            if router_response.needs_research and router_response.research_topics:
+                topics = router_response.research_topics[:4]
+                topics_list = "\n".join(f"  - `{t}`" for t in topics)
+                result["inject_context"] = (
+                    f"## 🔍 Research Recommended (Groq-detected)\n\n"
+                    f"This looks straightforward, but current docs may help:\n{topics_list}\n\n"
+                    f"Use `mcp__crawl4ai__ddg_search` if needed.\n"
+                )
+                result["research_only"] = True
 
     else:
         # Dark launch - just log what would happen
