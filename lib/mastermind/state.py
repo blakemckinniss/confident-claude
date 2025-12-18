@@ -46,6 +46,8 @@ class RoutingDecision:
     reason_codes: list[str] = field(default_factory=list)
     timestamp: float = field(default_factory=time.time)
     user_override: str | None = None  # "!" for skip, "^" for force
+    task_type: str = "general"  # debugging, planning, review, architecture, etc.
+    suggested_tool: str = "chat"  # Groq's suggested PAL tool
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from .config import get_config, PAL_MANDATE_LOCK_PATH
-from .state import MastermindState, load_state, save_state
-from .context_packer import pack_for_router
+from .state import MastermindState, RoutingDecision, load_state, save_state
+from .context_packer import pack_for_router, has_in_progress_bead
 from .routing import parse_user_override, make_routing_decision
 from .router_groq import call_groq_router, apply_risk_lexicon
 from .redaction import redact_text
@@ -523,6 +523,16 @@ def handle_session_start_routing(
         result["needs_research"] = router_response.needs_research
         result["research_topics"] = router_response.research_topics or []
 
+        # Save routing decision to state for confidence tracking
+        state.routing_decision = RoutingDecision(
+            classification=router_response.classification,
+            confidence=router_response.confidence,
+            reason_codes=router_response.reason_codes,
+            user_override=override,
+            task_type=router_response.task_type,
+            suggested_tool=router_response.suggested_tool,
+        )
+
         # Apply routing decision
         policy = make_routing_decision(prompt, state.turn_count, router_response)
         result["should_plan"] = policy.should_plan
@@ -559,6 +569,11 @@ def handle_session_start_routing(
                 for code in ["security", "auth", "deploy", "migration", "destructive"]
             )
 
+            # BEAD-AWARE ROUTING: If work is already tracked with an in_progress bead,
+            # soften PAL enforcement by one tier (user is actively working on something)
+            bead_in_progress = has_in_progress_bead()
+            result["has_in_progress_bead"] = bead_in_progress
+
             if confidence is not None:
                 if has_risk_keywords:
                     # Risk lexicon = always hard lock
@@ -578,6 +593,21 @@ def handle_session_start_routing(
                 if is_significant:
                     should_hard_lock = True
                     result["lock_reason"] = "no_confidence_significant"
+
+            # Apply bead-aware tier softening (unless risk lexicon)
+            # If user has an in_progress bead, they're actively tracking work
+            # This earns one tier of trust (Tier 1→2, Tier 2→3)
+            if bead_in_progress and not has_risk_keywords:
+                if should_hard_lock:
+                    # Soften Tier 1 → Tier 2
+                    should_hard_lock = False
+                    should_warn = True
+                    result["bead_softened"] = True
+                    result["warn_reason"] = "bead_softened_from_lock"
+                elif should_warn:
+                    # Soften Tier 2 → Tier 3
+                    should_warn = False
+                    result["bead_softened"] = True
 
             if should_hard_lock:
                 create_pal_mandate_lock(

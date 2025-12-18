@@ -229,6 +229,33 @@ def get_beads_summary(max_items: int = 5) -> str:
     return "[no beads]"
 
 
+def has_in_progress_bead() -> bool:
+    """Check if there's an in_progress bead (active tracked work).
+
+    Used for bead-aware routing - if work is already tracked and in progress,
+    we can adjust PAL routing recommendations.
+    """
+    try:
+        result = subprocess.run(
+            ["bd", "list", "--status=in_progress"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            env={"BEADS_DIR": str(Path.home() / ".beads"), **subprocess.os.environ},
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Check if there are any non-header lines
+            lines = [
+                line
+                for line in result.stdout.strip().split("\n")
+                if line.strip() and not line.startswith("ID")
+            ]
+            return len(lines) > 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return False
+
+
 def get_test_status(cwd: Path) -> str:
     """Get recent test status if available."""
     # Check for common test result files

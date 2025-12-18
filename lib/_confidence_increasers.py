@@ -1439,6 +1439,78 @@ class FrameworkSelfHealIncreaser(ConfidenceIncreaser):
         return any(pattern in file_path for pattern in self.heal_patterns)
 
 
+# =============================================================================
+# MASTERMIND ALIGNMENT INCREASERS (v4.12) - Rewards for following Groq routing
+# =============================================================================
+
+
+@dataclass
+class GroqRoutingFollowedIncreaser(ConfidenceIncreaser):
+    """Triggers when using the PAL tool that Groq suggested.
+
+    Rewards following mastermind's intelligent routing recommendations.
+    This creates positive reinforcement for the Groq→PAL pipeline.
+    """
+
+    name: str = "groq_routing_followed"
+    delta: int = 3
+    description: str = "Used Groq-suggested PAL tool"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if not tool_name.startswith("mcp__pal__"):
+            return False
+
+        # Extract the PAL tool type (e.g., "debug" from "mcp__pal__debug")
+        pal_tool_type = tool_name.replace("mcp__pal__", "")
+
+        # Check if mastermind suggested this tool
+        # Look in session state for Groq's suggestion (via routing_info)
+        routing_info = context.get("routing_info", {})
+        suggested = routing_info.get("suggested_tool", "")
+
+        if suggested and pal_tool_type == suggested:
+            return True
+
+        # Also check state for persisted routing decision
+        groq_suggested = context.get("groq_suggested_tool", "")
+        return groq_suggested and pal_tool_type == groq_suggested
+
+
+@dataclass
+class BeadAwareRoutingIncreaser(ConfidenceIncreaser):
+    """Triggers when working on a bead that was considered in routing.
+
+    Rewards alignment between beads and mastermind routing - working on
+    tracked tasks that were factored into the routing decision.
+    """
+
+    name: str = "bead_aware_routing"
+    delta: int = 2
+    description: str = "Bead context used in routing"
+    requires_approval: bool = False
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        # Check if there's an in_progress bead AND routing happened
+        has_bead = context.get("has_in_progress_bead", False)
+        was_routed = context.get("was_routed", False)
+
+        return has_bead and was_routed
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1504,4 +1576,7 @@ INCREASERS: list[ConfidenceIncreaser] = [
     TmpScriptCreatedIncreaser(),
     TmpScriptRunIncreaser(),
     BackgroundScriptIncreaser(),
+    # Mastermind alignment increasers (v4.12)
+    GroqRoutingFollowedIncreaser(),
+    BeadAwareRoutingIncreaser(),
 ]
