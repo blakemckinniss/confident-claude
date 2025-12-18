@@ -534,6 +534,27 @@ def _has_sudo_bypass(transcript_path: str) -> bool:
         return False
 
 
+def _extract_next_steps(transcript_path: str) -> str | None:
+    """Extract next steps section from transcript if present.
+
+    Looks for markdown headings like "## Next Steps" or "### Next Steps"
+    and extracts the content that follows.
+    """
+    content = _read_tail_content(transcript_path, 20000)
+    if not content:
+        return None
+
+    # Find next steps heading and extract content
+    match = re.search(
+        r"#{1,3}\s*next\s+steps[:\s]*\n(.*?)(?=\n#{1,3}\s|\Z)",
+        content,
+        re.IGNORECASE | re.DOTALL
+    )
+    if match:
+        return match.group(1).strip()[:500]  # Limit to 500 chars
+    return None
+
+
 @register_hook("session_close_protocol", priority=5)
 def check_session_close_protocol(data: dict, state: SessionState) -> StopHookResult:
     """Enforce session close protocol: bd sync + next steps before exit.
@@ -568,11 +589,15 @@ def check_session_close_protocol(data: dict, state: SessionState) -> StopHookRes
     has_next_steps = bool(getattr(state, "handoff_next_steps", None))
     has_goal = bool(getattr(state, "original_goal", None))
 
+    # Try to populate handoff_next_steps from transcript if not set
+    if not has_next_steps:
+        extracted = _extract_next_steps(transcript_path)
+        if extracted:
+            state.handoff_next_steps = extracted
+            has_next_steps = True
+
     if not has_next_steps and has_goal:
-        # Fallback: check transcript for next steps heading
-        content = _read_tail_content(transcript_path, 15000)
-        if not content or not re.search(r"#{1,3}\s*next\s+steps", content, re.IGNORECASE):
-            violations.append("next steps not documented")
+        violations.append("next steps not documented")
 
     if violations:
         return StopHookResult.block(
