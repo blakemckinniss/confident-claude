@@ -26,7 +26,48 @@
       "mcp__*"
     ]
   },
-  "hooks": {},
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/root/.claude-mem/hooks/session-start.js"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/root/.claude-mem/hooks/user-prompt-submit.js"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/root/.claude-mem/hooks/post-tool-use.js"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/root/.claude-mem/hooks/stop.js"
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "claude-mem@thedotmack": true,
     "repomix-mcp@repomix": true,
