@@ -165,6 +165,7 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
 
     Resets streak counter on any reducer firing (v4.6).
     Also applies tool debt penalties (v4.14).
+    Tracks repair_debt for PROCESS-class reducers (v4.16).
 
     Returns:
         List of (reducer_name, delta, description) tuples
@@ -190,6 +191,20 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
             # Reset streak on failure (v4.6)
             update_streak(state, is_success=False)
 
+            # Track repair debt for PROCESS-class reducers (v4.16)
+            penalty_class = getattr(reducer, "penalty_class", "PROCESS")
+            max_recovery = getattr(reducer, "max_recovery_fraction", 0.5)
+            if penalty_class == "PROCESS" and max_recovery > 0:
+                if not hasattr(state, "repair_debt") or state.repair_debt is None:
+                    state.repair_debt = {}
+                state.repair_debt[reducer.name] = {
+                    "amount": abs(adjusted_delta),
+                    "turn": state.turn_count,
+                    "evidence_tier": 0,
+                    "recovered": 0,
+                    "max_recovery_fraction": max_recovery,
+                }
+
     # Tool debt penalties (v4.14) - special handling for variable delta
     should_trigger, penalty, reason = TOOL_DEBT_REDUCER.should_trigger(
         context, state, -999  # No cooldown for debt
@@ -209,6 +224,7 @@ def apply_increasers(
 
     Also handles Trust Debt decay: test_pass and build_success clear debt.
     Applies streak multiplier for consecutive successes (v4.6).
+    Applies repair debt recovery for PROCESS-class penalties (v4.16).
 
     Returns:
         List of (increaser_name, delta, description, requires_approval) tuples
@@ -262,6 +278,18 @@ def apply_increasers(
                     if current_debt > 0:
                         state.reputation_debt = current_debt - 1
 
+                # Repair debt recovery (v4.16) - evidence-based recovery
+                repair_recovery = calculate_repair_recovery(state, increaser.name)
+                if repair_recovery > 0:
+                    triggered.append(
+                        (
+                            "repair_recovery",
+                            repair_recovery,
+                            f"Repair debt recovered ({increaser.name})",
+                            False,
+                        )
+                    )
+
     # Tool debt recovery (v4.14) - special handling for variable delta
     should_recover, recovery = TOOL_DEBT_RECOVERY_INCREASER.should_trigger(
         context, state, -999  # No cooldown
@@ -276,6 +304,70 @@ def apply_increasers(
             context["_tool_debt_info"] = debt_info
 
     return triggered
+
+
+# Evidence tier multipliers for repair debt recovery (v4.16)
+EVIDENCE_TIER_MULTIPLIERS = {
+    0: 0.0,   # claim only - no recovery
+    1: 0.05,  # user stops objecting
+    2: 0.15,  # lint/build passes
+    3: 0.35,  # tests pass
+    4: 0.50,  # user confirms + tests
+}
+
+# Map increaser names to evidence tiers
+INCREASER_EVIDENCE_TIERS = {
+    "user_ok": 1,
+    "lint_pass": 2,
+    "build_success": 2,
+    "test_pass": 3,
+    "first_attempt_success": 3,
+    "trust_regained": 4,  # User explicitly says CONFIDENCE_BOOST_APPROVED
+}
+
+
+def calculate_repair_recovery(state: "SessionState", increaser_name: str) -> int:
+    """
+    Calculate repair debt recovery based on evidence tier.
+
+    Returns confidence points to recover (already factored against max_recovery_fraction).
+    """
+    if not hasattr(state, "repair_debt") or not state.repair_debt:
+        return 0
+
+    tier = INCREASER_EVIDENCE_TIERS.get(increaser_name, 0)
+    if tier == 0:
+        return 0
+
+    multiplier = EVIDENCE_TIER_MULTIPLIERS.get(tier, 0)
+    if multiplier == 0:
+        return 0
+
+    total_recovery = 0
+
+    for reducer_name, debt_info in list(state.repair_debt.items()):
+        amount = debt_info.get("amount", 0)
+        max_frac = debt_info.get("max_recovery_fraction", 0.5)
+        recovered = debt_info.get("recovered", 0)
+
+        # Calculate maximum recoverable for this reducer
+        max_recoverable = int(amount * max_frac)
+        remaining = max_recoverable - recovered
+
+        if remaining <= 0:
+            continue
+
+        # Apply tier multiplier to remaining recoverable
+        recovery = int(remaining * multiplier)
+        if recovery > 0:
+            # Update debt tracking
+            state.repair_debt[reducer_name]["recovered"] = recovered + recovery
+            state.repair_debt[reducer_name]["evidence_tier"] = max(
+                debt_info.get("evidence_tier", 0), tier
+            )
+            total_recovery += recovery
+
+    return total_recovery
 
 
 # =============================================================================

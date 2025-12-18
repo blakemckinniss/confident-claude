@@ -23,6 +23,8 @@ class ConfidenceReducer:
     delta: int  # Negative value
     description: str
     cooldown_turns: int = 3  # Minimum turns between triggers
+    penalty_class: str = "PROCESS"  # "PROCESS" (recoverable) or "INTEGRITY" (not recoverable)
+    max_recovery_fraction: float = 0.5  # Max % of penalty that can be recovered (0.0 for INTEGRITY)
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -528,6 +530,8 @@ class OverconfidentCompletionReducer(ConfidenceReducer):
     delta: int = -15
     description: str = "Claimed '100% done' or similar overconfidence"
     cooldown_turns: int = 3
+    penalty_class: str = "INTEGRITY"
+    max_recovery_fraction: float = 0.0
     patterns: list = field(
         default_factory=lambda: [
             r"\b100%\s*(done|complete|finished|ready)\b",
@@ -596,6 +600,8 @@ class ApologeticReducer(ConfidenceReducer):
     delta: int = -5
     description: str = "Used apologetic language (banned)"
     cooldown_turns: int = 2
+    penalty_class: str = "INTEGRITY"
+    max_recovery_fraction: float = 0.0
     patterns: list = field(
         default_factory=lambda: [
             r"\b(i'?m\s+)?sorry\b",
@@ -628,6 +634,8 @@ class SycophancyReducer(ConfidenceReducer):
     delta: int = -8
     description: str = "Sycophantic agreement ('you're absolutely right')"
     cooldown_turns: int = 2
+    penalty_class: str = "INTEGRITY"
+    max_recovery_fraction: float = 0.0
     patterns: list = field(
         default_factory=lambda: [
             r"\byou'?re\s+(absolutely|totally|completely|entirely)\s+right\b",

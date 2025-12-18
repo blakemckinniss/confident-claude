@@ -225,3 +225,12 @@ class SessionState:
         "clarification": {"turns_without": 0, "last_used_turn": 0},
         "tech_debt_cleanup": {"turns_without": 0, "last_used_turn": 0},
     })
+
+    # ==========================================================================
+    # REPAIR DEBT TRACKING (v4.16) - Redemption recovery for process penalties
+    # ==========================================================================
+
+    # Tracks recoverable penalty debt from PROCESS-class reducers
+    # Format: {reducer_name: {amount: int, turn: int, evidence_tier: int, recovered: int}}
+    # Evidence tiers: 0=claim, 1=user_accepts, 2=lint_pass, 3=test_pass, 4=user_confirms+test
+    repair_debt: dict = field(default_factory=dict)
