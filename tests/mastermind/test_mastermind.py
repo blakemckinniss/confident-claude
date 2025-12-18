@@ -15,11 +15,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import pytest
 from lib.mastermind.config import load_config, MastermindConfig, clear_cache
-from lib.mastermind.state import MastermindState, Blueprint, RoutingDecision
+from lib.mastermind.state import MastermindState
 from lib.mastermind.routing import parse_user_override, make_routing_decision
 from lib.mastermind.router_groq import RouterResponse, apply_risk_lexicon
 from lib.mastermind.context_packer import pack_for_router, pack_for_planner
-from lib.mastermind.drift import evaluate_drift, should_escalate, DriftSignal
+from lib.mastermind.drift import evaluate_drift
 from lib.mastermind.redaction import redact_text, is_safe_to_send
 
 
@@ -31,7 +31,7 @@ class TestConfig:
         config = load_config(Path("/nonexistent/path.json"))
         assert config.rollout_phase == 0
         assert config.router.enabled is False
-        assert config.planner.model == "openai/gpt-5.2"
+        assert config.planner.model == "auto"  # PAL auto-selects model
 
     def test_phase_name(self):
         config = MastermindConfig(rollout_phase=0)
