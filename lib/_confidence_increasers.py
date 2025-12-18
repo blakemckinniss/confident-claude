@@ -379,13 +379,16 @@ class SearchToolIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class ProductiveBashIncreaser(ConfidenceIncreaser):
-    """Triggers on productive, non-risky bash commands."""
+    """Triggers on productive, non-risky bash commands.
+
+    v4.13: Increased cooldown to prevent pwd/ls spam gaming.
+    """
 
     name: str = "productive_bash"
     delta: int = 1
     description: str = "Ran productive bash command"
     requires_approval: bool = False
-    cooldown_turns: int = 1
+    cooldown_turns: int = 3  # v4.13: Prevent gaming via inspection spam
     # Non-risky productive commands
     productive_patterns: list = field(
         default_factory=lambda: [
@@ -467,13 +470,14 @@ class ParallelToolsIncreaser(ConfidenceIncreaser):
     """Triggers when using multiple tools in parallel (same message).
 
     Efficient use of parallelism saves time and context.
+    v4.13: Reduced delta 3→2, added cooldown to prevent performative parallelism.
     """
 
     name: str = "parallel_tools"
-    delta: int = 3
+    delta: int = 2  # v4.13: Reduced from 3 - prevent performative parallelism
     description: str = "Used parallel tool calls efficiently"
     requires_approval: bool = False
-    cooldown_turns: int = 1
+    cooldown_turns: int = 2  # v4.13: Prevent gaming via trivial parallel calls
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -1151,21 +1155,27 @@ class BeadsTouchIncreaser(ConfidenceIncreaser):
     """Triggers when using beads commands.
 
     Beads is the task tracking system - using it shows good workflow.
+    v4.13: Added cooldown to prevent gaming via `bd list` spam.
     """
 
     name: str = "beads_touch"
     delta: int = 1
     description: str = "Used beads task tracking"
     requires_approval: bool = False
-    cooldown_turns: int = 0  # No cooldown - frequency is the point
+    cooldown_turns: int = 3  # v4.13: Prevent gaming via bd spam
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
         tool_name = context.get("tool_name", "")
         if tool_name != "Bash":
             return False
         command = context.get("bash_command", "")
+        # Only reward substantive bd commands, not just listing
+        if command.strip().startswith("bd list"):
+            return False  # Read-only listing is not actionable
         return command.strip().startswith("bd ")
 
 

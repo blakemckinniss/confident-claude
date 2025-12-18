@@ -334,3 +334,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-17 23:24
 - [abandoned_stubs] ⚠️ ABANDONED WORK: bootstrap_olive_garden.py contain stubs/TODOs
+
+### 2025-12-17 23:47
+- [abandoned_stubs] ⚠️ ABANDONED WORK: bootstrap_olive_garden.py, bootstrap_longhorn.py, bootstrap_cheddars.py, test_scrape.py, test_rag_retrieval.py contain stubs/TODOs
