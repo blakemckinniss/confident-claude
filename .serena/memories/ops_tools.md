@@ -2,11 +2,11 @@
 
 ## Overview
 
-Ops tools are standalone Python scripts in `~/.claude/ops/` that are invoked by slash commands. They provide code quality, debugging, external LLM integration, and workflow automation.
+Ops tools are standalone Python scripts in `~/.claude/ops/` invoked by slash commands. They provide code quality, debugging, external LLM integration, and workflow automation.
 
 ## Location
-- **Scripts**: `~/.claude/ops/*.py` (36 tools)
-- **Commands**: `~/.claude/commands/*.md` (65 commands)
+- **Scripts**: `~/.claude/ops/*.py` (51 tools)
+- **Commands**: `~/.claude/commands/*.md` (75 commands)
 - **Library**: `~/.claude/lib/core.py` (shared utilities)
 
 ## Script Pattern
@@ -18,7 +18,6 @@ Ops tools are standalone Python scripts in `~/.claude/ops/` that are invoked by 
 import sys
 from pathlib import Path
 
-# Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 from core import setup_script, finalize
@@ -28,19 +27,16 @@ def main():
         description="Tool description",
         add_args=lambda p: p.add_argument("target", help="Target file")
     )
-    
-    # Implementation
     result = do_work(args.target)
-    
     finalize(success=True, message=result)
 
 if __name__ == "__main__":
     main()
 ```
 
-## Complete Tool Index (36 tools)
+## Complete Tool Index (51 tools)
 
-### Code Quality & Analysis
+### Code Quality & Analysis (5)
 | Tool | Purpose |
 |------|---------|
 | `audit.py` | Security + complexity analysis (ruff, bandit, radon) |
@@ -49,7 +45,7 @@ if __name__ == "__main__":
 | `gaps.py` | Find implementation gaps |
 | `xray.py` | AST structural code search |
 
-### External LLM Integration
+### External LLM Integration (7)
 | Tool | Purpose |
 |------|---------|
 | `oracle.py` | External consultation (OpenRouter) |
@@ -60,7 +56,7 @@ if __name__ == "__main__":
 | `groq.py` | Fast inference (Groq API) |
 | `swarm.py` | Massive parallel oracle reasoning |
 
-### Workflow & Task Management
+### Workflow & Task Management (6)
 | Tool | Purpose |
 |------|---------|
 | `upkeep.py` | Pre-commit checks |
@@ -70,36 +66,37 @@ if __name__ == "__main__":
 | `detour.py` | Blocking issue stack |
 | `timekeeper.py` | Time tracking utilities |
 
-### Memory & Context
+### Memory & Context (3)
 | Tool | Purpose |
 |------|---------|
 | `remember.py` | Persistent memory (lessons, decisions) |
 | `spark.py` | Associative recall |
 | `compress_session.py` | Convert session JSONL to token-efficient format |
 
-### System & Browser
+### System & Browser (6)
 | Tool | Purpose |
 |------|---------|
 | `sysinfo.py` | System health check |
 | `housekeeping.py` | Disk cleanup |
 | `inventory.py` | Available binaries scan |
-| `bdg.py` | Chrome DevTools Protocol CLI |
-| `playwright.py` | Browser automation setup |
+| `health.py` | Quick system health status |
 | `firecrawl.py` | Web scraping (Firecrawl API) |
+| `probe.py` | Runtime API introspection |
 
-### Hook Management
+### Hook Management (3)
 | Tool | Purpose |
 |------|---------|
 | `hooks.py` | Hook testing and management |
 | `audit_hooks.py` | Audit hooks against Claude Code spec |
 | `test_hooks.py` | Test hook configurations |
 
-### Confidence System
+### Confidence System (2)
 | Tool | Purpose |
 |------|---------|
 | `fp.py` | Record false positives for reducers |
+| `fp_analyze.py` | Analyze false positive patterns |
 
-### Integration Synergy
+### Integration Synergy (10)
 | Tool | Purpose |
 |------|---------|
 | `bd_bridge.py` | Beads→claude-mem observation bridge |
@@ -108,34 +105,31 @@ if __name__ == "__main__":
 | `bead_lifecycle_daemon.py` | Background orphan recovery (120min timeout) |
 | `bead_orphan_check.py` | Manual multi-project orphan diagnostic |
 | `serena.py` | Serena MCP workflow hints |
+| `serena_memory_lifecycle.py` | Serena memory management |
 | `unified_context.py` | Aggregates all context sources |
 | `integration_install.py` | One-shot installer (--check/--install) |
 | `new_project.py` | Project scaffolding with full integration |
 
-### Code Review & Automation
+### Mastermind (3)
+| Tool | Purpose |
+|------|---------|
+| `mastermind_rollout.py` | Phase management CLI |
+| `mastermind_cleanup.py` | State cleanup tool |
+| `capability_inventory.py` | Regenerate capability index |
+
+### Code Review & Automation (4)
 | Tool | Purpose |
 |------|---------|
 | `coderabbit.py` | AI code review integration |
 | `orchestrate.py` | Claude API code_execution for batch tasks |
 | `capabilities.py` | Regenerate hook/ops functionality index |
 | `recruiter.py` | Agent recruitment utilities |
-| `probe.py` | Runtime API introspection |
 
-## Core Library (`lib/core.py`)
-
-```python
-def get_project_root() -> Path:
-    """Find .claude directory by walking up."""
-
-def setup_script(description: str, add_args: Callable = None) -> argparse.Namespace:
-    """Standard argument parsing with --debug, --dry-run."""
-
-def finalize(success: bool, message: str):
-    """Exit with proper code and message."""
-
-def safe_execute(cmd: list[str]) -> tuple[int, str, str]:
-    """Run subprocess safely."""
-```
+### Utilities (2)
+| Tool | Purpose |
+|------|---------|
+| `patch_claude_mem_banner.py` | Patch claude-mem banner |
+| `state_migrate.py` | Migrate session state format |
 
 ## Production Requirements
 
@@ -143,4 +137,6 @@ Writing to `~/.claude/ops/` requires:
 1. `audit.py` pass (ruff + bandit + radon)
 2. `void.py` pass (completeness check)
 
-This is enforced by the `production_gate` hook in `pre_tool_use_runner.py`.
+Enforced by the `production_gate` hook in `pre_tool_use_runner.py`.
+
+*Updated: 2025-12-17*

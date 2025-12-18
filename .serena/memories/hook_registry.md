@@ -4,15 +4,25 @@
 
 Hooks are registered via decorator and stored in the `HOOKS` list. The runner executes them in priority order, checking matchers against the tool name.
 
+## Current Hook Counts
+
+| Runner | Registered Hooks | Purpose |
+|--------|------------------|---------|
+| `pre_tool_use_runner.py` | 47 | Permission gates, blocking checks |
+| `post_tool_use_runner.py` | 1 | Confidence tracking (bulk logic inline) |
+| `user_prompt_submit_runner.py` | 1 | Context injection via _prompt_* modules |
+| `stop_runner.py` | 16 | Completion gate, cleanup |
+| **Total** | **65** | |
+
 ## File Structure
 
 ### Runners (4 main entry points)
-| File | Event | Purpose |
-|------|-------|---------|
-| `post_tool_use_runner.py` | PostToolUse | 1 hook (confidence tracking), bulk logic moved to inline |
-| `pre_tool_use_runner.py` | PreToolUse | 43 hooks for permission gates, blocking checks |
-| `user_prompt_submit_runner.py` | UserPromptSubmit | 1 hook, context injection via _prompt_* modules |
-| `stop_runner.py` | Stop | 14 hooks for completion gate, cleanup |
+| File | Event | Hooks |
+|------|-------|-------|
+| `pre_tool_use_runner.py` | PreToolUse | 47 gates |
+| `post_tool_use_runner.py` | PostToolUse | 1 + inline logic |
+| `user_prompt_submit_runner.py` | UserPromptSubmit | 1 + _prompt_* modules |
+| `stop_runner.py` | Stop | 16 checks |
 
 ### Additional Runners
 | File | Event | Purpose |
@@ -23,12 +33,7 @@ Hooks are registered via decorator and stored in the `HOOKS` list. The runner ex
 | `pre_compact.py` | PreCompact | Pre-compaction processing |
 | `statusline.py` | Statusline | Status bar rendering |
 
-### Standalone Hook Files
-| File | Purpose |
-|------|---------|
-| `dependency_check.py` | Dependency validation (API keys, packages, binaries) |
-
-### Helper Modules (Private - 21 files)
+### Helper Modules (Private)
 | File | Purpose |
 |------|---------|
 | `_hook_result.py` | HookResult class (approve/deny/none) |
@@ -52,6 +57,7 @@ Hooks are registered via decorator and stored in the `HOOKS` list. The runner ex
 | `_prompt_suggestions.py` | Contextual suggestions |
 | `_prompt_gating.py` | Prompt-level gating |
 | `_prompt_context.py` | Context building for prompts |
+| `_prompt_mastermind.py` | Mastermind integration (priority 6) |
 | `py` | Python wrapper script (auto-detects venv) |
 
 ## Registration Pattern
@@ -65,9 +71,6 @@ def register_hook(name: str, matcher: Optional[str], priority: int = 50):
 
     Hooks can be disabled via environment variable:
         CLAUDE_HOOK_DISABLE_<NAME>=1
-
-    Example:
-        CLAUDE_HOOK_DISABLE_ASSUMPTION_CHECK=1 claude
     """
     def decorator(func: Callable[[dict, SessionState, dict], HookResult]):
         env_key = f"CLAUDE_HOOK_DISABLE_{name.upper()}"
@@ -84,9 +87,6 @@ def register_hook(name: str, matcher: Optional[str], priority: int = 50):
 @register_hook("hook_name", "ToolPattern|OtherTool", priority=50)
 def check_hook_name(data: dict, state: SessionState, config: dict) -> HookResult:
     """Docstring becomes hook description."""
-    # data: Tool input/output from Claude Code
-    # state: SessionState instance
-    # config: Loaded from _config.py
     return HookResult.approve()
 ```
 
@@ -110,7 +110,6 @@ def check_hook_name(data: dict, state: SessionState, config: dict) -> HookResult
 ## HookResult API
 
 ```python
-# hooks/_hook_result.py
 class HookResult:
     @classmethod
     def approve(cls, message: str = "") -> HookResult:
@@ -138,10 +137,4 @@ CLAUDE_HOOK_DISABLE_CODE_QUALITY=1 claude
 "SUDO" in user message → data["_sudo_bypass"] = True
 ```
 
-## Adding a New Hook
-
-1. Choose appropriate runner file
-2. Add function with `@register_hook` decorator
-3. Assign priority in correct range
-4. Return `HookResult.approve()`, `.deny()`, or `.none()`
-5. Update runner docstring with hook documentation
+*Updated: 2025-12-17*

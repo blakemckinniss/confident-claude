@@ -1,14 +1,21 @@
 # Memory Index
 
-**Navigation guide for 19 Serena memories.** Read this first to identify which memories are relevant to your task.
+**Navigation guide for Serena memories.** Read this first to identify which memories are relevant.
+
+## Memory Categories
+
+| Category | Count | Purpose |
+|----------|-------|---------|
+| **Core structural** | ~15 | Architecture, tools, hooks - read these |
+| **Session logs** | ~130 | Ephemeral session_* files - auto-generated, rarely need |
 
 ## Quick Reference
 
-| Memory | Tokens | When to Read |
-|--------|--------|--------------|
-| `project_overview` | ~600 | **START HERE** - First memory for any task |
-| `codebase_structure` | ~1200 | Need to find files or understand layout |
-| `memory_index` | ~800 | You're reading it - navigation guide |
+| Memory | When to Read |
+|--------|--------------|
+| `project_overview` | **START HERE** - First memory for any task |
+| `codebase_structure` | Need to find files or understand layout |
+| `memory_index` | You're reading it - navigation guide |
 
 ---
 
@@ -17,96 +24,99 @@
 ### 🔧 "I need to modify hooks"
 1. `hook_registry` - Registration patterns, priority ranges, HookResult API
 2. Pick runner-specific memory:
-   - `pre_tool_use_hooks` - 38 gate hooks (blocking)
-   - `post_tool_use_hooks` - 23 tracking hooks (observing)
-   - `stop_hooks` - 12 completion hooks
-   - `prompt_suggestions` - 18 suggestion functions
+   - `pre_tool_use_hooks` - 47 gate hooks (blocking)
+   - `post_tool_use_hooks` - Tracking hooks (observing)
+   - `stop_hooks` - 16 completion hooks
+   - `prompt_suggestions` - Suggestion functions
    - `session_runners` - Lifecycle hooks (init, cleanup, compact)
 
 ### 📊 "I need to understand confidence"
 1. `confidence_system` - Overview, zones, gates
 2. Then specific:
-   - `confidence_reducers` - 20+ penalty triggers
-   - `confidence_increasers` - 20+ reward triggers
+   - `confidence_reducers` - Penalty triggers
+   - `confidence_increasers` - Reward triggers
 
 ### 📦 "I need to add/modify ops tools"
-1. `ops_tools` - Tool index, script pattern, categories
-2. `slash_commands` - Command file format, complete index
+1. `ops_tools` - 51 tools, script pattern, categories
+2. `slash_commands` - 75 commands, file format
 
 ### 🔍 "I need to find something"
-1. `codebase_structure` - Directory layout, key files
-2. `lib_modules` - Library module index (36 files)
+1. `codebase_structure` - Directory layout
+2. `lib_modules` - 62 library modules
 
 ### 📋 "I need to track tasks"
 1. `beads_system` - bd CLI commands, workflow
 
 ### ✅ "I need to complete work properly"
 1. `task_completion` - Checklist, quality gates
-2. `style_conventions` - Naming, patterns, formats
+2. `style_conventions` - Naming, patterns
+
+### 🤖 "I need to understand mastermind"
+1. `project_overview` - Architecture summary
+2. Check `~/.claude/rules/mastermind.md` for full reference
 
 ---
 
-## Memory Details
+## Core Memory Details
 
-### Core (Read First)
-
-| Memory | Purpose | Read When |
-|--------|---------|-----------|
-| `project_overview` | Tech stack, architecture summary, key deps | Starting any task |
-| `codebase_structure` | Full directory layout with file counts | Looking for files |
+### Architecture & Overview
+| Memory | Purpose |
+|--------|---------|
+| `project_overview` | Tech stack, 65 hooks, 51 ops, 75 commands |
+| `codebase_structure` | Full directory layout |
 
 ### Hook System
-
-| Memory | Purpose | Read When |
-|--------|---------|-----------|
-| `hook_registry` | Registration API, priority ranges, bypass | Adding/modifying any hook |
-| `pre_tool_use_hooks` | 38 gates (confidence, quality, security) | Debugging blocked actions |
-| `post_tool_use_hooks` | 23 trackers (state, quality, velocity) | Understanding context injection |
-| `stop_hooks` | 12 completion checks (completion_gate) | Debugging "can't complete" |
-| `prompt_suggestions` | 18 suggestion functions | Modifying prompt injection |
-| `session_runners` | Init, cleanup, compact, subagent, status | Lifecycle/state issues |
+| Memory | Purpose |
+|--------|---------|
+| `hook_registry` | Registration API, 65 total hooks |
+| `pre_tool_use_hooks` | 47 gates (confidence, quality, security) |
+| `post_tool_use_hooks` | Tracking (state, quality, velocity) |
+| `stop_hooks` | 16 completion checks |
+| `prompt_suggestions` | Prompt injection |
+| `session_runners` | Init, cleanup, compact, subagent, status |
 
 ### Confidence System
-
-| Memory | Purpose | Read When |
-|--------|---------|-----------|
-| `confidence_system` | Zones, gates, overall mechanics | Understanding confidence behavior |
-| `confidence_reducers` | All penalty patterns and triggers | Debugging confidence drops |
-| `confidence_increasers` | All reward patterns and triggers | Understanding confidence gains |
+| Memory | Purpose |
+|--------|---------|
+| `confidence_system` | Zones, gates, mechanics |
+| `confidence_reducers` | Penalty patterns |
+| `confidence_increasers` | Reward patterns |
 
 ### Tools & Commands
-
-| Memory | Purpose | Read When |
-|--------|---------|-----------|
-| `ops_tools` | 36 ops scripts with categories | Adding ops tool |
-| `slash_commands` | 66 commands with format | Adding slash command |
+| Memory | Purpose |
+|--------|---------|
+| `ops_tools` | 51 ops scripts |
+| `slash_commands` | 75 commands |
 
 ### Library
-
-| Memory | Purpose | Read When |
-|--------|---------|-----------|
-| `lib_modules` | 36 lib files, modular structure | Importing from lib/ |
-| `session_state` | SessionState fields, functions | Working with state |
+| Memory | Purpose |
+|--------|---------|
+| `lib_modules` | 62 lib files |
+| `session_state` | SessionState fields |
 
 ### Workflow
-
-| Memory | Purpose | Read When |
-|--------|---------|-----------|
-| `beads_system` | Task tracking with bd CLI | Managing tasks |
-| `task_completion` | Quality checklist | Before claiming "done" |
-| `style_conventions` | Naming, patterns | Writing new code |
-| `suggested_commands` | Common bash/tool invocations | Quick reference |
+| Memory | Purpose |
+|--------|---------|
+| `beads_system` | Task tracking |
+| `task_completion` | Quality checklist |
+| `style_conventions` | Naming patterns |
+| `integration_synergy` | Unified system architecture |
 
 ---
 
-## Memory Sizes (Approximate)
+## Session Memories (~130 files)
 
-| Size | Memories |
-|------|----------|
-| Small (<500 tokens) | style_conventions, suggested_commands, task_completion |
-| Medium (500-1000) | project_overview, beads_system, confidence_system |
-| Large (1000-1500) | codebase_structure, lib_modules, hook_registry |
-| XL (1500+) | pre_tool_use_hooks, post_tool_use_hooks, slash_commands |
+Session memories (`session_2025-*`) are **auto-generated ephemeral logs**. They capture:
+- Work done in specific sessions
+- Decisions made
+- Problems encountered
+
+**When to read them:**
+- Investigating what happened in a past session
+- Finding context for a specific date/time
+- Never need to read them for normal development
+
+**Pruning:** Run `serena_memory_lifecycle.py` to clean old sessions.
 
 ---
 
@@ -137,17 +147,19 @@ What are you doing?
 │  └─ READ: beads_system
 │
 └─ General orientation?
-   └─ READ: project_overview, codebase_structure
+   └─ READ: project_overview
 ```
 
 ---
 
 ## Anti-Patterns
 
-❌ **Don't read all memories** - Context waste, most won't be relevant
-❌ **Don't skip project_overview** - Contains critical architecture context
-❌ **Don't read reducer/increaser memories without confidence_system** - Need context first
+❌ **Don't read all memories** - Context waste
+❌ **Don't read session_* memories** - Unless investigating specific past session
+❌ **Don't skip project_overview** - Critical architecture context
 
-✅ **Do use this index** - Read 1-3 targeted memories instead of guessing
-✅ **Do start with project_overview** - Best ROI for initial context
-✅ **Do read hook_registry before any hook work** - Common API/patterns
+✅ **Do use this index** - Read 1-3 targeted memories
+✅ **Do start with project_overview** - Best ROI
+✅ **Do read hook_registry before hook work** - Common API
+
+*Updated: 2025-12-17*
