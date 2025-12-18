@@ -35,6 +35,9 @@ RETENTION_DAYS = {
     "todos": 30,
 }
 
+# Mastermind state files cleanup (hours, not days - these accumulate fast)
+MASTERMIND_STATE_MAX_HOURS = 24
+
 
 def get_dir_size(path: Path) -> int:
     """Get total size of directory in bytes."""
@@ -127,11 +130,75 @@ def show_status():
             if expired:
                 status = f" ({len(expired)} expired, {format_size(expired_size)} reclaimable)"
 
-            print(f"{dirname:20} {format_size(size):>10}  ({count} items, {max_days}d retention){status}")
+            print(
+                f"{dirname:20} {format_size(size):>10}  ({count} items, {max_days}d retention){status}"
+            )
         else:
             print(f"{dirname:20} {'N/A':>10}  (not found)")
 
     print(f"\n{'TOTAL':20} {format_size(total):>10}")
+
+
+def cleanup_mastermind_states(execute: bool = False) -> tuple[int, int]:
+    """Clean up old mastermind session state files.
+
+    Returns (count, bytes) of files deleted/reclaimable.
+    """
+    state_dir = CLAUDE_DIR / "tmp"
+    pattern = "mastermind_*.json"
+    max_age_seconds = MASTERMIND_STATE_MAX_HOURS * 3600
+    now = time.time()
+
+    count = 0
+    total_bytes = 0
+
+    if not state_dir.exists():
+        return 0, 0
+
+    expired = []
+    for f in state_dir.glob(pattern):
+        try:
+            age_seconds = now - f.stat().st_mtime
+            if age_seconds > max_age_seconds:
+                expired.append((f, age_seconds / 3600, f.stat().st_size))
+        except OSError:
+            pass
+
+    if not expired:
+        return 0, 0
+
+    print(
+        f"tmp/mastermind_*.json - {len(expired)} files older than {MASTERMIND_STATE_MAX_HOURS}h"
+    )
+
+    for path, age_hours, size in sorted(expired, key=lambda x: -x[2])[:5]:
+        marker = "  "
+        if execute:
+            try:
+                path.unlink()
+                marker = "x "
+                count += 1
+                total_bytes += size
+            except OSError:
+                marker = "! "
+        print(f"  {marker}{path.name} ({age_hours:.1f}h, {format_size(size)})")
+
+    if len(expired) > 5:
+        remaining = len(expired) - 5
+        remaining_size = sum(e[2] for e in expired[5:])
+        print(f"  ... and {remaining} more ({format_size(remaining_size)})")
+
+        if execute:
+            for path, _, size in expired[5:]:
+                try:
+                    path.unlink()
+                    count += 1
+                    total_bytes += size
+                except OSError:
+                    pass
+
+    print()
+    return count, total_bytes
 
 
 def run_housekeeping(execute: bool = False):
@@ -141,6 +208,13 @@ def run_housekeeping(execute: bool = False):
 
     total_reclaimable = 0
     total_deleted = 0
+
+    # Clean mastermind state files first (accumulate fastest)
+    mm_count, mm_bytes = cleanup_mastermind_states(execute)
+    if execute:
+        total_deleted += mm_bytes
+    else:
+        total_reclaimable += mm_bytes
 
     for dirname, max_days in RETENTION_DAYS.items():
         target = CLAUDE_DIR / dirname
@@ -152,7 +226,9 @@ def run_housekeeping(execute: bool = False):
         dir_size = sum(e[2] for e in expired)
         total_reclaimable += dir_size
 
-        print(f"{dirname}/ - {len(expired)} items older than {max_days} days ({format_size(dir_size)})")
+        print(
+            f"{dirname}/ - {len(expired)} items older than {max_days} days ({format_size(dir_size)})"
+        )
 
         for path, age, size in expired[:5]:
             marker = "  "
@@ -187,7 +263,9 @@ def run_housekeeping(execute: bool = False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Manage .claude runtime directory disk space")
+    parser = argparse.ArgumentParser(
+        description="Manage .claude runtime directory disk space"
+    )
     parser.add_argument("--execute", action="store_true", help="Actually delete files")
     parser.add_argument("--status", action="store_true", help="Show disk usage only")
     args = parser.parse_args()

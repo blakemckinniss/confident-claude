@@ -127,7 +127,10 @@ class TestRedaction:
         assert safe is True
 
     def test_github_token_detected(self):
-        safe, detected = is_safe_to_send("Token: ghp_abcdefghijklmnopqrstuvwxyz123456")
+        # ghp_ tokens require 36 alphanumeric chars after prefix
+        safe, detected = is_safe_to_send(
+            "Token: ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+        )
         assert safe is False
         assert "github_token" in detected
 
