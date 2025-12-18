@@ -187,41 +187,29 @@ from confidence import (  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
-# PAL MANDATE CLEARING (priority 5) - Clear lock when PAL planner succeeds
+# PAL MANDATE: Blueprint capture (priority 5) - Lock clearing handled by pre_tool_use
+# Lock path defined in mastermind/config.py (single source of truth)
 # -----------------------------------------------------------------------------
 
-_PAL_MANDATE_LOCK = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
+try:
+    from mastermind.config import PAL_MANDATE_LOCK_PATH
+except ImportError:
+    PAL_MANDATE_LOCK_PATH = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
 
 
 @register_hook("pal_mandate_clear", "mcp__pal__planner", priority=5)
 def clear_pal_mandate_on_success(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Clear PAL mandate lock and capture blueprint when mcp__pal__planner succeeds.
+    """Capture blueprint when mcp__pal__planner succeeds.
 
-    MCP tools don't trigger PreToolUse hooks, so we clear the lock here in
-    PostToolUse instead. Also captures the blueprint for mastermind state.
+    NOTE: Lock clearing is now handled by pre_tool_use_runner.py (priority 0)
+    when ANY PAL tool is called. This hook focuses on blueprint capture only.
     """
-    import sys
-
     tool_input = data.get("tool_input", {})
     tool_result = data.get("tool_result", {})
-    model = tool_input.get("model", "").lower()
 
     context_parts = []
-
-    # Check if GPT-5.x was used (required for mandate clearing)
-    is_gpt5 = "gpt-5" in model or "gpt5" in model
-
-    # Clear lock if GPT-5.x was used
-    if is_gpt5 and _PAL_MANDATE_LOCK.exists():
-        try:
-            _PAL_MANDATE_LOCK.unlink()
-            context_parts.append(
-                "✅ **PAL MANDATE SATISFIED** - GPT-5.x planner called. Lock cleared."
-            )
-        except OSError as e:
-            print(f"[pal_mandate_clear] Failed to clear lock: {e}", file=sys.stderr)
 
     # Capture blueprint from planner result for mastermind state
     try:
@@ -276,6 +264,8 @@ def clear_pal_mandate_on_success(
         # Mastermind not available, skip blueprint capture
         pass
     except Exception as e:
+        import sys
+
         print(f"[pal_mandate_clear] Blueprint capture failed: {e}", file=sys.stderr)
 
     if context_parts:

@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .config import get_config
+from .config import get_config, PAL_MANDATE_LOCK_PATH
 from .state import MastermindState, load_state, save_state
 from .context_packer import pack_for_router
 from .routing import parse_user_override, make_routing_decision
@@ -275,9 +275,8 @@ def generate_planner_mandate(
 
 # =============================================================================
 # PAL MANDATE LOCK FILE - Hard enforcement via pre_tool_use hook
+# Lock path defined in config.py (single source of truth)
 # =============================================================================
-
-PAL_MANDATE_LOCK_PATH = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
 
 
 def create_pal_mandate_lock(

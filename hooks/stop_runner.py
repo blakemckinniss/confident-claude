@@ -549,16 +549,17 @@ def _has_sudo_bypass(transcript_path: str) -> bool:
 def _extract_next_steps(transcript_path: str) -> str | None:
     """Extract next steps section from transcript if present.
 
-    Looks for markdown headings like "## Next Steps" or "### Next Steps"
-    and extracts the content that follows.
+    Looks for markdown headings like "## Next Steps", "### ➡️ Next Steps",
+    or similar variants and extracts the content that follows.
     """
     content = _read_tail_content(transcript_path, 20000)
     if not content:
         return None
 
-    # Find next steps heading and extract content
+    # Find next steps heading - allow emojis, bold markers, and other chars
+    # Matches: "## Next Steps", "### ➡️ Next Steps", "## **Next Steps:**", etc.
     match = re.search(
-        r"#{1,3}\s*next\s+steps[:\s]*\n(.*?)(?=\n#{1,3}\s|\Z)",
+        r"#{1,3}\s*[^\n]*?\*{0,2}next\s+steps:?\*{0,2}[:\s]*\n(.*?)(?=\n#{1,3}\s|\Z)",
         content,
         re.IGNORECASE | re.DOTALL
     )
@@ -582,7 +583,17 @@ def check_session_close_protocol(data: dict, state: SessionState) -> StopHookRes
     if _has_sudo_bypass(transcript_path):
         return StopHookResult.ok()
 
-    # Skip if this is a trivial session (few turns, no meaningful work)
+    # Skip Q&A sessions - no files edited, no files created, no beads touched
+    # These are informational exchanges that don't need close protocol
+    has_file_work = bool(state.files_edited or state.files_created)
+    has_bead_work = any(
+        "bd " in cmd for cmd in list(state.commands_succeeded)[-50:]
+    )
+
+    if not has_file_work and not has_bead_work:
+        return StopHookResult.ok()
+
+    # Also skip very short sessions with no meaningful work
     if state.turn_count < 3 and not state.files_edited:
         return StopHookResult.ok()
 

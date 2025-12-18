@@ -715,36 +715,38 @@ def check_read_cache(data: dict, state: SessionState) -> HookResult:
 
 # =============================================================================
 # PAL PLANNER MANDATE ENFORCER (Priority 0) - Highest priority, runs first
+# Lock path and TTL defined in mastermind/config.py (single source of truth)
 # =============================================================================
 
-# Lock file location for PAL mandate
-_PAL_MANDATE_LOCK = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
+# Import from centralized config
+try:
+    from mastermind.config import PAL_MANDATE_LOCK_PATH, PAL_MANDATE_TTL_MINUTES
+except ImportError:
+    # Fallback if mastermind not available
+    PAL_MANDATE_LOCK_PATH = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
+    PAL_MANDATE_TTL_MINUTES = 30
 
 
 def check_pal_mandate_lock() -> dict | None:
     """Check if PAL mandate lock exists, is valid, and not expired.
 
     Returns lock contents if valid, None if missing/expired/invalid.
-    Auto-clears expired locks (default TTL: 30 minutes).
+    Auto-clears expired locks based on PAL_MANDATE_TTL_MINUTES.
     """
-    if not _PAL_MANDATE_LOCK.exists():
+    if not PAL_MANDATE_LOCK_PATH.exists():
         return None
 
     try:
-        lock_data = json.loads(_PAL_MANDATE_LOCK.read_text())
+        lock_data = json.loads(PAL_MANDATE_LOCK_PATH.read_text())
     except (json.JSONDecodeError, OSError):
         return None
 
-    # Check TTL - default 30 minutes
-    import time
-
+    # Check TTL
     created_at = lock_data.get("created_at", 0)
-    ttl_minutes = 30  # Could be loaded from config if needed
-
-    if created_at and (time.time() - created_at) > (ttl_minutes * 60):
+    if created_at and (time.time() - created_at) > (PAL_MANDATE_TTL_MINUTES * 60):
         # Lock expired - auto-clear
         try:
-            _PAL_MANDATE_LOCK.unlink()
+            PAL_MANDATE_LOCK_PATH.unlink()
         except OSError:
             pass
         return None
@@ -754,8 +756,8 @@ def check_pal_mandate_lock() -> dict | None:
 
 def clear_pal_mandate_lock() -> None:
     """Clear the PAL mandate lock file."""
-    if _PAL_MANDATE_LOCK.exists():
-        _PAL_MANDATE_LOCK.unlink()
+    if PAL_MANDATE_LOCK_PATH.exists():
+        PAL_MANDATE_LOCK_PATH.unlink()
 
 
 @register_hook("pal_mandate_enforcer", None, priority=0)

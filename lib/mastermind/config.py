@@ -13,6 +13,13 @@ from typing import Any
 
 CONFIG_PATH = Path.home() / ".claude" / "config" / "mastermind.json"
 
+# =============================================================================
+# PAL MANDATE LOCK - Single source of truth for lock file path and TTL
+# Used by: hook_integration.py, pre_tool_use_runner.py, _hooks_state.py
+# =============================================================================
+PAL_MANDATE_LOCK_PATH = Path.home() / ".claude" / "tmp" / "pal_mandate.lock"
+PAL_MANDATE_TTL_MINUTES = 30  # Auto-expire stale locks
+
 # Singleton cache
 _config_cache: MastermindConfig | None = None
 
