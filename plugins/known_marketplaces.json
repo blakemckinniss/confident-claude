@@ -21,7 +21,7 @@
       "repo": "anthropics/claude-code"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-code-plugins",
-    "lastUpdated": "2025-12-18T05:57:21.168Z"
+    "lastUpdated": "2025-12-18T06:01:39.123Z"
   },
   "claude-plugins-official": {
     "source": {
@@ -29,6 +29,6 @@
       "repo": "anthropics/claude-plugins-official"
     },
     "installLocation": "/home/jinx/.claude/plugins/marketplaces/claude-plugins-official",
-    "lastUpdated": "2025-12-18T05:58:30.715Z"
+    "lastUpdated": "2025-12-18T06:02:11.613Z"
   }
 }
