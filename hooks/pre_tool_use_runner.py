@@ -862,9 +862,9 @@ def track_pal_tool_usage(data: dict, state: SessionState) -> HookResult:
     # Set pal_consulted flag in mastermind state
     try:
         from mastermind.state import load_state, save_state
-        import os
 
-        session_id = os.environ.get("CLAUDE_SESSION_ID", "")
+        # Get session_id from hook input data (not env var)
+        session_id = data.get("session_id", "")[:16]
         if session_id:
             mm_state = load_state(session_id)
             if not getattr(mm_state, "pal_consulted", False):

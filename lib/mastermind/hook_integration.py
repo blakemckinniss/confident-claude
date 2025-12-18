@@ -30,8 +30,12 @@ from .router_gpt import build_routing_prompt, load_capabilities_index
 
 
 def get_session_id() -> str:
-    """Get current session ID from environment or generate one."""
-    return os.environ.get("CLAUDE_SESSION_ID", f"session_{int(time.time())}")
+    """Get current session ID from environment or generate one.
+    
+    Always truncates to 16 chars for consistency across the codebase.
+    """
+    session_id = os.environ.get("CLAUDE_SESSION_ID", f"session_{int(time.time())}")
+    return session_id[:16] if session_id else ""
 
 
 # =============================================================================
