@@ -765,8 +765,8 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
         )
 
     # Allow read-only investigation tools (can't cause harm)
-    # Also allow Serena activation - it's infrastructure setup, not a task
-    if tool_name in ("Read", "Grep", "Glob", "LS", "mcp__serena__activate_project"):
+    # Also allow all Serena tools - semantic code analysis aids investigation
+    if tool_name in ("Read", "Grep", "Glob", "LS") or tool_name.startswith("mcp__serena__"):
         return HookResult.approve()
 
     # BLOCK EVERYTHING ELSE
@@ -789,7 +789,7 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
         f"- `mcp__pal__consensus` - Architecture decisions\n"
         f"- `mcp__pal__chat` - General discussion\n"
         f"- `mcp__pal__thinkdeep` - Problem decomposition\n\n"
-        f"**ALSO ALLOWED:** Read/Grep/Glob/LS for investigation, `mcp__serena__activate_project`, SUDO to bypass\n\n"
+        f"**ALSO ALLOWED:** Read/Grep/Glob/LS for investigation, all `mcp__serena__*` tools, SUDO to bypass\n\n"
         f"**Choose the PAL tool that best fits this task.**"
     )
 
