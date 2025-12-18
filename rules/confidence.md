@@ -223,6 +223,67 @@ This catches cases where multiple small failures accumulate without triggering t
 
 **Pattern**: Write to `~/.claude/tmp/<task>.py`, run with venv Python.
 
+## Repair Debt & Redemption Recovery (v4.16)
+
+**Big penalties aren't permanent scars.** PROCESS-class reducers can be partially recovered through evidence-based redemption.
+
+### Penalty Classes
+
+| Class | Recoverable? | Examples |
+|-------|--------------|----------|
+| **PROCESS** | Yes (up to 50%) | `edit_oscillation`, `sunk_cost`, `cascade_block`, `tool_failure` |
+| **INTEGRITY** | No | `sycophancy`, `apologetic`, `overconfident_completion`, `surrender_pivot` |
+
+PROCESS penalties indicate "struggled but can learn." INTEGRITY penalties indicate behavioral failures that shouldn't be washed away by technical success.
+
+### How Recovery Works
+
+1. **When PROCESS penalty fires** (e.g., `edit_oscillation` -12):
+   - Penalty applied immediately
+   - Debt tracked: `{amount: 12, max_recovery_fraction: 0.5}`
+
+2. **When evidence signals fire** (e.g., `test_pass`):
+   - Evidence tier determines recovery multiplier
+   - Recovery: `remaining_recoverable × tier_multiplier`
+   - Example: 12 × 0.5 × 0.35 = **+2 confidence**
+
+### Evidence Tiers
+
+| Tier | Signal | Recovery % | Increaser |
+|------|--------|------------|-----------|
+| 0 | Claim only | 0% | (none) |
+| 1 | User stops objecting | 5% | `user_ok` |
+| 2 | Lint/build passes | 15% | `lint_pass`, `build_success` |
+| 3 | Tests pass | 35% | `test_pass`, `first_attempt_success` |
+| 4 | User confirms + tests | 50% | `trust_regained` |
+
+### Anti-Gaming Rules
+
+1. **Recovery < Penalty**: Max 50% recovery, never net neutral
+2. **Tier-gated**: Higher evidence required for more recovery
+3. **INTEGRITY immune**: Behavioral failures cannot be recovered
+
+### Example Scenario
+
+```
+Turn 5:  Edit auth.py (attempt 1)
+Turn 6:  Edit auth.py (attempt 2)
+Turn 7:  Edit auth.py (attempt 3) → edit_oscillation fires (-12)
+         Confidence: 85% → 73%
+         Repair debt: {edit_oscillation: {amount: 12, max_recovery: 6}}
+
+Turn 8:  Research solution via PAL
+Turn 9:  Apply fix, run tests → test_pass fires
+         Tier 3 = 35% of remaining 6 = +2
+         Confidence: 73% → 75%
+
+Turn 10: Tests pass again → +2 more
+         Confidence: 75% → 77%
+         (Debt now exhausted)
+```
+
+**Key insight**: You can't "undo" the mistake, but demonstrating you learned from it earns partial trust back.
+
 ## Increasers (Automatic Rewards)
 
 **Due diligence rewards balance natural decay:**
