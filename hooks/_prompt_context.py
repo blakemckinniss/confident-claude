@@ -140,6 +140,86 @@ def _extract_searches_from_prompt(prompt: str) -> list[str]:
     return list(set(searches))
 
 
+# =============================================================================
+# TOOL DEBT CONTEXT ENRICHMENT (v4.15)
+# =============================================================================
+
+# Try to import tool debt detection
+try:
+    from _confidence_tool_debt import (
+        detect_vague_prompt,
+        detect_skill_match,
+    )
+    _TOOL_DEBT_AVAILABLE = True
+except ImportError:
+    _TOOL_DEBT_AVAILABLE = False
+
+
+def _get_available_skills() -> list[str]:
+    """Get list of available skills from settings."""
+    # Fallback skill names (used if settings unavailable)
+    fallback_skills = [
+        "frontend-design", "debugging", "testing", "code-quality",
+        "database", "api-development", "security-audit", "performance",
+    ]
+    try:
+        settings_path = CLAUDE_DIR / "settings.json"
+        if not settings_path.exists():
+            return fallback_skills
+        import json
+        settings = json.loads(settings_path.read_text())
+        skills = settings.get("skills", {})
+        return list(skills.keys()) if isinstance(skills, dict) else fallback_skills
+    except (json.JSONDecodeError, OSError, KeyError):
+        return fallback_skills
+
+
+@register_hook("tool_debt_enrichment", priority=12)
+def check_tool_debt_enrichment(data: dict, state: SessionState) -> HookResult:
+    """
+    Enrich context with tool debt detection flags (v4.15).
+
+    Sets flags for:
+    - _vague_prompt_detected: True if prompt has ambiguous language
+    - _skill_match_detected: True if prompt matches available skill keywords
+    - available_skills: List of skill names for matching
+
+    These flags are used by the tool debt system to determine which
+    conditional debt families should accumulate.
+    """
+    if not _TOOL_DEBT_AVAILABLE:
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt:
+        return HookResult.allow()
+
+    # Get available skills
+    available_skills = _get_available_skills()
+
+    # Detect vague prompt
+    is_vague = detect_vague_prompt(prompt)
+
+    # Detect skill match
+    has_skill_match = detect_skill_match(prompt, available_skills)
+
+    # Store in data for downstream hooks and confidence engine
+    data["_vague_prompt_detected"] = is_vague
+    data["_skill_match_detected"] = has_skill_match
+    data["available_skills"] = available_skills
+
+    # Also store in state for cross-hook access
+    if not hasattr(state, "_debt_context"):
+        state._debt_context = {}
+    state._debt_context["vague_prompt"] = is_vague
+    state._debt_context["skill_match"] = has_skill_match
+
+    # Log for debugging (silent - no user output)
+    log_debug(f"tool_debt_enrichment: vague={is_vague}, skill_match={has_skill_match}")
+
+    return HookResult.allow()
+
+
 @register_hook("intention_tracker", priority=15)
 def check_intention_tracker(data: dict, state: SessionState) -> HookResult:
     """Extract mentioned files/searches and track as pending."""
