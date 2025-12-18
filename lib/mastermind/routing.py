@@ -49,14 +49,6 @@ def parse_user_override(prompt: str) -> tuple[str, str | None]:
     return prompt, None
 
 
-def check_session_start(turn_count: int) -> bool:
-    """Check if we're at session start (turn 0 or 1).
-
-    Routing only happens at session start per architecture decision.
-    """
-    return turn_count <= 1
-
-
 def apply_uncertainty_bias(response: RouterResponse) -> RouterResponse:
     """Apply bias-toward-complex for uncertain classifications.
 
@@ -130,13 +122,8 @@ def make_routing_decision(
             reason_codes=["user_forced"],
         )
 
-    # Check session start constraint
-    if not check_session_start(turn_count):
-        return RoutingPolicy(
-            should_route=False,
-            should_plan=False,
-            reason="not_session_start",
-        )
+    # NOTE: Session start constraint removed - hook_integration.py handles this
+    # by routing every turn until pal_bootstrapped is True
 
     # No router response means we need to call router
     if router_response is None:

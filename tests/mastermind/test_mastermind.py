@@ -57,6 +57,9 @@ class TestRouting:
         assert override is None
 
     def test_routing_disabled_by_default(self):
+        # Prime cache with defaults (non-existent path = use defaults)
+        clear_cache()
+        load_config(Path("/nonexistent/path.json"))  # Sets cache with router.enabled=False
         policy = make_routing_decision("test", turn_count=0)
         assert policy.should_route is False
         assert policy.reason == "routing_disabled"
