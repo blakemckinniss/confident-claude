@@ -282,3 +282,6 @@ site/
 # settings.json     - Framework settings
 # .gitattributes    - Git configuration
 # .gitignore        - This file
+
+# Hook runtime state files
+.claude/memory/*_state.json
