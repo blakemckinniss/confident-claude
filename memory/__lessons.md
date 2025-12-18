@@ -334,3 +334,6 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-17 23:24
 - [darden_bootstrap_complete] ✅ Bootstrap scripts (bootstrap_olive_garden.py, bootstrap_longhorn.py, bootstrap_cheddars.py) and test scripts (test_scrape.py, test_rag_retrieval.py) are complete and functional
+
+### 2025-12-18 00:21
+- [abandoned_stubs] ⚠️ ABANDONED WORK: _confidence_tool_debt.py contain stubs/TODOs
