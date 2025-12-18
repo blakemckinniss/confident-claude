@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 """
-System Assistant Statusline v2.0 - Full WSL2 system status at a glance
+System Assistant Statusline v2.1 - Full WSL2 system status at a glance
 
-Line 1: Model | Context% | CPU | RAM | Disk | GPU | Services | Ports | Network
+Line 1: Model | Context$ | CPU | RAM | Swap | Disk | GPU | Services | Ports | Network
 Line 2: Session | Project | Confidence+Streak | Beads | Serena | Git
 
-Improvements in v2.0:
+v2.1 Improvements:
+- Subprocess consolidation: services now uses single `ps aux` (-2 calls)
+- Git commands combined: single `git status --porcelain --branch` (-1 call)
+- Direct beads DB access via SQLite (no subprocess overhead)
+- Robust nvidia-smi parsing for output variations
+- Swap usage indicator for WSL2 memory pressure
+- ComfyUI folded into DEV_PORTS (8188:comfy)
+- Extracted timeout constants (Timeouts class)
+- User-specific cache file (avoids multi-instance collision)
+
+v2.0 Improvements:
 - Project-aware (shows detected project name, not just folder)
 - Confidence streak indicator
 - Beads task count
@@ -14,7 +24,6 @@ Improvements in v2.0:
 - Context exhaustion warning (🚨 at 75%+)
 - Extracted color thresholds
 - Type hints throughout
-- Fixed misleading log messages
 """
 
 from __future__ import annotations
@@ -48,6 +57,9 @@ class Thresholds:
     # RAM usage
     RAM_RED = 85
     RAM_YELLOW = 70
+    # Swap usage
+    SWAP_RED = 50
+    SWAP_YELLOW = 25
     # Disk usage
     DISK_RED = 90
     DISK_YELLOW = 75
@@ -60,21 +72,30 @@ class Thresholds:
     CTX_WARN = 75  # Show 🚨 warning
 
 
+# Subprocess timeouts (seconds)
+class Timeouts:
+    FAST = 1  # Quick checks (pgrep, ss, git)
+    MEDIUM = 2  # Heavier checks (nvidia-smi, bd)
+    PARALLEL = 3  # ThreadPoolExecutor timeout
+    DB = 0.5  # SQLite connection timeout
+
+
 # =============================================================================
 # CACHE LAYER - subprocess results don't change rapidly
 # =============================================================================
 
-CACHE_FILE = Path("/tmp/.claude_statusline_cache.json")
+# User-specific cache to avoid collision between instances
+CACHE_FILE = Path.home() / ".claude" / "tmp" / "statusline_cache.json"
 
 # TTL per metric (seconds) - tuned for typical change frequency
 CACHE_TTL: dict[str, int] = {
     "gpu": 2,  # VRAM can change during inference
     "services": 5,  # Docker/node/python processes stable
-    "comfyui": 10,  # Service status very stable
     "net": 10,  # Connectivity rarely changes
     "git": 3,  # Changes with edits but not rapidly
     "ports": 3,  # Dev servers start/stop occasionally
     "beads": 5,  # Task status relatively stable
+    "swap": 5,  # Swap usage relatively stable
 }
 
 # Dev ports worth monitoring (port -> short label)
@@ -87,6 +108,7 @@ DEV_PORTS: dict[int, str] = {
     5174: "vite",  # Vite alt
     8000: "8k",  # Django, FastAPI, uvicorn
     8080: "8080",  # Generic, Tomcat, etc
+    8188: "comfy",  # ComfyUI
     8888: "jup",  # Jupyter
     9000: "9k",  # PHP-FPM, SonarQube
 }
@@ -204,55 +226,62 @@ def get_disk_usage() -> str:
 
 
 def get_services_status() -> str:
-    """Get status of key services (Docker, Node, Python)."""
-    services = []
-
-    # Docker containers
+    """Get status of key services (Docker, Node, Python) in single subprocess."""
     try:
         result = subprocess.run(
-            ["docker", "ps", "-q"], capture_output=True, text=True, timeout=1
+            ["ps", "aux"], capture_output=True, text=True, timeout=Timeouts.FAST
         )
-        if result.returncode == 0:
-            count = (
-                len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
-            )
-            if count > 0:
-                services.append(f"{C.CYAN}D:{count}{C.RESET}")
-    except Exception as e:
-        log_debug("statusline", f"docker check failed: {e}")
+        if result.returncode != 0:
+            return ""
 
-    # Node processes
-    try:
-        result = subprocess.run(
-            ["pgrep", "-c", "node"], capture_output=True, text=True, timeout=1
-        )
-        if result.returncode == 0:
-            count = int(result.stdout.strip())
-            if count > 0:
-                services.append(f"{C.GREEN}N:{count}{C.RESET}")
-    except Exception as e:
-        log_debug("statusline", f"node check failed: {e}")
+        lines = result.stdout.split("\n")
+        docker_count = 0
+        node_count = 0
+        python_count = 0
 
-    # Python processes (excluding self)
-    try:
-        result = subprocess.run(
-            ["pgrep", "-c", "python"], capture_output=True, text=True, timeout=1
-        )
-        if result.returncode == 0:
-            count = int(result.stdout.strip())
-            if count > 1:
-                services.append(f"{C.YELLOW}P:{count - 1}{C.RESET}")
-    except Exception as e:
-        log_debug("statusline", f"python check failed: {e}")
+        for line in lines:
+            lower = line.lower()
+            # Docker containers (exclude containerd daemon)
+            if (
+                "docker" in lower
+                and "containerd" not in lower
+                and "/docker" not in lower
+            ):
+                docker_count += 1
+            # Node processes
+            if (
+                "/node " in line or "node " in lower.split()[-1]
+                if lower.split()
+                else False
+            ):
+                node_count += 1
+            # Python processes
+            if "python" in lower:
+                python_count += 1
 
-    return " ".join(services) if services else ""
+        # Exclude self from python count
+        python_count = max(0, python_count - 1)
+
+        services = []
+        if docker_count > 0:
+            services.append(f"{C.CYAN}D:{docker_count}{C.RESET}")
+        if node_count > 0:
+            services.append(f"{C.GREEN}N:{node_count}{C.RESET}")
+        if python_count > 0:
+            services.append(f"{C.YELLOW}P:{python_count}{C.RESET}")
+        return " ".join(services)
+    except Exception as e:
+        log_debug("statusline", f"services check failed: {e}")
+        return ""
 
 
 def get_network_status() -> str:
     """Check internet connectivity via DNS."""
     try:
         result = subprocess.run(
-            ["getent", "hosts", "google.com"], capture_output=True, timeout=1
+            ["getent", "hosts", "google.com"],
+            capture_output=True,
+            timeout=Timeouts.FAST,
         )
         return (
             f"{C.GREEN}NET{C.RESET}"
@@ -277,11 +306,15 @@ def get_gpu_vram() -> str:
             ],
             capture_output=True,
             text=True,
-            timeout=2,
+            timeout=Timeouts.MEDIUM,
         )
         if result.returncode != 0 or not result.stdout.strip():
             return ""
-        used, total = map(int, result.stdout.strip().split(", "))
+        # Robust parsing: handle ", " or "," or whitespace variations
+        parts = result.stdout.strip().replace(",", " ").split()
+        if len(parts) < 2:
+            return ""
+        used, total = int(parts[0]), int(parts[1])
         pct = (used / total) * 100
         used_gb, total_gb = used / 1024, total / 1024
         return colorize(
@@ -298,7 +331,10 @@ def get_dev_ports() -> str:
     """Check which dev ports are listening."""
     try:
         result = subprocess.run(
-            ["ss", "-tlnH"], capture_output=True, text=True, timeout=1
+            ["ss", "-tlnH"],
+            capture_output=True,
+            text=True,
+            timeout=Timeouts.FAST,
         )
         if result.returncode != 0:
             return ""
@@ -323,50 +359,41 @@ def get_dev_ports() -> str:
         return ""
 
 
-def get_comfyui_status() -> str:
-    """Check if ComfyUI is running."""
-    try:
-        result = subprocess.run(
-            ["ss", "-tlnp"], capture_output=True, text=True, timeout=1
-        )
-        if result.returncode == 0 and ":8188" in result.stdout:
-            return f"{C.GREEN}ComfyUI{C.RESET}"
-
-        result = subprocess.run(
-            ["pgrep", "-af", "python"], capture_output=True, text=True, timeout=1
-        )
-        if result.returncode == 0:
-            for line in result.stdout.split("\n"):
-                lower = line.lower()
-                if ("comfyui" in lower or "comfy" in lower) and "main.py" in lower:
-                    return f"{C.GREEN}ComfyUI{C.RESET}"
-        return ""
-    except Exception:
-        return ""
-
-
 def get_git_info() -> str:
-    """Get git branch and status."""
+    """Get git branch and status in single command."""
     try:
+        # Combined: --branch shows branch info, --porcelain shows file status
         result = subprocess.run(
-            ["git", "branch", "--show-current"],
+            ["git", "status", "--porcelain", "--branch"],
             capture_output=True,
             text=True,
-            timeout=1,
+            timeout=Timeouts.FAST,
         )
         if result.returncode != 0:
             return ""
-        branch = result.stdout.strip()
 
-        result = subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True, timeout=1
-        )
+        lines = result.stdout.strip().split("\n")
+        if not lines:
+            return ""
+
+        # First line: ## branch...tracking or ## HEAD (detached)
+        branch_line = lines[0]
+        branch = ""
+        if branch_line.startswith("## "):
+            branch_part = branch_line[3:]  # Remove "## "
+            # Handle "branch...origin/branch" format
+            branch = branch_part.split("...")[0].split()[0]
+
+        if not branch:
+            return ""
+
+        # Rest is file status
+        status_lines = lines[1:] if len(lines) > 1 else []
         status_str = ""
-        if result.returncode == 0 and result.stdout.strip():
-            lines = result.stdout.strip().split("\n")
-            modified = sum(1 for ln in lines if len(ln) > 1 and ln[1] == "M")
-            staged = sum(1 for ln in lines if ln[0] not in (" ", "?"))
-            untracked = sum(1 for ln in lines if ln.startswith("??"))
+        if status_lines:
+            modified = sum(1 for ln in status_lines if len(ln) > 1 and ln[1] == "M")
+            staged = sum(1 for ln in status_lines if ln and ln[0] not in (" ", "?"))
+            untracked = sum(1 for ln in status_lines if ln.startswith("??"))
             parts = []
             if staged:
                 parts.append(f"{C.GREEN}+{staged}{C.RESET}")
@@ -383,27 +410,44 @@ def get_git_info() -> str:
 
 
 def get_beads_status() -> str:
-    """Get active beads (in_progress tasks) count."""
+    """Get active beads count via direct DB read (faster than subprocess)."""
     try:
-        result = subprocess.run(
-            ["bd", "list", "--status=in_progress", "--format=json"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if result.returncode != 0:
+        import sqlite3
+
+        db_path = Path.home() / ".claude" / ".beads" / "beads.db"
+        if not db_path.exists():
             return ""
-        try:
-            data = json.loads(result.stdout)
-            count = len(data) if isinstance(data, list) else 0
+        with sqlite3.connect(str(db_path), timeout=Timeouts.DB) as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM issues WHERE status = 'in_progress'"
+            )
+            count = cursor.fetchone()[0]
             if count > 0:
                 return f"{C.YELLOW}📋{count}{C.RESET}"
-        except json.JSONDecodeError:
-            # Fallback: count lines
-            lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
-            if lines:
-                return f"{C.YELLOW}📋{len(lines)}{C.RESET}"
         return ""
+    except Exception:
+        return ""
+
+
+def get_swap_usage() -> str:
+    """Get swap usage if significant (WSL2 memory pressure indicator)."""
+    try:
+        with open("/proc/meminfo") as f:
+            mem = {}
+            for line in f:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    mem[parts[0].strip()] = int(parts[1].strip().split()[0])
+        total = mem.get("SwapTotal", 0)
+        free = mem.get("SwapFree", 0)
+        if total == 0:
+            return ""
+        used_pct = ((total - free) / total) * 100
+        if used_pct < 10:
+            return ""  # Don't show if minimal
+        return colorize(
+            f"{used_pct:.0f}%", used_pct, Thresholds.SWAP_RED, Thresholds.SWAP_YELLOW
+        )
     except Exception:
         return ""
 
@@ -664,7 +708,6 @@ def main() -> None:
         "gpu": get_gpu_vram,
         "services": get_services_status,
         "ports": get_dev_ports,
-        "comfyui": get_comfyui_status,
         "net": get_network_status,
         "git": get_git_info,
         "beads": get_beads_status,
@@ -684,7 +727,7 @@ def main() -> None:
     if stale_funcs:
         with ThreadPoolExecutor(max_workers=len(stale_funcs)) as executor:
             futures = {executor.submit(fn): name for name, fn in stale_funcs.items()}
-            for future in as_completed(futures, timeout=3):
+            for future in as_completed(futures, timeout=Timeouts.PARALLEL):
                 name = futures[future]
                 try:
                     val = future.result()
@@ -697,10 +740,10 @@ def main() -> None:
     gpu = results.get("gpu", "")
     services = results.get("services", "")
     ports = results.get("ports", "")
-    comfyui = results.get("comfyui", "")
     net = results.get("net", f"{C.DIM}NET{C.RESET}")
     git = results.get("git", "")
     beads = results.get("beads", "")
+    swap = get_swap_usage()  # Fast /proc read, not cached
 
     # Line 1: Model | Context | System
     line1_parts = [
@@ -708,16 +751,16 @@ def main() -> None:
         f"CTX:{context_str}",
         f"CPU:{cpu}",
         f"RAM:{ram}",
-        f"DSK:{disk}",
     ]
+    if swap:
+        line1_parts.append(f"SW:{swap}")
+    line1_parts.append(f"DSK:{disk}")
     if gpu:
         line1_parts.append(f"GPU:{gpu}")
     if services:
         line1_parts.append(services)
     if ports:
         line1_parts.append(ports)
-    if comfyui:
-        line1_parts.append(comfyui)
     line1_parts.append(net)
     line1 = f" {C.DIM}|{C.RESET} ".join(line1_parts)
 
