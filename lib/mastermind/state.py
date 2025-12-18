@@ -80,7 +80,10 @@ class MastermindState:
     turn_count: int = 0
     routing_decision: RoutingDecision | None = None
     blueprint: Blueprint | None = None
-    continuation_id: str | None = None
+    continuation_id: str | None = None  # Legacy single continuation
+    pal_continuations: dict[str, str] = field(
+        default_factory=dict
+    )  # Per-tool: {debug: "abc", planner: "def"}
     epoch_id: int = 0
     escalation_count: int = 0
     escalations: list[EscalationRecord] = field(default_factory=list)
@@ -142,6 +145,21 @@ class MastermindState:
         self.pal_bootstrapped = True
         self.updated_at = time.time()
 
+    def capture_pal_continuation(self, tool_type: str, continuation_id: str) -> None:
+        """Capture continuation_id from a PAL tool response.
+
+        Args:
+            tool_type: PAL tool type (e.g., "debug", "planner", "chat")
+            continuation_id: The continuation_id from PAL response
+        """
+        self.pal_continuations[tool_type] = continuation_id
+        self.pal_consulted = True
+        self.updated_at = time.time()
+
+    def get_pal_continuation(self, tool_type: str) -> str | None:
+        """Get stored continuation_id for a PAL tool type."""
+        return self.pal_continuations.get(tool_type)
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
@@ -152,6 +170,7 @@ class MastermindState:
             else None,
             "blueprint": self.blueprint.to_dict() if self.blueprint else None,
             "continuation_id": self.continuation_id,
+            "pal_continuations": self.pal_continuations,
             "epoch_id": self.epoch_id,
             "escalation_count": self.escalation_count,
             "escalations": [e.to_dict() for e in self.escalations],
@@ -171,6 +190,7 @@ class MastermindState:
             session_id=data.get("session_id", ""),
             turn_count=data.get("turn_count", 0),
             continuation_id=data.get("continuation_id"),
+            pal_continuations=data.get("pal_continuations", {}),
             epoch_id=data.get("epoch_id", 0),
             escalation_count=data.get("escalation_count", 0),
             last_escalation_turn=data.get("last_escalation_turn", -100),

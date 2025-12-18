@@ -94,6 +94,7 @@ import _hooks_state  # noqa: F401 - State hooks (priority 10-16)
 import _hooks_quality  # noqa: F401 - Quality hooks (priority 22-50)
 import _hooks_tracking  # noqa: F401 - Tracking hooks (priority 55-72)
 import _hooks_stuck_loop  # noqa: F401 - Stuck loop detection (priority 78-83)
+import _hooks_mastermind  # noqa: F401 - Mastermind integration (priority 86-89)
 from _hooks_tracking import SCRATCH_STATE_FILE, INFO_GAIN_STATE_FILE
 
 # =============================================================================

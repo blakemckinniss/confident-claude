@@ -206,6 +206,18 @@ def generate_pal_suggestion(
         suggested_tool: Suggested PAL tool from Groq
         use_capability_routing: Whether to use capability-aware routing
     """
+    # Build continuation hint if available for suggested tool
+    continuation_hint = ""
+    if cont_id := state.get_pal_continuation(suggested_tool):
+        continuation_hint = f'\n\n📎 **Resume PAL context**: `continuation_id="{cont_id}"` available for `mcp__pal__{suggested_tool}`'
+    elif state.pal_continuations:
+        # Show other available continuations
+        available = [f"{k}" for k in state.pal_continuations.keys()]
+        if available:
+            continuation_hint = (
+                f"\n\n📎 **PAL continuations available**: {', '.join(available)}"
+            )
+
     # Try capability-aware routing first
     if use_capability_routing:
         index = load_capabilities_index()
@@ -215,11 +227,12 @@ def generate_pal_suggestion(
                 f"Groq classified this as a **{task_type}** task. "
                 f"Using intelligent routing with {len(index['capabilities'])} capabilities."
             )
-            return CAPABILITY_ROUTING_TEMPLATE.format(
+            result = CAPABILITY_ROUTING_TEMPLATE.format(
                 trigger_reason=trigger_reason,
                 routing_prompt=routing_prompt,
                 user_prompt=prompt,
             )
+            return result + continuation_hint
 
     # Fall back to simple PAL tool suggestion
     tool_description = PAL_TOOL_DESCRIPTIONS.get(
@@ -235,7 +248,7 @@ def generate_pal_suggestion(
 
     trigger_reason = f"Groq classified this as a **{task_type}** task requiring external consultation."
 
-    return PAL_SUGGESTION_TEMPLATE.format(
+    result = PAL_SUGGESTION_TEMPLATE.format(
         trigger_reason=trigger_reason,
         suggested_tool_full=suggested_tool_full,
         tool_description=tool_description,
@@ -244,6 +257,7 @@ def generate_pal_suggestion(
         models_summary=PAL_MODELS_SUMMARY,
         user_prompt=prompt,
     )
+    return result + continuation_hint
 
 
 def generate_planner_mandate(
@@ -489,7 +503,13 @@ def handle_session_start_routing(
                     result["lock_reason"] = "confidence_low_complex"
                 elif router_response.classification == "complex" and any(
                     code in (router_response.reason_codes or [])
-                    for code in ["security", "auth", "deploy", "migration", "destructive"]
+                    for code in [
+                        "security",
+                        "auth",
+                        "deploy",
+                        "migration",
+                        "destructive",
+                    ]
                 ):
                     # Complex + risky keywords = always lock regardless of confidence
                     should_hard_lock = True

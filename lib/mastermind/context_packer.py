@@ -410,6 +410,46 @@ def get_memory_content(prompt: str, budget: int = 800, cwd: Path | None = None) 
     return "\n".join(output) if output else "[no relevant memories]"
 
 
+def get_pal_continuation_hint(
+    session_id: str, suggested_tool: str | None = None
+) -> str:
+    """Get PAL continuation hint for routing context.
+
+    If a continuation_id exists for the suggested PAL tool (or any PAL tool),
+    returns a hint that Claude can use to resume context.
+
+    Args:
+        session_id: Current session ID for loading mastermind state
+        suggested_tool: Specific PAL tool type (e.g., "debug", "planner")
+
+    Returns:
+        Hint string or empty string if no continuation available
+    """
+    try:
+        from .state import load_state
+
+        mm_state = load_state(session_id)
+        continuations = mm_state.pal_continuations
+
+        if not continuations:
+            return ""
+
+        # If specific tool suggested, check for its continuation
+        if suggested_tool:
+            tool_type = suggested_tool.replace("mcp__pal__", "")
+            if cont_id := continuations.get(tool_type):
+                return f'📎 Resume PAL {tool_type} context: continuation_id="{cont_id}"'
+
+        # Otherwise, list all available continuations
+        available = [f"{k}: {v[:12]}..." for k, v in continuations.items() if v]
+        if available:
+            return f"📎 PAL continuations available: {', '.join(available)}"
+
+        return ""
+    except Exception:
+        return ""
+
+
 def get_confidence_context(confidence: int | None) -> str:
     """Format confidence level for router context.
 
