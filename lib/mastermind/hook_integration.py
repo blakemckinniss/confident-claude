@@ -62,18 +62,23 @@ PAL_TOOL_DESCRIPTIONS = {
     "precommit": "mcp__pal__precommit - Pre-commit validation and change verification",
     "chat": "mcp__pal__chat - General discussion and brainstorming",
     "thinkdeep": "mcp__pal__thinkdeep - Complex problem decomposition",
+    "clink": "mcp__pal__clink - Spawn isolated CLI subagent (Gemini 1M context) for heavy analysis",
 }
 
 # Alternatives mapping for each tool type
 PAL_TOOL_ALTERNATIVES = {
-    "debug": ["thinkdeep", "chat"],
+    "debug": ["thinkdeep", "chat", "clink"],
     "planner": ["chat", "thinkdeep"],
-    "codereview": ["precommit", "chat"],
-    "consensus": ["planner", "chat"],
-    "apilookup": ["chat"],
+    "codereview": ["precommit", "chat", "clink"],
+    "consensus": ["planner", "chat", "clink"],
+    "apilookup": ["chat", "clink"],
     "precommit": ["codereview", "chat"],
-    "chat": ["thinkdeep"],
-    "thinkdeep": ["debug", "chat"],
+    "chat": ["thinkdeep", "clink"],
+    "thinkdeep": ["debug", "chat", "clink"],
+    "clink": [
+        "chat",
+        "thinkdeep",
+    ],  # When clink suggested, alternatives are internal PAL
 }
 
 PAL_SUGGESTION_TEMPLATE = """
@@ -113,6 +118,7 @@ If the suggested tool doesn't fit your assessment, you may use any of these inst
 | `precommit` | Change validation, pre-commit checks |
 | `chat` | General discussion, brainstorming |
 | `thinkdeep` | Complex problem decomposition |
+| `clink` | Heavy codebase analysis, isolated subagent (Gemini 1M context) |
 
 ## User's Request
 
