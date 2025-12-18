@@ -213,10 +213,15 @@ class SessionState:
     # TOOL DEBT TRACKING (v4.14) - Pressure-to-remember mechanism
     # ==========================================================================
 
-    # Tracks turns since each tool family was used
+    # Tracks turns since each tool family was used (v4.14, extended v4.15)
     # Format: {family: {turns_without: int, last_used_turn: int}}
+    # Families: pal, serena, beads, agent_delegation, skills, clarification, tech_debt_cleanup
     tool_debt: dict = field(default_factory=lambda: {
         "pal": {"turns_without": 0, "last_used_turn": 0},
         "serena": {"turns_without": 0, "last_used_turn": 0},
         "beads": {"turns_without": 0, "last_used_turn": 0},
+        "agent_delegation": {"turns_without": 0, "last_used_turn": 0},
+        "skills": {"turns_without": 0, "last_used_turn": 0},
+        "clarification": {"turns_without": 0, "last_used_turn": 0},
+        "tech_debt_cleanup": {"turns_without": 0, "last_used_turn": 0},
     })
