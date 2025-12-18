@@ -325,13 +325,16 @@ class LintPassIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class MemoryConsultIncreaser(ConfidenceIncreaser):
-    """Triggers when consulting memory files - leveraging accumulated knowledge."""
+    """Triggers when consulting memory files - leveraging accumulated knowledge.
+
+    v4.13: Increased cooldown 2→5 to prevent memory file farming.
+    """
 
     name: str = "memory_consult"
     delta: int = 10
     description: str = "Consulted persistent memory"
     requires_approval: bool = False
-    cooldown_turns: int = 2
+    cooldown_turns: int = 5  # v4.13: Prevent farming via repeated reads
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -343,13 +346,17 @@ class MemoryConsultIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class BeadCreateIncreaser(ConfidenceIncreaser):
-    """Triggers when creating beads - planning and tracking work."""
+    """Triggers when creating beads - planning and tracking work.
+
+    v4.13: Increased cooldown 1→3 to prevent trivial bead farming.
+    Creating beads has natural costs (clutter) but reward should be rate-limited.
+    """
 
     name: str = "bead_create"
     delta: int = 10
     description: str = "Created task tracking bead"
     requires_approval: bool = False
-    cooldown_turns: int = 1
+    cooldown_turns: int = 3  # v4.13: Prevent trivial bead spam
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
