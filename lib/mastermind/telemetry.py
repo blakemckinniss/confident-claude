@@ -68,6 +68,8 @@ def log_router_decision(
     reason_codes: list[str],
     latency_ms: int,
     user_override: str | None = None,
+    needs_research: bool = False,
+    research_topics: list[str] | None = None,
 ) -> None:
     """Log router classification decision."""
     config = get_config()
@@ -84,6 +86,8 @@ def log_router_decision(
             "reason_codes": reason_codes,
             "latency_ms": latency_ms,
             "user_override": user_override,
+            "needs_research": needs_research,
+            "research_topics": research_topics or [],
         },
     )
 

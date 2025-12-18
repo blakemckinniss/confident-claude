@@ -437,6 +437,8 @@ def handle_session_start_routing(
             router_response.reason_codes,
             router_response.latency_ms,
             override,
+            router_response.needs_research,
+            router_response.research_topics,
         )
 
         result["routed"] = True
