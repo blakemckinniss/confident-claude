@@ -344,7 +344,10 @@ def get_memory_content(prompt: str, budget: int = 800, cwd: Path | None = None) 
     if not keywords:
         return "[no relevant memories]"
 
-    relevant: list[tuple[int, str, str]] = []  # (score, name, content)
+    # Get IDF values for TF-IDF scoring
+    idf = _get_idf_values(cwd)
+
+    relevant: list[tuple[float, str, str]] = []  # (score, name, content)
 
     # Search ~/.claude/memory/
     memory_dir = Path.home() / ".claude" / "memory"
@@ -354,12 +357,12 @@ def get_memory_content(prompt: str, budget: int = 800, cwd: Path | None = None) 
                 continue
             try:
                 content = mem_file.read_text(encoding="utf-8")[:1500]
-                # Score by keyword overlap in filename and content
+                # TF-IDF scoring with name boost
+                score = _tfidf_score(keywords, content, idf)
+                # Boost score if query terms appear in filename
                 name_words = set(mem_file.stem.lower().replace("_", " ").split())
-                content_words = set(re.findall(r"\b[a-zA-Z]{3,}\b", content.lower()))
-                name_overlap = len(keywords & name_words)
-                content_overlap = len(keywords & content_words)
-                score = name_overlap * 3 + content_overlap  # Weight name matches
+                if keywords & name_words:
+                    score *= 2.0  # 2x boost for name matches
                 if score > 0:
                     relevant.append((score, mem_file.stem, content[:500]))
             except (OSError, UnicodeDecodeError):
@@ -379,11 +382,11 @@ def get_memory_content(prompt: str, budget: int = 800, cwd: Path | None = None) 
                 continue  # Skip session logs
             try:
                 content = mem_file.read_text(encoding="utf-8")[:1000]
+                # TF-IDF scoring with name boost
+                score = _tfidf_score(keywords, content, idf)
                 name_words = set(mem_file.stem.lower().replace("_", " ").split())
-                content_words = set(re.findall(r"\b[a-zA-Z]{3,}\b", content.lower()))
-                name_overlap = len(keywords & name_words)
-                content_overlap = len(keywords & content_words)
-                score = name_overlap * 3 + content_overlap
+                if keywords & name_words:
+                    score *= 2.0  # 2x boost for name matches
                 if score > 0:
                     relevant.append((score, f"serena:{mem_file.stem}", content[:400]))
             except (OSError, UnicodeDecodeError):
@@ -397,7 +400,7 @@ def get_memory_content(prompt: str, budget: int = 800, cwd: Path | None = None) 
     output = []
     tokens_used = 0
     for score, name, content in relevant:
-        entry = f"### {name} (relevance: {score})\n{content}\n"
+        entry = f"### {name} (relevance: {score:.2f})\n{content}\n"
         entry_tokens = estimate_tokens(entry)
         if tokens_used + entry_tokens > budget:
             break
