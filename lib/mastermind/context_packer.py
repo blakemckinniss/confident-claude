@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +150,139 @@ def get_test_status(cwd: Path) -> str:
     return "[no test info]"
 
 
+def get_memory_hints(cwd: Path | None = None) -> dict[str, Any]:
+    """Get lightweight memory signals for router (Path B).
+
+    Returns boolean hints about available memories without full content.
+    Used to inform classification without consuming token budget.
+    """
+    hints: dict[str, Any] = {
+        "file_memories_available": False,
+        "serena_memories_available": False,
+        "memory_count": 0,
+        "memory_topics": [],  # First few filenames as topic hints
+    }
+
+    # Check ~/.claude/memory/
+    memory_dir = Path.home() / ".claude" / "memory"
+    if memory_dir.exists():
+        memories = [
+            f for f in memory_dir.glob("__*.md") if f.name in CORE_MEMORY_FILES
+        ]
+        if memories:
+            hints["file_memories_available"] = True
+            hints["memory_count"] += len(memories)
+            hints["memory_topics"].extend(
+                m.stem.replace("__", "")[:20] for m in memories[:3]
+            )
+
+    # Check serena memories (project-local or global .serena)
+    serena_dirs = []
+    if cwd:
+        serena_dirs.append(cwd / ".serena" / "memories")
+    serena_dirs.append(Path.home() / ".claude" / ".serena" / "memories")
+
+    for serena_dir in serena_dirs:
+        if serena_dir.exists():
+            serena_mems = list(serena_dir.glob("*.md"))
+            # Exclude session files, keep topic memories
+            topic_mems = [m for m in serena_mems if not m.name.startswith("session_")]
+            if topic_mems:
+                hints["serena_memories_available"] = True
+                hints["memory_count"] += len(topic_mems)
+                hints["memory_topics"].extend(m.stem[:20] for m in topic_mems[:2])
+                break  # Use first found
+
+    # Limit topics to 5
+    hints["memory_topics"] = hints["memory_topics"][:5]
+    return hints
+
+
+def get_memory_content(prompt: str, budget: int = 800, cwd: Path | None = None) -> str:
+    """Get relevant memory content for planner (Path A).
+
+    Searches memories for keyword relevance to prompt and returns
+    top matches within token budget.
+    """
+    # Extract keywords from prompt (alphanumeric words, 3+ chars)
+    keywords = set(
+        w.lower() for w in re.findall(r"\b[a-zA-Z]{3,}\b", prompt.lower())
+    )
+    # Remove common stop words
+    stop_words = {
+        "the", "and", "for", "are", "but", "not", "you", "all", "can", "had",
+        "her", "was", "one", "our", "out", "has", "have", "been", "this", "that",
+        "with", "they", "from", "would", "could", "should", "what", "when", "where",
+        "which", "there", "their", "about", "into", "some", "than", "them", "then",
+    }
+    keywords -= stop_words
+
+    if not keywords:
+        return "[no relevant memories]"
+
+    relevant: list[tuple[int, str, str]] = []  # (score, name, content)
+
+    # Search ~/.claude/memory/
+    memory_dir = Path.home() / ".claude" / "memory"
+    if memory_dir.exists():
+        for mem_file in memory_dir.glob("__*.md"):
+            if mem_file.name not in CORE_MEMORY_FILES:
+                continue
+            try:
+                content = mem_file.read_text(encoding="utf-8")[:1500]
+                # Score by keyword overlap in filename and content
+                name_words = set(mem_file.stem.lower().replace("_", " ").split())
+                content_words = set(re.findall(r"\b[a-zA-Z]{3,}\b", content.lower()))
+                name_overlap = len(keywords & name_words)
+                content_overlap = len(keywords & content_words)
+                score = name_overlap * 3 + content_overlap  # Weight name matches
+                if score > 0:
+                    relevant.append((score, mem_file.stem, content[:500]))
+            except (OSError, UnicodeDecodeError):
+                continue
+
+    # Search serena memories
+    serena_dirs = []
+    if cwd:
+        serena_dirs.append(cwd / ".serena" / "memories")
+    serena_dirs.append(Path.home() / ".claude" / ".serena" / "memories")
+
+    for serena_dir in serena_dirs:
+        if not serena_dir.exists():
+            continue
+        for mem_file in serena_dir.glob("*.md"):
+            if mem_file.name.startswith("session_"):
+                continue  # Skip session logs
+            try:
+                content = mem_file.read_text(encoding="utf-8")[:1000]
+                name_words = set(mem_file.stem.lower().replace("_", " ").split())
+                content_words = set(re.findall(r"\b[a-zA-Z]{3,}\b", content.lower()))
+                name_overlap = len(keywords & name_words)
+                content_overlap = len(keywords & content_words)
+                score = name_overlap * 3 + content_overlap
+                if score > 0:
+                    relevant.append((score, f"serena:{mem_file.stem}", content[:400]))
+            except (OSError, UnicodeDecodeError):
+                continue
+
+    if not relevant:
+        return "[no relevant memories]"
+
+    # Sort by relevance, take top entries within budget
+    relevant.sort(reverse=True, key=lambda x: x[0])
+    output = []
+    tokens_used = 0
+    for score, name, content in relevant:
+        entry = f"### {name} (relevance: {score})\n{content}\n"
+        entry_tokens = estimate_tokens(entry)
+        if tokens_used + entry_tokens > budget:
+            break
+        output.append(entry)
+        tokens_used += entry_tokens
+
+    return "\n".join(output) if output else "[no relevant memories]"
+
+
 def get_confidence_context(confidence: int | None) -> str:
     """Format confidence level for router context.
 
@@ -223,6 +356,11 @@ def pack_for_router(
     if confidence is not None:
         sections["confidence"] = get_confidence_context(confidence)
 
+    # Add memory hints (Path B - lightweight signals)
+    memory_hints = get_memory_hints(cwd)
+    if memory_hints["memory_count"] > 0:
+        sections["memory_hints"] = memory_hints
+
     # Build packed prompt
     packed = f"""## User Request
 {sections["prompt"]}
@@ -234,6 +372,15 @@ Type: {sections["repo_type"]}
     # Add confidence section (high priority - affects classification)
     if "confidence" in sections and sections["confidence"]:
         packed += f"\n## Agent State\n{sections['confidence']}\n"
+
+    # Add memory hints (lightweight - just signals, not content)
+    if "memory_hints" in sections:
+        hints = sections["memory_hints"]
+        hint_str = f"Memories available: {hints['memory_count']} "
+        hint_str += f"(file: {hints['file_memories_available']}, serena: {hints['serena_memories_available']})"
+        if hints["memory_topics"]:
+            hint_str += f"\nTopics: {', '.join(hints['memory_topics'])}"
+        packed += f"\n## Memory Signals\n{hint_str}\n"
 
     if "structure" in sections:
         packed += f"\n## Structure (top-level)\n{sections['structure']}\n"
@@ -288,6 +435,11 @@ def pack_for_planner(
     if config.context_packer.include_test_status:
         sections["tests"] = get_test_status(cwd)
 
+    # Add relevant memories (Path A - full content for complex tasks)
+    # Reserve ~800 tokens of the 4000 budget for memories
+    memory_budget = min(800, budget // 5)
+    sections["memories"] = get_memory_content(user_prompt, budget=memory_budget, cwd=cwd)
+
     # Build packed prompt
     packed = f"""## User Request
 {sections["prompt"]}
@@ -306,6 +458,9 @@ def pack_for_planner(
 
 ## Test Status
 {sections.get("tests", "[unknown]")}
+
+## Relevant Memories
+{sections.get("memories", "[none]")}
 """
 
     # Check budget and truncate if needed

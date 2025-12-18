@@ -27,7 +27,10 @@
     "include_git_diff": true,
     "include_beads": true,
     "include_test_status": true,
-    "include_serena_context": true
+    "include_serena_context": true,
+    "include_memory_hints": true,
+    "include_memory_content": true,
+    "memory_token_budget": 800
   },
   "telemetry": {
     "enabled": true,
