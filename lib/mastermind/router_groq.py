@@ -39,6 +39,7 @@ Also identify the task TYPE and suggest the best PAL MCP tool:
 - research: API lookups, documentation needs, library usage -> suggest "apilookup"
 - validation: Pre-commit checks, change verification -> suggest "precommit"
 - heavy_analysis: Large codebase analysis, entire directory review, context-heavy work -> suggest "clink"
+- code_generation: Write new code, implement features, generate boilerplate -> suggest "clink_codex"
 - general: Discussion, brainstorming, unclear category -> suggest "chat"
 
 Determine if web research should be done BEFORE the main task:
@@ -55,8 +56,8 @@ Output JSON only:
 {
   "classification": "trivial|medium|complex",
   "confidence": 0.0-1.0,
-  "task_type": "debugging|planning|review|architecture|research|validation|heavy_analysis|general",
-  "suggested_tool": "debug|planner|codereview|consensus|apilookup|precommit|clink|chat",
+  "task_type": "debugging|planning|review|architecture|research|validation|heavy_analysis|code_generation|general",
+  "suggested_tool": "debug|planner|codereview|consensus|apilookup|precommit|clink|clink_codex|chat",
   "reason_codes": ["code1", "code2"],
   "needs_research": false,
   "research_topics": []
@@ -77,7 +78,8 @@ Reason codes (pick 1-3):
 - external_api: Involves external services/APIs
 - version_specific: Depends on specific version behavior
 - large_codebase: Analyzing entire directories or many files
-- context_heavy: Would benefit from isolated context or 1M token window"""
+- context_heavy: Would benefit from isolated context or 1M token window
+- code_generation: Writing substantial new code or implementation"""
 
 
 @dataclass
@@ -119,6 +121,7 @@ class RouterResponse:
             "chat": "mcp__pal__chat",
             "thinkdeep": "mcp__pal__thinkdeep",
             "clink": "mcp__pal__clink",
+            "clink_codex": "mcp__pal__clink",  # Uses clink with cli_name='codex'
         }
         return tool_map.get(self.suggested_tool, "mcp__pal__chat")
 

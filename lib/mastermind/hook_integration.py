@@ -63,22 +63,21 @@ PAL_TOOL_DESCRIPTIONS = {
     "chat": "mcp__pal__chat - General discussion and brainstorming",
     "thinkdeep": "mcp__pal__thinkdeep - Complex problem decomposition",
     "clink": "mcp__pal__clink - Spawn isolated CLI subagent (Gemini 1M context) for heavy analysis",
+    "clink_codex": "mcp__pal__clink(cli_name='codex') - Codex CLI for code generation with GPT-5.1-codex-max",
 }
 
 # Alternatives mapping for each tool type
 PAL_TOOL_ALTERNATIVES = {
-    "debug": ["thinkdeep", "chat", "clink"],
-    "planner": ["chat", "thinkdeep"],
-    "codereview": ["precommit", "chat", "clink"],
+    "debug": ["thinkdeep", "chat", "clink", "clink_codex"],
+    "planner": ["chat", "thinkdeep", "clink_codex"],
+    "codereview": ["precommit", "chat", "clink", "clink_codex"],
     "consensus": ["planner", "chat", "clink"],
     "apilookup": ["chat", "clink"],
     "precommit": ["codereview", "chat"],
-    "chat": ["thinkdeep", "clink"],
-    "thinkdeep": ["debug", "chat", "clink"],
-    "clink": [
-        "chat",
-        "thinkdeep",
-    ],  # When clink suggested, alternatives are internal PAL
+    "chat": ["thinkdeep", "clink", "clink_codex"],
+    "thinkdeep": ["debug", "chat", "clink", "clink_codex"],
+    "clink": ["chat", "thinkdeep", "clink_codex"],  # Gemini CLI - codex is alternative
+    "clink_codex": ["chat", "clink", "thinkdeep"],  # Codex CLI - gemini is alternative
 }
 
 PAL_SUGGESTION_TEMPLATE = """
@@ -119,6 +118,7 @@ If the suggested tool doesn't fit your assessment, you may use any of these inst
 | `chat` | General discussion, brainstorming |
 | `thinkdeep` | Complex problem decomposition |
 | `clink` | Heavy codebase analysis, isolated subagent (Gemini 1M context) |
+| `clink(codex)` | Code generation, implementation (Codex GPT-5.1-codex-max) |
 
 ## User's Request
 
