@@ -471,14 +471,47 @@ def handle_session_start_routing(
             project = cwd.name if cwd else "unknown"
             result["pal_suggestion"] = True
 
-            # CREATE LOCK - blocks tools until ANY PAL tool is called
-            create_pal_mandate_lock(
-                session_id=state.session_id,
-                project=project,
-                prompt=prompt,
-            )
+            # PHASE 3: Confidence-gated PAL mandate lock
+            # Only create HARD LOCK when:
+            # - Confidence is very low (<50%) - always need external help
+            # - Confidence is low (<70%) AND task is complex
+            # - Task is complex AND has risk lexicon triggers
+            # High confidence (>=70%) gets soft suggestion only (no blocking)
+            should_hard_lock = False
+            if confidence is not None:
+                if confidence < 50:
+                    # Very low confidence = always lock
+                    should_hard_lock = True
+                    result["lock_reason"] = "confidence_critical"
+                elif confidence < 70 and router_response.classification == "complex":
+                    # Low confidence + complex = lock
+                    should_hard_lock = True
+                    result["lock_reason"] = "confidence_low_complex"
+                elif router_response.classification == "complex" and any(
+                    code in (router_response.reason_codes or [])
+                    for code in ["security", "auth", "deploy", "migration", "destructive"]
+                ):
+                    # Complex + risky keywords = always lock regardless of confidence
+                    should_hard_lock = True
+                    result["lock_reason"] = "risk_lexicon_override"
+            else:
+                # No confidence info = conservative (lock for complex)
+                if router_response.classification == "complex":
+                    should_hard_lock = True
+                    result["lock_reason"] = "no_confidence_complex"
 
-            # Inject PAL MCP tool suggestion (lock enforces usage)
+            if should_hard_lock:
+                create_pal_mandate_lock(
+                    session_id=state.session_id,
+                    project=project,
+                    prompt=prompt,
+                )
+                result["hard_lock"] = True
+            else:
+                result["hard_lock"] = False
+                result["soft_suggestion"] = True
+
+            # Inject PAL MCP tool suggestion (lock enforces usage if created)
             result["inject_context"] = generate_pal_suggestion(
                 prompt,
                 state,
