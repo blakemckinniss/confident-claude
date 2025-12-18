@@ -8,7 +8,6 @@ Phase 1 (explicit_override_only): Only ^ prefix triggers planning
 Phase 2+: Auto-planning for complex tasks
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -18,13 +17,13 @@ if str(lib_path) not in sys.path:
     sys.path.insert(0, str(lib_path))
 
 
-def _get_current_session_id() -> str | None:
-    """Get current Claude session ID from environment.
+def _get_current_session_id(data: dict) -> str | None:
+    """Get current Claude session ID from hook input data.
 
-    This is the ACTUAL current session, not the potentially stale
-    session_id from global SessionState which persists across sessions.
+    Claude Code passes session_id in the JSON stdin data, not as an
+    environment variable. This is the ACTUAL current session.
     """
-    return os.environ.get("CLAUDE_SESSION_ID")
+    return data.get("session_id")
 
 
 from _prompt_registry import register_hook, HookResult  # noqa: E402
@@ -53,9 +52,9 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
     try:
         config = load_config()
 
-        # Get ACTUAL current session ID from env (not stale state)
+        # Get ACTUAL current session ID from hook input data
         # This ensures mastermind detects new sessions correctly
-        current_session_id = _get_current_session_id()
+        current_session_id = _get_current_session_id(data)
 
         # Check if system is enabled at all
         if config.rollout_phase == 0:
