@@ -1253,6 +1253,112 @@ class AgentDelegationIncreaser(ConfidenceIncreaser):
         return tool_name == "Task"
 
 
+# =============================================================================
+# SCRIPTING ESCAPE HATCH INCREASERS (v4.11) - Reward tmp script usage
+# =============================================================================
+
+
+@dataclass
+class TmpScriptCreatedIncreaser(ConfidenceIncreaser):
+    """Triggers when creating a Python script in ~/.claude/tmp/.
+
+    Writing reusable scripts instead of complex bash chains is good practice.
+    Scripts are debuggable, testable, and can run in background.
+    """
+
+    name: str = "tmp_script_created"
+    delta: int = 3
+    description: str = "Created tmp script (reusable, debuggable)"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Write":
+            return False
+
+        file_path = context.get("file_path", "")
+        # Check if creating a script in tmp
+        if ".claude/tmp/" in file_path and file_path.endswith(".py"):
+            return True
+        # Also reward /tmp/.claude-scratch/ (actual scratch location)
+        if "/tmp/.claude-scratch/" in file_path and file_path.endswith(".py"):
+            return True
+        return False
+
+
+@dataclass
+class TmpScriptRunIncreaser(ConfidenceIncreaser):
+    """Triggers when running a script from ~/.claude/tmp/.
+
+    Using tmp scripts shows good workflow - write once, run/iterate easily.
+    """
+
+    name: str = "tmp_script_run"
+    delta: int = 2
+    description: str = "Ran tmp script"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+
+        command = context.get("bash_command", "")
+        # Check if running a tmp script
+        if ".claude/tmp/" in command and ".py" in command:
+            return True
+        if "/tmp/.claude-scratch/" in command and ".py" in command:
+            return True
+        return False
+
+
+@dataclass
+class BackgroundScriptIncreaser(ConfidenceIncreaser):
+    """Triggers when running scripts with run_in_background.
+
+    Background execution is efficient for long-running tasks.
+    """
+
+    name: str = "background_script"
+    delta: int = 3
+    description: str = "Ran script in background (efficient)"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+
+        # Check if run_in_background was set
+        tool_input = context.get("tool_input", {})
+        if not tool_input.get("run_in_background", False):
+            return False
+
+        command = context.get("bash_command", "")
+        # Only reward for running actual scripts, not just any background command
+        if ".py" in command or ".sh" in command:
+            return True
+        return False
+
+
 @dataclass
 class FrameworkSelfHealIncreaser(ConfidenceIncreaser):
     """Triggers when fixing framework bugs (reducers, hooks, confidence system).
@@ -1361,4 +1467,8 @@ INCREASERS: list[ConfidenceIncreaser] = [
     AgentDelegationIncreaser(),
     # Entity model: self-surgery reward
     FrameworkSelfHealIncreaser(),
+    # Scripting escape hatch increasers (v4.11)
+    TmpScriptCreatedIncreaser(),
+    TmpScriptRunIncreaser(),
+    BackgroundScriptIncreaser(),
 ]

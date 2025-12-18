@@ -293,30 +293,72 @@ def check_python_path_enforcer(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("script_nudge", "Bash", priority=14)
 def check_script_nudge(data: dict, state: SessionState) -> HookResult:
-    """Suggest writing scripts for complex manual work."""
+    """Suggest writing scripts for complex manual work.
+
+    Detects:
+    - 3+ pipes/operators (complex chains)
+    - Loop patterns (for/while/xargs)
+    - Complex data transforms (awk/sed/jq with long expressions)
+
+    Benefits of tmp scripts:
+    - Debuggable (add print statements, step through)
+    - Reusable (run again with tweaks)
+    - Background-capable (run_in_background=true)
+    - Testable (can add assertions)
+    """
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
 
-    PIPE_THRESHOLD = 3
+    # Already using a script? Good behavior - no nudge needed
+    if ".claude/tmp/" in command or ".claude/ops/" in command:
+        return HookResult.approve()
 
     # Strip heredoc content to avoid false positives
     cmd_to_check = strip_heredoc_content(command)
 
-    # Count pipes
+    # Exempt git commit (heredoc messages look complex but aren't)
+    if "git commit" in cmd_to_check:
+        return HookResult.approve()
+
+    # Count structural complexity
     pipe_count = cmd_to_check.count("|")
-    if pipe_count >= PIPE_THRESHOLD:
+    semicolon_count = cmd_to_check.count(";")
+    and_count = cmd_to_check.count("&&")
+    total_complexity = pipe_count + semicolon_count + and_count
+
+    if total_complexity >= 3:
         return HookResult.approve(
-            f"⚡ SCRIPT OPPORTUNITY: {pipe_count} pipes detected\n"
-            f"→ Consider: .claude/tmp/solve_$(date +%s).py"
+            f"💡 SCRIPT OPPORTUNITY: {total_complexity} operators detected\n"
+            "   Benefits: debuggable, reusable, can run in background\n"
+            "   → Write to: ~/.claude/tmp/<task>.py\n"
+            "   → Run with: run_in_background=true for long tasks"
         )
 
     # Check for loop patterns (use pre-compiled patterns)
     for pattern in _SCRIPT_NUDGE_PATTERNS:
         if pattern.search(cmd_to_check):
             return HookResult.approve(
-                "⚡ SCRIPT OPPORTUNITY: loop/iteration detected\n"
-                "→ Consider: .claude/tmp/solve_$(date +%s).py"
+                "💡 SCRIPT OPPORTUNITY: loop/iteration detected\n"
+                "   Benefits: debuggable, reusable, can run in background\n"
+                "   → Write to: ~/.claude/tmp/<task>.py"
             )
+
+    # Check for complex data transforms
+    data_transform_patterns = [
+        (r"awk\s+'[^']{25,}'", "awk"),
+        (r'awk\s+"[^"]{25,}"', "awk"),
+        (r"sed\s+(-e\s+){2,}", "sed"),
+        (r"jq\s+'[^']{35,}'", "jq"),
+    ]
+    for pattern, tool in data_transform_patterns:
+        if re.search(pattern, cmd_to_check):
+            return HookResult.approve(
+                f"💡 SCRIPT OPPORTUNITY: complex {tool} expression\n"
+                "   Python is more readable for data transforms:\n"
+                "   → json.load() for JSON, csv module for CSV\n"
+                "   → Write to: ~/.claude/tmp/<task>.py"
+            )
+
     return HookResult.approve()
 
 
@@ -766,7 +808,9 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
 
     # Allow read-only investigation tools (can't cause harm)
     # Also allow all Serena tools - semantic code analysis aids investigation
-    if tool_name in ("Read", "Grep", "Glob", "LS") or tool_name.startswith("mcp__serena__"):
+    if tool_name in ("Read", "Grep", "Glob", "LS") or tool_name.startswith(
+        "mcp__serena__"
+    ):
         return HookResult.approve()
 
     # BLOCK EVERYTHING ELSE
@@ -1473,12 +1517,24 @@ def check_code_tools_require_serena(data: dict, state: SessionState) -> HookResu
     # Check if searching in code directories
     # Match: absolute (/lib/), relative (lib/), and end-of-path (/lib, lib)
     code_dirs = (
-        "/src/", "/src", "src/",
-        "/lib/", "/lib", "lib/",
-        "/hooks/", "/hooks", "hooks/",
-        "/ops/", "/ops", "ops/",
-        "/components/", "/components", "components/",
-        "/utils/", "/utils", "utils/",
+        "/src/",
+        "/src",
+        "src/",
+        "/lib/",
+        "/lib",
+        "lib/",
+        "/hooks/",
+        "/hooks",
+        "hooks/",
+        "/ops/",
+        "/ops",
+        "ops/",
+        "/components/",
+        "/components",
+        "components/",
+        "/utils/",
+        "/utils",
+        "utils/",
     )
     if target_path and any(d in target_path for d in code_dirs):
         return HookResult.deny(

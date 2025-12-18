@@ -208,6 +208,21 @@ This catches cases where multiple small failures accumulate without triggering t
 - `mcp__pal__debug` or `mcp__pal__chat` for external LLM perspective
 - `mcp__pal__apilookup` for API/library documentation
 
+**Scripting escape hatch reducers (v4.11) - encourage tmp scripts:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `complex_bash_chain` | -2 | 3+ pipes/semicolons/&& in bash command | 2 turns |
+| `bash_data_transform` | -3 | Complex awk/sed/jq expressions | 2 turns |
+
+**Why tmp scripts over complex bash?**
+- **Debuggable**: Add print statements, step through logic
+- **Reusable**: Run again with tweaks, iterate quickly
+- **Background-capable**: Use `run_in_background=true` for long tasks
+- **Testable**: Add assertions, validate outputs
+
+**Pattern**: Write to `~/.claude/tmp/<task>.py`, run with venv Python.
+
 ## Increasers (Automatic Rewards)
 
 **Due diligence rewards balance natural decay:**
@@ -263,6 +278,14 @@ This catches cases where multiple small failures accumulate without triggering t
 | `ops_tool` | +1 | ~/.claude/ops/* scripts |
 | `agent_delegation` | +1 | Task tool for delegation |
 | `framework_self_heal` | +10 | Self-surgery: fixing reducers/hooks/confidence |
+
+**Scripting escape hatch increasers (v4.11):**
+
+| Increaser | Delta | Trigger |
+|-----------|-------|---------|
+| `tmp_script_created` | +3 | Create .py in ~/.claude/tmp/ |
+| `tmp_script_run` | +2 | Run script from ~/.claude/tmp/ |
+| `background_script` | +3 | Run script with run_in_background=true |
 
 **Per-turn cap:** Maximum ±15 total change per turn normally. **When below 80% (stasis floor), positive cap raised to +30** to enable faster legitimate recovery.
 

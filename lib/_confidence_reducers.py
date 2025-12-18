@@ -1918,6 +1918,105 @@ class SequentialFileOpsReducer(ConfidenceReducer):
 
 
 # =============================================================================
+# SCRIPTING ESCAPE HATCH REDUCERS (v4.11) - Encourage tmp scripts over complex bash
+# =============================================================================
+
+
+@dataclass
+class ComplexBashChainReducer(ConfidenceReducer):
+    """Triggers on complex bash chains that should be scripts.
+
+    3+ pipes or semicolons in a command indicates complexity better
+    handled by a reusable Python script in ~/.claude/tmp/.
+    """
+
+    name: str = "complex_bash_chain"
+    delta: int = -2
+    description: str = "Complex bash chain (3+ pipes/semicolons) - use tmp script"
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+
+        command = context.get("bash_command", "")
+        if not command:
+            return False
+
+        # Exempt: Already running a script (good behavior!)
+        if ".claude/tmp/" in command or ".claude/ops/" in command:
+            return False
+
+        # Exempt: Simple git commands with heredoc (commit messages)
+        if "git commit" in command:
+            return False
+
+        # Count structural complexity indicators
+        pipe_count = command.count("|")
+        semicolon_count = command.count(";")
+        and_count = command.count("&&")
+
+        # Trigger on 3+ structural operators
+        total_complexity = pipe_count + semicolon_count + and_count
+        return total_complexity >= 3
+
+
+@dataclass
+class BashDataTransformReducer(ConfidenceReducer):
+    """Triggers on complex data transformation in bash.
+
+    awk/sed/jq with complex expressions should be Python scripts
+    for readability, debuggability, and reusability.
+    """
+
+    name: str = "bash_data_transform"
+    delta: int = -3
+    description: str = "Complex bash data transform - use Python script"
+    cooldown_turns: int = 2
+    # Patterns indicating complex transforms (not simple usage)
+    complex_patterns: list = field(
+        default_factory=lambda: [
+            r"awk\s+'[^']{30,}'",  # awk with long script
+            r'awk\s+"[^"]{30,}"',  # awk with long script (double quotes)
+            r"sed\s+(-e\s+){2,}",  # multiple sed expressions
+            r"sed\s+'[^']*;[^']*;",  # sed with multiple commands
+            r"jq\s+'[^']{40,}'",  # jq with complex filter
+            r"\|\s*awk.*\|\s*awk",  # chained awk
+            r"\|\s*sed.*\|\s*sed",  # chained sed
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+
+        command = context.get("bash_command", "")
+        if not command:
+            return False
+
+        # Exempt: Already running a script
+        if ".claude/tmp/" in command or ".claude/ops/" in command:
+            return False
+
+        for pattern in self.complex_patterns:
+            if re.search(pattern, command):
+                return True
+        return False
+
+
+# =============================================================================
 # STUCK LOOP REDUCERS (v4.9) - Detect debugging without progress
 # =============================================================================
 
@@ -2112,4 +2211,7 @@ REDUCERS: list[ConfidenceReducer] = [
     MastermindFileDriftReducer(),
     MastermindTestDriftReducer(),
     MastermindApproachDriftReducer(),
+    # Scripting escape hatch reducers (v4.11)
+    ComplexBashChainReducer(),
+    BashDataTransformReducer(),
 ]
