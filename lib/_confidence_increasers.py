@@ -1260,10 +1260,12 @@ class AgentDelegationIncreaser(ConfidenceIncreaser):
 
 @dataclass
 class TmpScriptCreatedIncreaser(ConfidenceIncreaser):
-    """Triggers when creating a Python script in ~/.claude/tmp/.
+    """Triggers when creating a script in ~/.claude/tmp/.
 
     Writing reusable scripts instead of complex bash chains is good practice.
     Scripts are debuggable, testable, and can run in background.
+
+    Supported: Python (.py), JavaScript (.js), TypeScript (.ts), Shell (.sh)
     """
 
     name: str = "tmp_script_created"
@@ -1271,6 +1273,7 @@ class TmpScriptCreatedIncreaser(ConfidenceIncreaser):
     description: str = "Created tmp script (reusable, debuggable)"
     requires_approval: bool = False
     cooldown_turns: int = 1
+    script_extensions: tuple = (".py", ".js", ".ts", ".sh", ".mjs", ".cjs")
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -1283,11 +1286,15 @@ class TmpScriptCreatedIncreaser(ConfidenceIncreaser):
             return False
 
         file_path = context.get("file_path", "")
-        # Check if creating a script in tmp
-        if ".claude/tmp/" in file_path and file_path.endswith(".py"):
+        # Check if it's a script file
+        is_script = any(file_path.endswith(ext) for ext in self.script_extensions)
+        if not is_script:
+            return False
+
+        # Check if creating in tmp locations
+        if ".claude/tmp/" in file_path:
             return True
-        # Also reward /tmp/.claude-scratch/ (actual scratch location)
-        if "/tmp/.claude-scratch/" in file_path and file_path.endswith(".py"):
+        if "/tmp/.claude-scratch/" in file_path:
             return True
         return False
 
@@ -1326,13 +1333,22 @@ class TmpScriptRunIncreaser(ConfidenceIncreaser):
             # Only check command before heredoc
             command = command[: heredoc_match.start()]
 
-        # Must be actually running a script (python prefix or direct execution)
-        # Patterns: python script.py, python3 script.py, ./script.py, bash script.sh
+        # Must be actually running a script (interpreter prefix or direct execution)
+        # Supports: python, node, bash/sh, tsx/ts-node, deno, bun
         tmp_patterns = [
+            # Python
             r"python[3]?\s+[^\s]*\.claude/tmp/[^\s]+\.py",
             r"python[3]?\s+[^\s]*/tmp/\.claude-scratch/[^\s]+\.py",
-            r"\./[^\s]*\.claude/tmp/[^\s]+\.py",
-            r"~/.claude/tmp/[^\s]+\.py",
+            # Node.js
+            r"node\s+[^\s]*\.claude/tmp/[^\s]+\.(js|mjs|cjs)",
+            r"node\s+[^\s]*/tmp/\.claude-scratch/[^\s]+\.(js|mjs|cjs)",
+            # TypeScript (tsx, ts-node, deno, bun)
+            r"(tsx|ts-node|deno run|bun)\s+[^\s]*\.claude/tmp/[^\s]+\.ts",
+            # Shell
+            r"(bash|sh|zsh)\s+[^\s]*\.claude/tmp/[^\s]+\.sh",
+            # Direct execution (./script or ~/path)
+            r"\./[^\s]*\.claude/tmp/[^\s]+\.(py|js|ts|sh)",
+            r"~/.claude/tmp/[^\s]+\.(py|js|ts|sh)",
         ]
         for pattern in tmp_patterns:
             if re.search(pattern, command):
@@ -1370,7 +1386,8 @@ class BackgroundScriptIncreaser(ConfidenceIncreaser):
 
         command = context.get("bash_command", "")
         # Only reward for running actual scripts, not just any background command
-        if ".py" in command or ".sh" in command:
+        script_extensions = (".py", ".js", ".ts", ".sh", ".mjs", ".cjs")
+        if any(ext in command for ext in script_extensions):
             return True
         return False
 
