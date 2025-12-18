@@ -1,0 +1,166 @@
+{
+  "_version": "1.0.0",
+  "_comment": "Action hint catalog - Groq emits IDs, hook expands to full context",
+
+  "action_hints": {
+    "research.crawl4ai": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__crawl4ai__crawl",
+      "message": "Use crawl4ai to verify current API docs before coding.",
+      "icon": "🔬"
+    },
+    "research.ddg_search": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__crawl4ai__ddg_search",
+      "message": "Search for current solutions/patterns before implementing.",
+      "icon": "🔍"
+    },
+    "research.apilookup": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__pal__apilookup",
+      "message": "Use PAL apilookup for authoritative API documentation.",
+      "icon": "📚"
+    },
+    "debug.pal_debug": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__pal__debug",
+      "message": "Use PAL debug for systematic root cause analysis.",
+      "icon": "🔧"
+    },
+    "debug.probe": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "/probe",
+      "message": "Use /probe to inspect runtime behavior before coding.",
+      "icon": "🔬"
+    },
+    "debug.external_perspective": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__pal__chat",
+      "message": "Get external LLM perspective on this debugging challenge.",
+      "icon": "🧠"
+    },
+    "planning.pal_planner": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__pal__planner",
+      "message": "Use PAL planner for structured implementation planning.",
+      "icon": "📋"
+    },
+    "planning.beads": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "bd create",
+      "message": "Create beads to track milestones for this multi-step task.",
+      "icon": "📌"
+    },
+    "review.pal_codereview": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__pal__codereview",
+      "message": "Use PAL codereview for systematic code analysis.",
+      "icon": "🔎"
+    },
+    "review.consensus": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "mcp__pal__consensus",
+      "message": "Use multi-model consensus for architecture decisions.",
+      "icon": "🏛️"
+    },
+    "script.tmp_python": {
+      "kind": "do",
+      "intent": "prefetch_context",
+      "capability": "~/.claude/tmp/*.py",
+      "message": "Write a custom Python script to ~/.claude/tmp/ for this task.",
+      "icon": "🐍"
+    },
+    "script.parallel_agents": {
+      "kind": "do",
+      "intent": "use_capability",
+      "capability": "Task tool",
+      "message": "Spawn parallel Task agents for concurrent exploration.",
+      "icon": "⚡"
+    },
+    "policy.auth_review": {
+      "kind": "caution",
+      "intent": "add_guardrail",
+      "capability": null,
+      "message": "Auth flow detected - require extra review before changes.",
+      "icon": "🔐"
+    },
+    "policy.security_sensitive": {
+      "kind": "caution",
+      "intent": "add_guardrail",
+      "capability": null,
+      "message": "Security-sensitive code - use mcp__pal__codereview before finalizing.",
+      "icon": "🛡️"
+    },
+    "policy.migration_rollback": {
+      "kind": "caution",
+      "intent": "add_guardrail",
+      "capability": null,
+      "message": "Migration detected - document rollback strategy first.",
+      "icon": "↩️"
+    },
+    "policy.deploy_risk": {
+      "kind": "caution",
+      "intent": "add_guardrail",
+      "capability": null,
+      "message": "Deployment-related - verify staging/rollback plan exists.",
+      "icon": "🚀"
+    },
+    "hygiene.serena_memory": {
+      "kind": "do",
+      "intent": "post_task_hygiene",
+      "capability": "mcp__serena__write_memory",
+      "message": "Update Serena memories after completing this task.",
+      "icon": "🧠"
+    },
+    "hygiene.update_docs": {
+      "kind": "do",
+      "intent": "post_task_hygiene",
+      "capability": null,
+      "message": "Review CLAUDE.md and /rules/ - this may impact documentation.",
+      "icon": "📝"
+    },
+    "hygiene.commit_changes": {
+      "kind": "do",
+      "intent": "post_task_hygiene",
+      "capability": "bd sync",
+      "message": "Sync beads and commit changes when complete.",
+      "icon": "💾"
+    },
+    "clarify.ambiguous": {
+      "kind": "caution",
+      "intent": "request_clarification",
+      "capability": "AskUserQuestion",
+      "message": "Request is ambiguous - clarify scope before proceeding.",
+      "icon": "❓"
+    }
+  },
+
+  "capability_categories": {
+    "skills": {
+      "icon": "🎯",
+      "header": "Relevant Skills"
+    },
+    "agents": {
+      "icon": "🤖",
+      "header": "Useful Agents"
+    },
+    "mcp_tools": {
+      "icon": "🔧",
+      "header": "MCP Tools"
+    },
+    "ops_scripts": {
+      "icon": "📜",
+      "header": "Ops Scripts"
+    }
+  }
+}
