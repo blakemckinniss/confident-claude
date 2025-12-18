@@ -140,10 +140,49 @@ def get_test_status(cwd: Path) -> str:
     return "[no test info]"
 
 
-def pack_for_router(user_prompt: str, cwd: Path | None = None) -> PackedContext:
+def get_confidence_context(confidence: int | None) -> str:
+    """Format confidence level for router context.
+
+    Provides the router with agent confidence state so it can
+    bias toward complex classification when confidence is low.
+    """
+    if confidence is None:
+        return ""
+
+    # Determine zone name
+    if confidence >= 95:
+        zone = "EXPERT"
+    elif confidence >= 86:
+        zone = "TRUSTED"
+    elif confidence >= 71:
+        zone = "CERTAINTY"
+    elif confidence >= 51:
+        zone = "WORKING"
+    elif confidence >= 31:
+        zone = "HYPOTHESIS"
+    else:
+        zone = "IGNORANCE"
+
+    ctx = f"Agent confidence: {confidence}% ({zone})"
+    if confidence < 50:
+        ctx += " - VERY LOW, strongly recommend complex + PAL consultation"
+    elif confidence < 70:
+        ctx += " - LOW, consider escalating classification"
+
+    return ctx
+
+
+def pack_for_router(
+    user_prompt: str, cwd: Path | None = None, confidence: int | None = None
+) -> PackedContext:
     """Pack minimal context for router classification (1200 token budget).
 
     Focus on: user prompt, repo type, basic structure.
+
+    Args:
+        user_prompt: The user's request
+        cwd: Working directory for repo detection
+        confidence: Current agent confidence level (0-100)
     """
     config = get_config()
     budget = config.context_packer.router_token_budget
@@ -170,6 +209,10 @@ def pack_for_router(user_prompt: str, cwd: Path | None = None) -> PackedContext:
     if config.context_packer.include_repo_structure:
         sections["structure"] = get_repo_structure(cwd, max_depth=1)[:500]
 
+    # Add confidence context if provided
+    if confidence is not None:
+        sections["confidence"] = get_confidence_context(confidence)
+
     # Build packed prompt
     packed = f"""## User Request
 {sections["prompt"]}
@@ -177,6 +220,10 @@ def pack_for_router(user_prompt: str, cwd: Path | None = None) -> PackedContext:
 ## Repository
 Type: {sections["repo_type"]}
 """
+
+    # Add confidence section (high priority - affects classification)
+    if "confidence" in sections and sections["confidence"]:
+        packed += f"\n## Agent State\n{sections['confidence']}\n"
 
     if "structure" in sections:
         packed += f"\n## Structure (top-level)\n{sections['structure']}\n"

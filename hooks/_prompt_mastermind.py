@@ -81,6 +81,7 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
             prompt=prompt,
             turn_count=getattr(state, "turn_count", 0),
             session_id=current_session_id,
+            confidence=getattr(state, "confidence", 70),
         )
 
         # Build context from result

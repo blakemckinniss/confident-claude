@@ -26,6 +26,11 @@ Classify the user's request into one of three categories:
 - medium: Multi-file changes, moderate refactoring, adding features to existing code
 - complex: New systems, architecture changes, multi-component features, security-sensitive work
 
+IMPORTANT: If "Agent State" shows LOW confidence (<70%), bias toward escalating classification:
+- If would be trivial but confidence LOW -> classify as medium
+- If would be medium but confidence LOW -> classify as complex
+- If confidence VERY LOW (<50%), always classify as complex and suggest PAL consultation
+
 Also identify the task TYPE and suggest the best PAL MCP tool:
 - debugging: Bug investigation, error tracing, fix attempts -> suggest "debug"
 - planning: New features, implementation design, multi-step work -> suggest "planner"

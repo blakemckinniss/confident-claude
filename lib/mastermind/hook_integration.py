@@ -305,6 +305,7 @@ def process_user_prompt(
     turn_count: int,
     cwd: Path | None = None,
     session_id: str | None = None,
+    confidence: int | None = None,
 ) -> dict[str, Any]:
     """Process user prompt through mastermind pipeline.
 
@@ -314,6 +315,8 @@ def process_user_prompt(
         prompt: User's raw prompt
         turn_count: Current turn number
         cwd: Working directory
+        session_id: Current session ID
+        confidence: Current agent confidence level (0-100) for routing bias
 
     Returns:
         Dict with:
@@ -355,7 +358,7 @@ def process_user_prompt(
     state.increment_turn()
     if should_route:
         result["routing_info"] = handle_session_start_routing(
-            clean_prompt, override, state, cwd
+            clean_prompt, override, state, cwd, confidence
         )
 
     # Check for drift on subsequent turns
@@ -381,8 +384,16 @@ def handle_session_start_routing(
     override: str | None,
     state: MastermindState,
     cwd: Path | None,
+    confidence: int | None = None,
 ) -> dict[str, Any]:
     """Handle routing at session start (turn 0-1).
+
+    Args:
+        prompt: Clean user prompt (override prefix removed)
+        override: User override prefix (!, ^, or None)
+        state: Current mastermind session state
+        cwd: Working directory
+        confidence: Agent confidence level for routing bias
 
     Returns routing metadata.
     """
@@ -417,8 +428,8 @@ def handle_session_start_routing(
         )
         return result
 
-    # Pack context for router
-    router_ctx = pack_for_router(prompt, cwd)
+    # Pack context for router (include confidence for routing bias)
+    router_ctx = pack_for_router(prompt, cwd, confidence)
 
     # Redact before sending
     redacted_prompt, _ = redact_text(router_ctx.prompt)
