@@ -110,10 +110,15 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         needs_research = routing.get("needs_research", False) if routing else False
         research_topics = routing.get("research_topics", []) if routing else []
         if needs_research and research_topics:
-            topics_str = ", ".join(f'"{t}"' for t in research_topics[:3])
+            # Build structured research directive with exact tool calls
+            search_calls = "\n".join(
+                f'- `mcp__crawl4ai__ddg_search` query="{topic}"'
+                for topic in research_topics[:3]
+            )
             context_parts.append(
-                f"🔍 **Research Recommended**: Web search suggested before task. "
-                f"Topics: {topics_str}"
+                f"🔍 **Research First**: Current docs/APIs may be needed for accuracy.\n\n"
+                f"**Run these searches before proceeding:**\n{search_calls}\n\n"
+                f"**Then:** Summarize top 2-3 findings and include in your PAL tool prompt."
             )
 
         # Add blueprint if generated
