@@ -28,7 +28,9 @@ def register_hook(name: str, priority: int = 50):
 
     def decorator(func: Callable[[dict, SessionState], HookResult]):
         # Check if hook is disabled via environment variable
-        env_key = f"CLAUDE_HOOK_DISABLE_{name.upper()}"
+        # Normalize name to valid env var chars (alphanumeric + underscore)
+        safe_name = "".join(c if c.isalnum() else "_" for c in name.upper())
+        env_key = f"CLAUDE_HOOK_DISABLE_{safe_name}"
         if os.environ.get(env_key, "0") == "1":
             return func  # Skip registration
         HOOKS.append((name, func, priority))

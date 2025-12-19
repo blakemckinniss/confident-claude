@@ -138,3 +138,16 @@ GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transi
 
 ### 2025-12-18 00:21
 - [tool_debt_complete] ✅ _confidence_tool_debt.py module complete and integrated into confidence engine
+
+### 2025-12-18: MCP tool failure ≠ MCP unavailable
+**Problem:** Serena `activate_project` failed with "No such tool" → immediately concluded "Serena not available this session" → moved on without investigation.
+
+**Root Cause:** Used wrong parameter name (`project_hint` instead of `project`). The MCP was connected fine.
+
+**Fix Pattern:** When MCP tool fails:
+1. Check `claude mcp list` - is the server connected?
+2. Read the actual error message - is it "no such tool" vs "bad parameter"?
+3. Check tool schema for correct parameter names
+4. NEVER assume "not available" without verification
+
+**Lesson:** Tool call failure means INVESTIGATE, not skip. Wrong parameter ≠ missing server.

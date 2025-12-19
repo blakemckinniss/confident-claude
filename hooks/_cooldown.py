@@ -37,11 +37,13 @@ def _get_project_id() -> str:
     try:
         # Add lib to path for project_detector import
         import sys
+
         lib_dir = Path(__file__).parent.parent / "lib"
         if str(lib_dir) not in sys.path:
             sys.path.insert(0, str(lib_dir))
 
         from project_detector import detect_project
+
         ctx = detect_project()
 
         if ctx and ctx.project_type != "ephemeral":
@@ -212,9 +214,9 @@ def reset_cooldown(name: str) -> None:
     CooldownManager(name).reset()
 
 
-def check_and_reset_cooldown(name: str) -> bool:
+def check_and_reset_cooldown(name: str, cooldown_seconds: int | None = None) -> bool:
     """Check if cooldown allows action and reset if so."""
-    return CooldownManager(name).check_and_reset()
+    return CooldownManager(name, ttl=cooldown_seconds).check_and_reset()
 
 
 # =============================================================================

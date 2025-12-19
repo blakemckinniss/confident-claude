@@ -2283,6 +2283,444 @@ class MastermindApproachDriftReducer(ConfidenceReducer):
         return drift_signals.get("approach_change", False)
 
 
+# =============================================================================
+# COVERAGE GAP REDUCERS (v4.18) - Anti-patterns that were detectable but missed
+# =============================================================================
+
+
+@dataclass
+class PathHardcodingReducer(ConfidenceReducer):
+    """Triggers when hardcoding user-specific paths in code.
+
+    Catches embarrassing leaks like /home/jinx/ or C:\\Users\\Blake\\ in
+    committed code. These should use environment variables or relative paths.
+
+    GOLDEN STEP: Simple regex, catches real issues.
+    """
+
+    name: str = "path_hardcoding"
+    delta: int = -8
+    description: str = "Hardcoded user path in code (use env var or relative)"
+    remedy: str = "use Path.home(), os.environ, or relative paths"
+    cooldown_turns: int = 1
+    patterns: list = field(
+        default_factory=lambda: [
+            r"/home/\w+/",  # Linux home dirs
+            r"/Users/\w+/",  # macOS home dirs
+            r"C:\\Users\\\w+\\",  # Windows paths
+            r"C:/Users/\w+/",  # Windows paths (forward slash)
+        ]
+    )
+    # Exempt paths where hardcoding is expected
+    exempt_patterns: list = field(
+        default_factory=lambda: [
+            r"\.claude/tmp/",  # Scratch files OK
+            r"/tmp/",  # Temp files OK
+            r"#.*",  # Comments OK
+            r'""".*"""',  # Docstrings OK
+            r"'''.*'''",  # Docstrings OK
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Write", "Edit"):
+            return False
+
+        new_content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not new_content:
+            return False
+
+        # Skip config/scratch/documentation files where paths are expected
+        if any(
+            p in file_path
+            for p in [".claude/tmp/", "/tmp/", ".env", "config.json", "settings.", ".md"]
+        ):
+            return False
+
+        # Check for hardcoded paths
+        for pattern in self.patterns:
+            matches = re.finditer(pattern, new_content, re.IGNORECASE)
+            for match in matches:
+                # Check if match is in an exempt context
+                match_start = match.start()
+                # Get the line containing this match
+                line_start = new_content.rfind("\n", 0, match_start) + 1
+                line_end = new_content.find("\n", match_start)
+                if line_end == -1:
+                    line_end = len(new_content)
+                line = new_content[line_start:line_end]
+
+                # Skip if line is a comment
+                stripped = line.strip()
+                if stripped.startswith("#") or stripped.startswith("//"):
+                    continue
+
+                return True
+        return False
+
+
+@dataclass
+class MagicNumbersReducer(ConfidenceReducer):
+    """Triggers on magic numbers in code (numeric literals not in constants).
+
+    Numbers like 86400, 3600, 1024 should be named constants for clarity.
+    Only triggers for numbers >100 to avoid false positives on small values.
+    """
+
+    name: str = "magic_numbers"
+    delta: int = -3
+    description: str = "Magic number in code (use named constant)"
+    remedy: str = "extract to SCREAMING_SNAKE_CASE constant"
+    cooldown_turns: int = 2
+    # Common acceptable magic numbers
+    allowed_numbers: set = field(
+        default_factory=lambda: {
+            0,
+            1,
+            2,
+            10,
+            100,
+            1000,  # Common bases
+            -1,  # Sentinel
+            255,
+            256,
+            512,
+            1024,
+            2048,
+            4096,  # Powers of 2
+            60,
+            24,
+            7,
+            30,
+            365,  # Time units (should still be constants, but common)
+        }
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import ast
+
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Write", "Edit"):
+            return False
+
+        new_content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not new_content or not file_path.endswith(".py"):
+            return False
+
+        try:
+            tree = ast.parse(new_content)
+            for node in ast.walk(tree):
+                # Look for numeric literals
+                if isinstance(node, ast.Constant) and isinstance(
+                    node.value, (int, float)
+                ):
+                    val = node.value
+                    # Skip small/common numbers
+                    if val in self.allowed_numbers:
+                        continue
+                    # Skip numbers <= 100 (too many false positives)
+                    if isinstance(val, int) and abs(val) <= 100:
+                        continue
+                    if isinstance(val, float) and abs(val) <= 100:
+                        continue
+                    # Found a magic number
+                    return True
+            return False
+        except SyntaxError:
+            return False
+
+
+@dataclass
+class EmptyTestReducer(ConfidenceReducer):
+    """Triggers on test functions without assertions.
+
+    Tests that don't assert anything are useless - they always pass.
+    """
+
+    name: str = "empty_test"
+    delta: int = -8
+    description: str = "Test function without assertions"
+    remedy: str = "add assert statements or delete the test"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        import ast
+
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name not in ("Write", "Edit"):
+            return False
+
+        new_content = context.get("new_string", "") or context.get("content", "")
+        file_path = context.get("file_path", "")
+        if not new_content:
+            return False
+
+        # Only check test files
+        if not (
+            "test_" in file_path or "_test.py" in file_path or "/tests/" in file_path
+        ):
+            return False
+
+        try:
+            tree = ast.parse(new_content)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    # Check if it's a test function
+                    if not node.name.startswith("test_"):
+                        continue
+
+                    # Check function body for assertions
+                    has_assertion = False
+                    for child in ast.walk(node):
+                        # assert statement
+                        if isinstance(child, ast.Assert):
+                            has_assertion = True
+                            break
+                        # pytest.raises or similar context managers
+                        if isinstance(child, ast.With):
+                            has_assertion = (
+                                True  # Assume with blocks in tests are assertions
+                            )
+                            break
+                        # Method calls that look like assertions
+                        if isinstance(child, ast.Call):
+                            if isinstance(child.func, ast.Attribute):
+                                if child.func.attr.startswith(
+                                    ("assert", "expect", "should")
+                                ):
+                                    has_assertion = True
+                                    break
+
+                    if not has_assertion:
+                        # Check if it's just a pass or docstring
+                        body = node.body
+                        if len(body) == 1:
+                            if isinstance(body[0], ast.Pass):
+                                return True
+                            if isinstance(body[0], ast.Expr) and isinstance(
+                                body[0].value, ast.Constant
+                            ):
+                                return True  # Just a docstring
+                        elif len(body) == 0:
+                            return True
+
+            return False
+        except SyntaxError:
+            return False
+
+
+@dataclass
+class OrphanedImportsReducer(ConfidenceReducer):
+    """Triggers when an edit removes code but leaves orphaned imports.
+
+    If you delete a function that used `requests`, the import stays orphaned.
+    Context-based: set by hooks when detecting import without usage after edit.
+    """
+
+    name: str = "orphaned_imports"
+    delta: int = -5
+    description: str = "Orphaned import after code removal"
+    remedy: str = "remove unused imports"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Edit":
+            return False
+
+        # Must be removing code (old_string longer than new_string)
+        old_content = context.get("old_string", "")
+        new_content = context.get("new_string", "")
+        file_path = context.get("file_path", "")
+
+        if not old_content or not new_content or not file_path.endswith(".py"):
+            return False
+
+        # Only check if we're removing code
+        if len(new_content) >= len(old_content):
+            return False
+
+        # Context-based: hook can set this if it detects orphaned imports
+        return context.get("orphaned_imports", False)
+
+
+@dataclass
+class HedgingLanguageReducer(ConfidenceReducer):
+    """Triggers on hedging language without follow-up action.
+
+    "This might work" or "could possibly help" indicates uncertainty
+    that should be resolved via research or questions, not ignored.
+    """
+
+    name: str = "hedging_language"
+    delta: int = -3
+    description: str = "Hedging language without investigation"
+    remedy: str = "research to confirm, or ask user"
+    cooldown_turns: int = 3
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\b(?:this\s+)?(?:might|could|may)\s+(?:work|help|fix|solve)\b",
+            r"\bperhaps\s+(?:we|you|i)\s+(?:should|could|can)\b",
+            r"\bpossibly\s+(?:the|a|this)\b",
+            r"\bi'?m\s+not\s+(?:sure|certain)\s+(?:if|whether|that)\b",
+            r"\bmaybe\s+(?:we|you|i|this|it)\b",
+            r"\bnot\s+(?:entirely\s+)?sure\s+(?:if|whether|about)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+
+        # Check for hedging patterns
+        has_hedging = False
+        for pattern in self.patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                has_hedging = True
+                break
+
+        if not has_hedging:
+            return False
+
+        # Check if hedging is followed by action (research, question, tool use)
+        # If there's a tool call in the same turn, don't penalize
+        if context.get("research_performed", False):
+            return False
+        if context.get("asked_user", False):
+            return False
+
+        return True
+
+
+@dataclass
+class PhantomProgressReducer(ConfidenceReducer):
+    """Triggers on progress claims without corresponding tool use.
+
+    "Making progress" or "Getting closer" without actual changes is theater.
+    """
+
+    name: str = "phantom_progress"
+    delta: int = -5
+    description: str = "Progress claim without tool use"
+    remedy: str = "do actual work before claiming progress"
+    cooldown_turns: int = 3
+    patterns: list = field(
+        default_factory=lambda: [
+            r"\bmaking\s+(?:good\s+)?progress\b",
+            r"\bgetting\s+(?:closer|there)\b",
+            r"\balmost\s+(?:done|there|finished)\b",
+            r"\bnearly\s+(?:done|there|finished|complete)\b",
+            r"\bwe'?re\s+(?:on\s+track|close)\b",
+            r"\bthings\s+are\s+(?:coming\s+together|working)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+
+        # Check for progress claims
+        has_claim = False
+        for pattern in self.patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                has_claim = True
+                break
+
+        if not has_claim:
+            return False
+
+        # Check if there was actual work this turn
+        tool_name = context.get("tool_name", "")
+        if tool_name in ("Edit", "Write", "Bash"):
+            return False  # Actual work was done
+
+        return True
+
+
+@dataclass
+class QuestionAvoidanceReducer(ConfidenceReducer):
+    """Triggers when working on ambiguous task without asking questions.
+
+    Extended autonomous work on vague prompts without clarification
+    often leads to wasted effort on wrong interpretation.
+    """
+
+    name: str = "question_avoidance"
+    delta: int = -8
+    description: str = "Extended work without clarifying questions"
+    remedy: str = "use AskUserQuestion to clarify ambiguity"
+    cooldown_turns: int = 15  # Only trigger once per extended period
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Need 15+ turns to trigger
+        if state.turn_count < 15:
+            return False
+
+        # Check if ANY questions were asked in the session
+        questions_asked = state.nudge_history.get("ask_user_count", 0)
+        if questions_asked > 0:
+            return False
+
+        # Check if goal seems ambiguous (short, vague keywords)
+        original_goal = getattr(state, "original_goal", "")
+        if not original_goal:
+            return False
+
+        # Vague goal indicators
+        vague_patterns = [
+            r"^(?:fix|improve|update|change|make)\s+(?:it|this|that)\b",
+            r"^(?:something|anything)\s+(?:like|similar)\b",
+            r"\b(?:better|nicer|cleaner)\b",
+            r"^(?:help|can you)\b",
+        ]
+
+        is_vague = any(
+            re.search(p, original_goal, re.IGNORECASE) for p in vague_patterns
+        )
+
+        return is_vague
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 
@@ -2359,4 +2797,12 @@ REDUCERS: list[ConfidenceReducer] = [
     # Scripting escape hatch reducers (v4.11)
     ComplexBashChainReducer(),
     BashDataTransformReducer(),
+    # Coverage gap reducers (v4.18)
+    PathHardcodingReducer(),
+    MagicNumbersReducer(),
+    EmptyTestReducer(),
+    OrphanedImportsReducer(),
+    HedgingLanguageReducer(),
+    PhantomProgressReducer(),
+    QuestionAvoidanceReducer(),
 ]

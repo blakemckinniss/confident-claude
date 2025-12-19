@@ -285,6 +285,18 @@ This catches cases where multiple small failures accumulate without triggering t
 | `complex_bash_chain` | -2 | 3+ pipes/semicolons/&& in bash command | 2 turns |
 | `bash_data_transform` | -3 | Complex awk/sed/jq expressions | 2 turns |
 
+**Coverage gap reducers (v4.18) - anti-patterns that were detectable but missed:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `path_hardcoding` | -8 | `/home/user/` or `C:\Users\` in code (not config/scratch) | 1 turn |
+| `magic_numbers` | -3 | Numeric literals >100 not in allowed set (AST-based, Python only) | 2 turns |
+| `empty_test` | -8 | `test_*` function without assertions (AST-based) | 1 turn |
+| `orphaned_imports` | -5 | Import left unused after code removal (context-based) | 1 turn |
+| `hedging_language` | -3 | "might work", "not sure" without research/question follow-up | 3 turns |
+| `phantom_progress` | -5 | "making progress" without Edit/Write/Bash in same turn | 3 turns |
+| `question_avoidance` | -8 | 15+ turns on vague goal with 0 AskUserQuestion calls | 15 turns |
+
 **Why tmp scripts over complex bash?**
 - **Debuggable**: Add print statements, step through logic
 - **Reusable**: Run again with tweaks, iterate quickly

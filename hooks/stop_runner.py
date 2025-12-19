@@ -1555,6 +1555,53 @@ def check_session_debt(data: dict, state: SessionState) -> StopHookResult:
     )
 
 
+@register_hook("session_commit_reminder", priority=90)
+def check_session_commit(data: dict, state: SessionState) -> StopHookResult:
+    """Remind about uncommitted changes at session end.
+
+    Non-blocking - just surfaces the suggestion.
+    """
+    # Skip if no file work done
+    if not state.files_edited and not state.files_created:
+        return StopHookResult.ok()
+
+    # Try to import smart commit module
+    try:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_smart_commit",
+            CLAUDE_DIR / "lib" / "_smart_commit.py",
+        )
+        if not spec or not spec.loader:
+            return StopHookResult.ok()
+        sc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sc)
+    except Exception:
+        return StopHookResult.ok()
+
+    cwd = os.getcwd()
+    if not sc.is_git_repo(cwd):
+        return StopHookResult.ok()
+
+    decision = sc.should_commit(state, cwd, trigger="session_end")
+
+    if decision.should_commit:
+        # Format a helpful message
+        changes = sc.get_uncommitted_changes(cwd)
+        real_count = sc._count_real_changes(changes)
+        if real_count == 0:
+            return StopHookResult.ok()
+
+        msg_preview = decision.message.split("\n")[0][:50]
+        return StopHookResult.warn(
+            f"📦 **Uncommitted changes:** {real_count} files\n"
+            f"   Suggested: `git add -A && git commit -m \"{msg_preview}...\"`"
+        )
+
+    return StopHookResult.ok()
+
+
 # =============================================================================
 # MAIN RUNNER
 # =============================================================================

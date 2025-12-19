@@ -150,6 +150,7 @@ try:
         detect_vague_prompt,
         detect_skill_match,
     )
+
     _TOOL_DEBT_AVAILABLE = True
 except ImportError:
     _TOOL_DEBT_AVAILABLE = False
@@ -159,14 +160,21 @@ def _get_available_skills() -> list[str]:
     """Get list of available skills from settings."""
     # Fallback skill names (used if settings unavailable)
     fallback_skills = [
-        "frontend-design", "debugging", "testing", "code-quality",
-        "database", "api-development", "security-audit", "performance",
+        "frontend-design",
+        "debugging",
+        "testing",
+        "code-quality",
+        "database",
+        "api-development",
+        "security-audit",
+        "performance",
     ]
     try:
         settings_path = CLAUDE_DIR / "settings.json"
         if not settings_path.exists():
             return fallback_skills
         import json
+
         settings = json.loads(settings_path.read_text())
         skills = settings.get("skills", {})
         return list(skills.keys()) if isinstance(skills, dict) else fallback_skills
@@ -215,7 +223,9 @@ def check_tool_debt_enrichment(data: dict, state: SessionState) -> HookResult:
     state._debt_context["skill_match"] = has_skill_match
 
     # Log for debugging (silent - no user output)
-    log_debug(f"tool_debt_enrichment: vague={is_vague}, skill_match={has_skill_match}")
+    log_debug(
+        "tool_debt_enrichment", f"vague={is_vague}, skill_match={has_skill_match}"
+    )
 
     return HookResult.allow()
 

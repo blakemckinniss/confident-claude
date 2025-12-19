@@ -45,7 +45,8 @@ TOOL_DEBT_CONFIG = {
         "rate": 1,  # -1 per turn without PAL
         "recovery": 0.5,  # Get back 50% when used
         "cap": 15,  # Max debt accumulation
-        "grace_turns": 3,  # Don't penalize first N turns
+        "grace_turns": 5,  # Give time for investigation
+        "requires": "complex_or_stuck",  # Only penalize for complex tasks or after failures
         "description": "PAL MCP consultation",
     },
     "serena": {
@@ -60,7 +61,8 @@ TOOL_DEBT_CONFIG = {
         "rate": 1,
         "recovery": 0.5,
         "cap": 10,
-        "grace_turns": 3,
+        "grace_turns": 5,  # Give time to understand task
+        "requires": "substantive_work",  # Only penalize when doing edits, not investigation
         "description": "Beads task tracking",
     },
     # === New Families (v2.0) ===
@@ -200,6 +202,27 @@ def _check_requirement(state: "SessionState", context: dict, requirement: str) -
         classification = context.get("task_classification", "")
         files_edited = len(getattr(state, "files_edited", []))
         return classification == "complex" or files_edited >= 5
+
+    if requirement == "complex_or_stuck":
+        # PAL is appropriate when: complex task, multiple failures, or low confidence
+        classification = context.get("task_classification", "")
+        if classification == "complex":
+            return True
+        # Check for stuck state (multiple consecutive failures)
+        consecutive_failures = getattr(state, "consecutive_failures", 0)
+        if consecutive_failures >= 2:
+            return True
+        # Check for low confidence (below working zone)
+        confidence = getattr(state, "confidence", 75)
+        if confidence < 70:
+            return True
+        return False
+
+    if requirement == "substantive_work":
+        # Beads tracking is appropriate when actually making changes
+        files_edited = getattr(state, "files_edited", [])
+        # Only penalize if we've edited files (not just reading/investigating)
+        return len(files_edited) > 0
 
     if requirement == "skill_match":
         # Check if any skill keywords match the current task

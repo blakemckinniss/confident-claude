@@ -502,6 +502,79 @@ def get_project_name(cwd: Path) -> str:
     return ""
 
 
+def get_top_level_dirs(cwd: Path, max_dirs: int = 12) -> list[str]:
+    """Get top-level directories for semantic pointer grounding.
+
+    Returns actual directory names so Groq can suggest accurate file paths
+    instead of guessing generic patterns like 'src/auth/'.
+    """
+    try:
+        dirs = []
+        for entry in cwd.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                # Skip common non-code directories
+                if entry.name in (
+                    "node_modules",
+                    "__pycache__",
+                    "venv",
+                    ".venv",
+                    "dist",
+                    "build",
+                ):
+                    continue
+                dirs.append(entry.name)
+        # Sort alphabetically, prioritize common code dirs
+        priority = {
+            "src",
+            "lib",
+            "app",
+            "components",
+            "pages",
+            "api",
+            "services",
+            "utils",
+        }
+        dirs.sort(key=lambda d: (d not in priority, d))
+        return dirs[:max_dirs]
+    except (OSError, PermissionError):
+        return []
+
+
+def get_serena_memory_topics(cwd: Path | None = None, max_topics: int = 5) -> list[str]:
+    """Get Serena memory topics for prior_art pointer suggestions.
+
+    Returns memory filenames (without extension) that Groq can reference
+    as prior_art pointers (e.g., "see memory: auth-flow-implementation").
+    """
+    topics = []
+
+    serena_dirs = []
+    if cwd:
+        serena_dirs.append(cwd / ".serena" / "memories")
+    serena_dirs.append(Path.home() / ".claude" / ".serena" / "memories")
+
+    for serena_dir in serena_dirs:
+        if not serena_dir.exists():
+            continue
+        try:
+            for mem_file in serena_dir.glob("*.md"):
+                # Skip session logs
+                if mem_file.name.startswith("session_"):
+                    continue
+                topics.append(mem_file.stem)
+        except (OSError, PermissionError):
+            continue
+
+    # Deduplicate and limit
+    seen = set()
+    unique_topics = []
+    for t in topics:
+        if t not in seen:
+            seen.add(t)
+            unique_topics.append(t)
+    return unique_topics[:max_topics]
+
+
 def get_recent_observations(max_items: int = 5) -> str:
     """Get recent claude-mem observations for router context.
 
@@ -832,6 +905,16 @@ def pack_for_router(
     if config.context_packer.include_repo_structure:
         sections["structure"] = get_repo_structure(cwd, max_depth=1)[:500]
 
+    # Top-level directories for semantic pointer grounding
+    top_dirs = get_top_level_dirs(cwd)
+    if top_dirs:
+        sections["top_dirs"] = top_dirs
+
+    # Serena memory topics for prior_art suggestions
+    serena_topics = get_serena_memory_topics(cwd)
+    if serena_topics:
+        sections["serena_topics"] = serena_topics
+
     # Add confidence context if provided
     if confidence is not None:
         sections["confidence"] = get_confidence_context(confidence)
@@ -907,6 +990,18 @@ Type: {sections["repo_type"]}{project_line}{beads_line}
 
     if "structure" in sections:
         packed += f"\n## Structure (top-level)\n{sections['structure']}\n"
+
+    # Add top-level dirs for semantic pointer grounding
+    if "top_dirs" in sections:
+        dirs_str = ", ".join(sections["top_dirs"])
+        packed += f"\n## Actual Directories\n{dirs_str}\n"
+        packed += "(Use these actual paths in likely_relevant pointers, not generic guesses)\n"
+
+    # Add serena memory topics for prior_art suggestions
+    if "serena_topics" in sections:
+        topics_str = ", ".join(sections["serena_topics"])
+        packed += f"\n## Available Memories\n{topics_str}\n"
+        packed += "(Reference these in prior_art pointers as 'see memory: <topic>')\n"
 
     # Add current work context (high signal for routing)
     if "git_diff" in sections:

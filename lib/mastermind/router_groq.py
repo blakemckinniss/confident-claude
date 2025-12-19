@@ -92,6 +92,29 @@ ALWAYS include these three discovery aids (1-3 items each):
 - tools_suggested: Language-specific libraries, CLI tools, or bash commands that could help
 - discovery_questions: Self-reflection questions to help Claude think deeper about the task
 
+PROMPT ENHANCEMENT - Semantic pointers to activate relevant concepts:
+Core clarification:
+- inferred_goal: What success looks like (1 sentence, concrete outcome)
+- inferred_scope: What's in/out of scope (brief)
+- unstated_constraints: Implicit assumptions (1-3 items, e.g., "maintain backward compat")
+- ambiguity_detected: true if multiple valid interpretations exist
+- clarification_confidence: 0.0-1.0 how confident in this interpretation
+
+Semantic pointers (activate without instructing):
+- likely_relevant: Files/dirs that probably matter (1-3 paths, e.g., "src/auth/", "lib/errors.py")
+- related_concepts: Patterns/ideas to consider (1-3 items, e.g., "error boundaries", "retry logic")
+- prior_art: Similar existing implementation to reference (e.g., "see how api/client.py handles this")
+
+When to enhance:
+- Vague: "make it better", "fix this" → clarify + point to relevant files
+- Implicit scope: "add validation" → which fields? point to form components
+- Missing context: "refactor" → goal + related patterns + similar code
+
+When NOT to enhance (set all to null):
+- Already specific: "add input validation to email field in SignupForm"
+- Simple lookups: "what does this function do?"
+- Explicit instructions with clear scope
+
 Output JSON only:
 {
   "classification": "trivial|medium|complex",
@@ -110,7 +133,17 @@ Output JSON only:
   },
   "research_suggestions": ["topic to search 1", "topic to search 2"],
   "tools_suggested": ["ruff check", "pytest -x", "git bisect"],
-  "discovery_questions": ["What assumptions am I making?", "What could cause this to fail?"]
+  "discovery_questions": ["What assumptions am I making?", "What could cause this to fail?"],
+  "intent": {
+    "inferred_goal": "Specific outcome the user wants (null if already clear)",
+    "inferred_scope": "What's in/out of scope (null if already clear)",
+    "unstated_constraints": ["implicit assumption 1", "implicit assumption 2"],
+    "ambiguity_detected": false,
+    "clarification_confidence": 0.85,
+    "likely_relevant": ["src/auth/", "lib/errors.py"],
+    "related_concepts": ["error boundaries", "retry logic"],
+    "prior_art": "see how api/client.py handles errors"
+  }
 }
 
 Reason codes (pick 1-3):
@@ -160,6 +193,29 @@ class DiscoveryAids:
 
 
 @dataclass
+class IntentClarification:
+    """Prompt enhancement - clarifies user's real intent via semantic pointers.
+
+    This is ADDITIVE context, never replaces the original prompt.
+    Works through semantic priming - mentioning concepts/files/patterns raises
+    their activation level in Claude's attention, making them more likely to
+    be considered during reasoning.
+    """
+
+    # Core intent clarification
+    inferred_goal: str | None = None  # What success looks like
+    inferred_scope: str | None = None  # What's in/out of scope
+    unstated_constraints: list[str] | None = None  # Implicit assumptions made explicit
+    ambiguity_detected: bool = False  # If true, Claude should confirm with user
+    clarification_confidence: float = 0.0  # How confident in this interpretation (0-1)
+
+    # Semantic pointers - activate relevant concepts without instructing
+    likely_relevant: list[str] | None = None  # Files/dirs that probably matter
+    related_concepts: list[str] | None = None  # Patterns/concepts to consider
+    prior_art: str | None = None  # "Similar to how X works" pointer
+
+
+@dataclass
 class RouterResponse:
     """Parsed router classification response."""
 
@@ -177,6 +233,7 @@ class RouterResponse:
     action_hints: list[ActionHint] | None = None  # prescriptive action recommendations
     recommended: RecommendedCapabilities | None = None  # capability shortlist
     discovery: DiscoveryAids | None = None  # discovery aids (always populated)
+    intent: IntentClarification | None = None  # prompt enhancement (clarified intent)
     error: str | None = None
 
     @property
@@ -262,7 +319,7 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
-        "max_tokens": 500,  # Increased for action_hints + recommended capabilities
+        "max_tokens": 650,  # Increased for action_hints + recommended + intent clarification
         "response_format": {"type": "json_object"},
     }
 
@@ -314,6 +371,34 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 discovery_questions=parsed.get("discovery_questions") or None,
             )
 
+            # Parse intent clarification (prompt enhancement)
+            intent = None
+            if raw_intent := parsed.get("intent"):
+                # Only create if there's actual content
+                has_content = (
+                    raw_intent.get("inferred_goal")
+                    or raw_intent.get("inferred_scope")
+                    or raw_intent.get("unstated_constraints")
+                    or raw_intent.get("ambiguity_detected")
+                )
+                if has_content:
+                    intent = IntentClarification(
+                        inferred_goal=raw_intent.get("inferred_goal") or None,
+                        inferred_scope=raw_intent.get("inferred_scope") or None,
+                        unstated_constraints=raw_intent.get("unstated_constraints")
+                        or None,
+                        ambiguity_detected=bool(
+                            raw_intent.get("ambiguity_detected", False)
+                        ),
+                        clarification_confidence=float(
+                            raw_intent.get("clarification_confidence", 0.0)
+                        ),
+                        # Semantic pointers
+                        likely_relevant=raw_intent.get("likely_relevant") or None,
+                        related_concepts=raw_intent.get("related_concepts") or None,
+                        prior_art=raw_intent.get("prior_art") or None,
+                    )
+
             return RouterResponse(
                 classification=parsed.get("classification", "complex"),
                 confidence=float(parsed.get("confidence", 0.5)),
@@ -327,6 +412,7 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 action_hints=action_hints,
                 recommended=recommended,
                 discovery=discovery,
+                intent=intent,
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Parse error - default to complex (safe fallback)

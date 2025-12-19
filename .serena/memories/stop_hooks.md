@@ -13,7 +13,6 @@
 
 | Hook | Priority | Purpose |
 |------|----------|---------|
-| `auto_commit` | 10 | Suggest committing uncommitted work |
 | `session_blocks` | 30 | Track session-level blocking issues |
 | `dismissal_check` | 40 | Detect dismissive/incomplete responses |
 | `completion_gate` | 45 | **Block "done" claims below 70% confidence** |

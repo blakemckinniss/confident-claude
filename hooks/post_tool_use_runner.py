@@ -45,6 +45,12 @@ HOOKS INDEX (by priority):
     84 confidence_floor_debug - Force research when confidence <50% during debug
     85 confidence_recovery  - Track recovery after confidence-triggered research
 
+  SMART COMMIT (95-97):
+    95 smart_commit_bead_close - Auto-commit on bd close with bead title
+    96 smart_commit_track_edit - Track file edits for commit suggestions
+    96 smart_commit_track_commit - Track git commits to reset state
+    97 smart_commit_periodic   - Periodic commit suggestions
+
 ARCHITECTURE:
   - Hooks register via @register_hook(name, matcher, priority)
   - Lower priority = runs first
@@ -67,16 +73,7 @@ from session_state import (
 )
 
 # Confidence system imports (v4.0)
-
-# Quality scanner (ruff + radon)
-try:
-    from _quality_scanner import scan_file as quality_scan_file, format_report
-
-    QUALITY_SCANNER_AVAILABLE = True
-except ImportError:
-    QUALITY_SCANNER_AVAILABLE = False
-    quality_scan_file = None
-    format_report = None
+# Note: Quality scanner imported in _hooks_quality.py where it's used
 
 # =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
@@ -95,6 +92,7 @@ import _hooks_quality  # noqa: F401 - Quality hooks (priority 22-50)
 import _hooks_tracking  # noqa: F401 - Tracking hooks (priority 55-72)
 import _hooks_stuck_loop  # noqa: F401 - Stuck loop detection (priority 78-83)
 import _hooks_mastermind  # noqa: F401 - Mastermind integration (priority 86-89)
+import _hooks_smart_commit  # noqa: F401 - Smart auto-commit (priority 95-97)
 from _hooks_tracking import _get_scratch_state_file, _get_info_gain_state_file
 
 # =============================================================================
@@ -113,12 +111,12 @@ def _load_state_file(path) -> dict | None:
 
 
 def _save_state_file(path, data: dict) -> None:
-    """Save JSON state to file, silently failing on error."""
+    """Save JSON state to file, logging on error."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data))
-    except (IOError, OSError):
-        pass
+    except (IOError, OSError) as e:
+        print(f"[post-runner] State save failed: {path}: {e}", file=sys.stderr)
 
 
 def _load_runner_state() -> dict:
@@ -159,6 +157,8 @@ def run_hooks(data: dict, state: SessionState) -> dict:
 
     output = {"hookSpecificOutput": {"hookEventName": "PostToolUse"}}
     if contexts:
+        if len(contexts) > 5:
+            print(f"[post-runner] Truncated {len(contexts) - 5} contexts", file=sys.stderr)
         output["hookSpecificOutput"]["additionalContext"] = "\n\n".join(contexts[:5])
     return output
 

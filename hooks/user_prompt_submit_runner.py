@@ -17,8 +17,8 @@ HOOKS INDEX (by priority):
     8  confidence_dispute       - Handle false positive reducer disputes
    10  verified_library_unlock  - Unlock verified libraries
 
-  EXTRACTION/CONTEXT (15-70) - _prompt_context.py:
-    2  beads_periodic_sync - Periodic background beads sync (in suggestions)
+  EXTRACTION/CONTEXT (12-70) - _prompt_context.py:
+   12  tool_debt_enrichment - Enrich context with tool debt tracking
    15  intention_tracker   - Extract mentioned files/searches
    30  prompt_disclaimer   - System context + task checklist
    32  tech_version_risk   - Warn about outdated AI knowledge
@@ -27,7 +27,8 @@ HOOKS INDEX (by priority):
    45  context_injector    - Session state, command suggestions
    50  reminder_injector   - Custom trigger-based reminders
 
-  SUGGESTIONS (70-95) - _prompt_suggestions.py:
+  SUGGESTIONS (2, 70-95) - _prompt_suggestions.py:
+    2  beads_periodic_sync   - Periodic background beads sync
    70  complexity_assessment - BMAD-style task complexity detection
    71  advisor_context     - Persona-flavored advisory (security, architecture, etc.)
    72  self_heal_diagnostic - Diagnostic commands when self-heal active
@@ -100,8 +101,13 @@ def run_hooks(data: dict, state: SessionState) -> dict:
             if result.context:
                 contexts.append(result.context)
 
-        except Exception as e:
-            print(f"[ups-runner] Hook {name} error: {e}", file=sys.stderr)
+        except Exception:
+            import traceback
+
+            print(
+                f"[ups-runner] Hook {name} crashed:\n{traceback.format_exc()}",
+                file=sys.stderr,
+            )
 
     # Build output
     output = {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit"}}

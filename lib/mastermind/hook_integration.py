@@ -17,7 +17,12 @@ from .config import get_config, PAL_MANDATE_LOCK_PATH
 from .state import MastermindState, RoutingDecision, load_state, save_state
 from .context_packer import pack_for_router, has_in_progress_bead
 from .routing import parse_user_override, make_routing_decision
-from .router_groq import call_groq_router, apply_risk_lexicon
+from .router_groq import (
+    call_groq_router,
+    apply_risk_lexicon,
+    RecommendedCapabilities,
+    DiscoveryAids,
+)
 from .redaction import redact_text
 from .drift import evaluate_drift, should_escalate
 from .executor_instructions import (
@@ -31,7 +36,7 @@ from .router_gpt import build_routing_prompt, load_capabilities_index
 
 def get_session_id() -> str:
     """Get current session ID from environment or generate one.
-    
+
     Always truncates to 16 chars for consistency across the codebase.
     """
     session_id = os.environ.get("CLAUDE_SESSION_ID", f"session_{int(time.time())}")
@@ -206,6 +211,8 @@ def generate_pal_suggestion(
     reason_codes: list[str] | None = None,
     needs_research: bool = False,
     research_topics: list[str] | None = None,
+    recommended: RecommendedCapabilities | None = None,
+    discovery: DiscoveryAids | None = None,
 ) -> str:
     """Generate PAL MCP tool suggestion (hybrid approach).
 
@@ -269,6 +276,49 @@ def generate_pal_suggestion(
             f"3. This ensures PAL has current context, not stale training data\n"
         )
 
+    # Build task-specific recommendations section (from Groq)
+    recommendations_section = ""
+    if recommended:
+        rec_parts = []
+        if recommended.agents:
+            agents_str = ", ".join(f"`{a}`" for a in recommended.agents[:3])
+            rec_parts.append(f"**Agents**: {agents_str}")
+        if recommended.skills:
+            skills_str = ", ".join(f"`/{s}`" for s in recommended.skills[:3])
+            rec_parts.append(f"**Skills**: {skills_str}")
+        if recommended.mcp_tools:
+            tools_str = ", ".join(f"`{t}`" for t in recommended.mcp_tools[:3])
+            rec_parts.append(f"**MCP Tools**: {tools_str}")
+        if recommended.ops_scripts:
+            ops_str = ", ".join(f"`{o}`" for o in recommended.ops_scripts[:2])
+            rec_parts.append(f"**Ops**: {ops_str}")
+        if rec_parts:
+            recommendations_section = (
+                "\n\n## 🎯 Recommended for This Task (Groq-selected)\n\n"
+                + "\n".join(f"- {p}" for p in rec_parts)
+                + "\n"
+            )
+
+    # Build discovery aids section (always populated by Groq)
+    discovery_section = ""
+    if discovery:
+        disc_parts = []
+        if discovery.research_suggestions:
+            topics = "\n".join(f"  - {t}" for t in discovery.research_suggestions[:3])
+            disc_parts.append(f"**📚 Research Topics**:\n{topics}")
+        if discovery.tools_suggested:
+            tools = ", ".join(f"`{t}`" for t in discovery.tools_suggested[:3])
+            disc_parts.append(f"**🛠️ Useful Tools**: {tools}")
+        if discovery.discovery_questions:
+            questions = "\n".join(f"  - {q}" for q in discovery.discovery_questions[:3])
+            disc_parts.append(f"**🤔 Discovery Questions**:\n{questions}")
+        if disc_parts:
+            discovery_section = (
+                "\n\n## 💡 Discovery Aids (Groq-generated)\n\n"
+                + "\n\n".join(disc_parts)
+                + "\n"
+            )
+
     # Try capability-aware routing first
     if use_capability_routing:
         index = load_capabilities_index()
@@ -283,8 +333,15 @@ def generate_pal_suggestion(
                 routing_prompt=routing_prompt,
                 user_prompt=prompt,
             )
-            # Prepend research (do first) and append Groq summary + continuation
-            return research_directive + result + groq_summary + continuation_hint
+            # Prepend research (do first), add recommendations + discovery, append Groq summary + continuation
+            return (
+                research_directive
+                + recommendations_section
+                + discovery_section
+                + result
+                + groq_summary
+                + continuation_hint
+            )
 
     # Fall back to simple PAL tool suggestion
     tool_description = PAL_TOOL_DESCRIPTIONS.get(
@@ -309,8 +366,14 @@ def generate_pal_suggestion(
         models_summary=PAL_MODELS_SUMMARY,
         user_prompt=prompt,
     )
-    # Prepend research (do first) and append Groq summary + continuation
-    return research_directive + result + groq_summary + continuation_hint
+    # Prepend research (do first), add discovery, append Groq summary + continuation
+    return (
+        research_directive
+        + discovery_section
+        + result
+        + groq_summary
+        + continuation_hint
+    )
 
 
 def generate_planner_mandate(
@@ -528,6 +591,7 @@ def handle_session_start_routing(
         result["research_topics"] = router_response.research_topics or []
         result["action_hints"] = router_response.action_hints
         result["recommended"] = router_response.recommended
+        result["intent"] = router_response.intent
 
         # Save routing decision to state for confidence tracking
         state.routing_decision = RoutingDecision(
@@ -644,6 +708,8 @@ def handle_session_start_routing(
                 reason_codes=router_response.reason_codes,
                 needs_research=router_response.needs_research,
                 research_topics=router_response.research_topics,
+                recommended=router_response.recommended,
+                discovery=router_response.discovery,
             )
 
             # Add tier-specific header

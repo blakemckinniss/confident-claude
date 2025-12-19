@@ -87,6 +87,48 @@ from _logging import log_debug
 # - _confidence_streaks -> threat_anticipation
 
 # =============================================================================
+# MODULE-LEVEL STATE (for hooks that need cross-invocation caching)
+# =============================================================================
+_BD_CACHE: dict = {}  # Beads cache for beads_parallel hook
+_BD_CACHE_TURN: int = 0  # Turn when cache was last valid
+
+
+# =============================================================================
+# SHARED HELPERS
+# =============================================================================
+
+
+def _detect_serena_project() -> tuple[Path | None, str]:
+    """Detect .serena/ directory and extract project name.
+
+    Returns:
+        (serena_dir, project_name) - serena_dir is None if not found,
+        project_name defaults to parent folder name if not in project.yml
+    """
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        serena_dir = parent / ".serena"
+        if serena_dir.is_dir():
+            project_name = ""
+            project_yml = serena_dir / "project.yml"
+            if project_yml.exists():
+                try:
+                    content = project_yml.read_text()
+                    for line in content.splitlines():
+                        if line.startswith("project_name:"):
+                            project_name = line.split(":", 1)[1].strip().strip("\"'")
+                            break
+                except Exception:
+                    pass
+            # Fall back to folder name if no project_name found
+            if not project_name:
+                project_name = parent.name
+            return serena_dir, project_name
+        if parent == Path.home():
+            break
+    return None, ""
+
+# =============================================================================
 # PRE-COMPILED PATTERNS (Performance: compile once at module load)
 # =============================================================================
 
@@ -1413,33 +1455,11 @@ def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve()
 
     # Check if Serena was activated this session
-    serena_activated = getattr(state, "serena_activated", False)
-    if serena_activated:
+    if getattr(state, "serena_activated", False):
         return HookResult.approve()
 
-    # Block with helpful message - find project name from .serena/project.yml
-    serena_project = ""
-    cwd = Path.cwd()
-    for parent in [cwd, *cwd.parents]:
-        serena_dir = parent / ".serena"
-        if serena_dir.is_dir():
-            # Try to read project_name from project.yml
-            project_yml = serena_dir / "project.yml"
-            if project_yml.exists():
-                try:
-                    content = project_yml.read_text()
-                    for line in content.splitlines():
-                        if line.startswith("project_name:"):
-                            serena_project = line.split(":", 1)[1].strip().strip("\"'")
-                            break
-                except Exception:
-                    pass
-            # Fall back to folder name if no project_name found
-            if not serena_project:
-                serena_project = parent.name
-            break
-        if parent == Path.home():
-            break
+    # Block with helpful message
+    _, serena_project = _detect_serena_project()
 
     return HookResult.deny(
         f"🔮 **SERENA NOT ACTIVATED**: Call `mcp__serena__activate_project"
@@ -1459,27 +1479,7 @@ def check_code_tools_require_serena(data: dict, state: SessionState) -> HookResu
     tool_input = data.get("tool_input", {})
 
     # Check if .serena/ exists
-    cwd = Path.cwd()
-    serena_dir = None
-    serena_project = ""
-    for parent in [cwd, *cwd.parents]:
-        candidate = parent / ".serena"
-        if candidate.is_dir():
-            serena_dir = candidate
-            # Try to get project name
-            project_yml = candidate / "project.yml"
-            if project_yml.exists():
-                try:
-                    content = project_yml.read_text()
-                    for line in content.splitlines():
-                        if line.startswith("project_name:"):
-                            serena_project = line.split(":", 1)[1].strip().strip("\"'")
-                            break
-                except Exception:
-                    pass
-            if not serena_project:
-                serena_project = parent.name
-            break
+    serena_dir, serena_project = _detect_serena_project()
 
     # No .serena/ found - allow
     if not serena_dir:
@@ -1633,7 +1633,7 @@ def check_homeostatic_drive(data: dict, state: SessionState) -> HookResult:
     suggestions.append("📖 Read relevant files (+1 each)")
     if deficit >= 10:
         suggestions.append("🧪 Run tests (+5 each)")
-        suggestions.append("❓ AskUserQuestion (+20)")
+        suggestions.append("❓ AskUserQuestion (+8)")
 
     recovery_str = " | ".join(suggestions[:3])
 
@@ -2630,7 +2630,7 @@ def suggest_crawl4ai(data: dict, state: SessionState) -> HookResult:
     return HookResult.approve(
         "🌟 **Consider crawl4ai instead** - Superior for web content:\n"
         "  • `mcp__crawl4ai__crawl` - JS rendering + bot bypass\n"
-        "  • `mcp__crawl4ai__search` - Discover related URLs\n"
+        "  • `mcp__crawl4ai__ddg_search` - Discover related URLs\n"
         "  WebFetch proceeding, but crawl4ai handles protected sites better."
     )
 
