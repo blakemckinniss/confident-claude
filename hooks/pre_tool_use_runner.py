@@ -851,13 +851,69 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
         )
 
     # Allow read-only investigation tools (can't cause harm)
-    # Also allow all Serena tools - semantic code analysis aids investigation
-    if tool_name in ("Read", "Grep", "Glob", "LS") or tool_name.startswith(
-        "mcp__serena__"
+    if tool_name in (
+        "Read", "Grep", "Glob", "LS",
+        "WebSearch", "WebFetch",
+        "AskUserQuestion",
+        "TaskOutput",
+        "TodoRead", "NotebookRead",
     ):
         return HookResult.approve()
 
-    # BLOCK EVERYTHING ELSE
+    # Allow read-only Bash commands (inspection, no state changes)
+    if tool_name == "Bash":
+        command = data.get("tool_input", {}).get("command", "")
+        READ_ONLY_BASH_PREFIXES = (
+            # File/directory inspection
+            "ls", "cat", "head", "tail", "pwd", "which", "tree", "stat",
+            "file", "wc", "du", "df", "realpath", "dirname", "basename",
+            # Text processing (read-only)
+            "grep", "awk", "sed", "sort", "uniq", "cut", "tr",
+            # System info
+            "env", "printenv", "whoami", "hostname", "uname", "date",
+            "id", "groups", "type", "man", "help", "ps", "top", "lsof",
+            # Pagers
+            "less", "more",
+            # Git read-only operations
+            "git status", "git log", "git diff", "git show", "git branch",
+            "git remote", "git tag", "git blame", "git rev-parse",
+            "git ls-files", "git ls-tree", "git cat-file",
+            # Hash/verification
+            "md5sum", "sha256sum", "sha1sum", "strings",
+        )
+        # Check if command starts with a read-only prefix
+        cmd_stripped = command.strip()
+        if any(cmd_stripped.startswith(prefix) for prefix in READ_ONLY_BASH_PREFIXES):
+            return HookResult.approve()
+
+    # Allow read-only Task agent types (exploration, research, documentation)
+    if tool_name == "Task":
+        tool_input = data.get("tool_input", {})
+        subagent_type = tool_input.get("subagent_type", "")
+        READ_ONLY_AGENTS = (
+            "Explore",           # Codebase exploration
+            "claude-code-guide", # Documentation lookup
+            "Plan",              # Planning/analysis only
+            "planner",           # Planning/analysis only
+            "Scout",             # Codebase exploration
+            "researcher",        # Research specialist
+        )
+        if subagent_type in READ_ONLY_AGENTS:
+            return HookResult.approve()
+
+    # Allow SAFE MCP tools (read-only / memory / research)
+    # NOT blanket mcp__* - that defeats the lock (filesystem writes, playwright actions)
+    SAFE_MCP_PREFIXES = (
+        "mcp__plugin_claude-mem_",           # Memory tools
+        "mcp__serena__",                      # Semantic code analysis
+        "mcp__crawl4ai__",                    # Web research
+        "mcp__plugin_repomix-mcp_repomix__",  # Code packing (read-only)
+        "mcp__beads__",                       # Beads task tracking
+    )
+    if isinstance(tool_name, str) and tool_name.startswith(SAFE_MCP_PREFIXES):
+        return HookResult.approve()
+
+    # BLOCK EVERYTHING ELSE (Edit, Write, Bash, Task, filesystem, playwright, beads, etc.)
     session_id = lock.get("session_id", "unknown")
     project = lock.get("project", "unknown")
     prompt_preview = lock.get("prompt", "")[:100]
@@ -877,7 +933,9 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
         f"- `mcp__pal__consensus` - Architecture decisions\n"
         f"- `mcp__pal__chat` - General discussion\n"
         f"- `mcp__pal__thinkdeep` - Problem decomposition\n\n"
-        f"**ALSO ALLOWED:** Read/Grep/Glob/LS for investigation, all `mcp__serena__*` tools, SUDO to bypass\n\n"
+        f"**ALSO ALLOWED:** Read/Grep/Glob/LS/WebSearch/WebFetch, AskUserQuestion,\n"
+        f"read-only Bash (ls, cat, git status, etc.), read-only Task agents (Explore, claude-code-guide, Plan),\n"
+        f"serena/claude-mem/crawl4ai/repomix/beads MCP tools, SUDO to bypass\n\n"
         f"**Choose the PAL tool that best fits this task.**"
     )
 
@@ -2695,6 +2753,11 @@ def matches_tool(matcher: Optional[str], tool_name: str) -> bool:
 
 def run_hooks(data: dict, state: SessionState) -> dict:
     """Run all applicable hooks and return aggregated result."""
+    # Clear integration cache at start of each hook run to avoid stale detection
+    # (e.g., Serena availability from a previous project directory)
+    from _integration import clear_cache as clear_integration_cache
+    clear_integration_cache()
+
     tool_name = data.get("tool_name", "")
 
     # Pre-compute SUDO bypass once for all hooks (avoids 18 redundant transcript reads)

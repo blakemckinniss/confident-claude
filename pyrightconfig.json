@@ -1,0 +1,18 @@
+{
+  "include": ["hooks", "lib", "ops"],
+  "exclude": [
+    ".venv",
+    "__pycache__",
+    "tmp",
+    "projects",
+    "plugins",
+    "logs",
+    ".serena"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none"
+}
