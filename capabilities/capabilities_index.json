@@ -1,17 +1,17 @@
 {
   "schema_version": "1.0",
-  "inventory_version": "sha256:2578f09ad97c3c15",
-  "generated_at": "2025-12-17T23:19:14.503979+00:00",
+  "inventory_version": "sha256:d4deb64261a95ab8",
+  "generated_at": "2025-12-19T23:22:13.647026+00:00",
   "sources": [
     {
       "source_type": "ops_dir",
       "path": "/home/jinx/.claude/ops",
-      "fingerprint": "c6c97cea69adf62d"
+      "fingerprint": "4d578c9c9abb9ac8"
     },
     {
       "source_type": "commands_dir",
       "path": "/home/jinx/.claude/commands",
-      "fingerprint": "b0209dfe700fde87"
+      "fingerprint": "0e5f4c1fe6e67882"
     },
     {
       "source_type": "registry",
@@ -1845,42 +1845,6 @@
       }
     },
     {
-      "id": "ops__audit_hooks",
-      "type": "ops_script",
-      "name": "audit_hooks.py",
-      "summary": "Hook System Auditor (The Hook Sheriff)",
-      "stages": [
-        "analyze",
-        "modify",
-        "validate",
-        "report"
-      ],
-      "interaction_mode": "primitive",
-      "tags": [
-        "debugging",
-        "static_analysis",
-        "validation",
-        "formatting",
-        "docs_lookup"
-      ],
-      "cost": {
-        "price_tier": "free",
-        "latency_tier": "low"
-      },
-      "risk": {
-        "read_only": false,
-        "writes_repo": true,
-        "network": false,
-        "executes_code": true,
-        "destructive_possible": false
-      },
-      "scope": "local_machine",
-      "source": {
-        "source_type": "ops",
-        "path": "/home/jinx/.claude/ops/audit_hooks.py"
-      }
-    },
-    {
       "id": "ops__bd_bridge",
       "type": "ops_script",
       "name": "bd_bridge.py",
@@ -2605,6 +2569,33 @@
       "source": {
         "source_type": "ops",
         "path": "/home/jinx/.claude/ops/inventory.py"
+      }
+    },
+    {
+      "id": "ops__mastermind_cleanup",
+      "type": "ops_script",
+      "name": "mastermind_cleanup.py",
+      "summary": "Clean up stale mastermind session state files.",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "primitive",
+      "tags": [],
+      "cost": {
+        "price_tier": "free",
+        "latency_tier": "low"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": true
+      },
+      "scope": "local_machine",
+      "source": {
+        "source_type": "ops",
+        "path": "/home/jinx/.claude/ops/mastermind_cleanup.py"
       }
     },
     {
@@ -3865,6 +3856,40 @@
       }
     },
     {
+      "id": "slash__/debt",
+      "type": "slash_command",
+      "name": "/debt",
+      "summary": "Tech Debt Auditor - Scan for debt, anti-patterns, and code smells",
+      "stages": [
+        "analyze",
+        "modify",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "tests",
+        "static_analysis",
+        "refactor",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/debt.md"
+      }
+    },
+    {
       "id": "slash__/deps",
       "type": "slash_command",
       "name": "/deps",
@@ -4206,6 +4231,39 @@
       "source": {
         "source_type": "commands",
         "path": "/home/jinx/.claude/commands/fix.md"
+      }
+    },
+    {
+      "id": "slash__/fix-critical",
+      "type": "slash_command",
+      "name": "/fix-critical",
+      "summary": "Critical Fixer - Fix issues from most critical to least based on severity",
+      "stages": [
+        "modify",
+        "report"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "static_analysis",
+        "refactor",
+        "formatting",
+        "docs_lookup"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/fix-critical.md"
       }
     },
     {
@@ -4597,6 +4655,33 @@
       }
     },
     {
+      "id": "slash__/pal-it",
+      "type": "slash_command",
+      "name": "/pal-it",
+      "summary": "PAL Consult - Get external LLM guidance on next approach",
+      "stages": [
+        "analyze"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/pal-it.md"
+      }
+    },
+    {
       "id": "slash__/patch-mem",
       "type": "slash_command",
       "name": "/patch-mem",
@@ -4652,6 +4737,38 @@
       "source": {
         "source_type": "commands",
         "path": "/home/jinx/.claude/commands/probe.md"
+      }
+    },
+    {
+      "id": "slash__/proceed",
+      "type": "slash_command",
+      "name": "/proceed",
+      "summary": "Proceed - Autonomous implementation based on recommendations and research",
+      "stages": [
+        "locate",
+        "modify"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "web_research",
+        "code_reading",
+        "formatting"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": false,
+        "writes_repo": true,
+        "network": true,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/proceed.md"
       }
     },
     {
@@ -4918,6 +5035,38 @@
       "source": {
         "source_type": "commands",
         "path": "/home/jinx/.claude/commands/serena-mem.md"
+      }
+    },
+    {
+      "id": "slash__/serena-verify",
+      "type": "slash_command",
+      "name": "/serena-verify",
+      "summary": "Serena Verify - Test language server setup and diagnose issues",
+      "stages": [
+        "locate",
+        "analyze",
+        "validate"
+      ],
+      "interaction_mode": "orchestrator",
+      "tags": [
+        "tests",
+        "validation"
+      ],
+      "cost": {
+        "price_tier": "low",
+        "latency_tier": "medium"
+      },
+      "risk": {
+        "read_only": true,
+        "writes_repo": false,
+        "network": false,
+        "executes_code": true,
+        "destructive_possible": false
+      },
+      "scope": "claude_runtime",
+      "source": {
+        "source_type": "commands",
+        "path": "/home/jinx/.claude/commands/serena-verify.md"
       }
     },
     {

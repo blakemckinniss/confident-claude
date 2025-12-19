@@ -131,7 +131,7 @@ Bash(command="curl localhost:8000/health")
 ## 🔒 Security Gates
 
 - `audit.py` - The Sentinel: Runs static analysis and anti-pattern detection on target files
-- `audit_hooks.py` - System Auditor (The Hook Sheriff)
+- `hooks.py` - The Hook Sheriff: Audit and test hooks against Claude Code spec
 - `orchestrate.py` - Orchestrate: Claude-powered programmatic tool orchestration
 
 ## 📋 Workflow Gates

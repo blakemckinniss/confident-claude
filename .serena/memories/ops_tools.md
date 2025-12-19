@@ -83,11 +83,10 @@ if __name__ == "__main__":
 | `firecrawl.py` | Web scraping (Firecrawl API) |
 | `probe.py` | Runtime API introspection |
 
-### Hook Management (3)
+### Hook Management (2)
 | Tool | Purpose |
 |------|---------|
-| `hooks.py` | Hook testing and management |
-| `audit_hooks.py` | Audit hooks against Claude Code spec |
+| `hooks.py` | Audit and test hooks against Claude Code spec |
 | `test_hooks.py` | Test hook configurations |
 
 ### Confidence System (2)

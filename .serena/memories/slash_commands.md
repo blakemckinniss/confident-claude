@@ -76,7 +76,7 @@ allowed-tools: Bash
 | `/gaps` | gaps.py | Find implementation gaps |
 | `/drift` | drift.py | Project consistency and style drift |
 | `/dc` | - | Double Check - verify work, fix critical gaps |
-| `/audit-hooks` | audit_hooks.py | Audit hooks against Claude Code spec |
+| `/audit-hooks` | hooks.py | Audit hooks against Claude Code spec |
 | `/dyr` | - | Do You Respect - verify Claude follows a principle |
 | `/cwms` | - | Can We Make Sure - verify and enforce X is true |
 
