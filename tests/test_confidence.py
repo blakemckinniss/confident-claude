@@ -80,7 +80,6 @@ from _confidence_increasers import (
     CustomScriptIncreaser,
     SearchToolIncreaser,
     SmallDiffIncreaser,
-    GitCommitIncreaser,
     ParallelToolsIncreaser,
     EfficientSearchIncreaser,
     BatchFixIncreaser,
@@ -2176,36 +2175,6 @@ class TestSmallDiffIncreaser:
     def test_does_not_trigger_without_flag(self):
         # Arrange
         increaser = SmallDiffIncreaser()
-        state = MockSessionState()
-        state.turn_count = 10
-        context = {}
-
-        # Act
-        should_trigger = increaser.should_trigger(context, state, 0)
-
-        # Assert
-        assert should_trigger is False
-
-
-class TestGitCommitIncreaser:
-    """Tests for GitCommitIncreaser - committing work."""
-
-    def test_triggers_when_git_committed_flag_set(self):
-        # Arrange
-        increaser = GitCommitIncreaser()
-        state = MockSessionState()
-        state.turn_count = 10
-        context = {"git_committed": True}
-
-        # Act
-        should_trigger = increaser.should_trigger(context, state, 0)
-
-        # Assert
-        assert should_trigger is True
-
-    def test_does_not_trigger_without_flag(self):
-        # Arrange
-        increaser = GitCommitIncreaser()
         state = MockSessionState()
         state.turn_count = 10
         context = {}
