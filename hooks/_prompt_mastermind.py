@@ -63,6 +63,93 @@ def _format_priming_pack(task_type: str) -> str | None:
     return "\n".join(parts) if parts else None
 
 
+# Hint catalog cache
+_HINT_CATALOG: dict | None = None
+
+
+def _load_hint_catalog() -> dict:
+    """Load action hint catalog from config."""
+    global _HINT_CATALOG
+    if _HINT_CATALOG is not None:
+        return _HINT_CATALOG
+
+    catalog_path = Path(__file__).parent.parent / "config" / "hint_catalog.json"
+    try:
+        if catalog_path.exists():
+            _HINT_CATALOG = json.loads(catalog_path.read_text())
+        else:
+            _HINT_CATALOG = {}
+    except Exception:
+        _HINT_CATALOG = {}
+    return _HINT_CATALOG
+
+
+def _format_action_hints(action_hints: list | None) -> str | None:
+    """Expand and format action hints from IDs."""
+    if not action_hints:
+        return None
+
+    catalog = _load_hint_catalog()
+    hints_data = catalog.get("action_hints", {})
+
+    parts = []
+    for hint in action_hints:
+        hint_id = hint.id if hasattr(hint, "id") else hint.get("id", "")
+        priority = hint.priority if hasattr(hint, "priority") else hint.get("priority", "p1")
+
+        if hint_id in hints_data:
+            h = hints_data[hint_id]
+            icon = h.get("icon", "💡")
+            message = h.get("message", hint_id)
+            kind = h.get("kind", "do")
+
+            # Priority indicator
+            pri_icon = "🔴" if priority == "p0" else "🟡" if priority == "p1" else "🔵"
+
+            if kind == "caution":
+                parts.append(f"{pri_icon} ⚠️ {message}")
+            else:
+                parts.append(f"{pri_icon} {icon} {message}")
+
+    if not parts:
+        return None
+
+    return "**Action Hints:**\n" + "\n".join(parts)
+
+
+def _format_recommended_capabilities(recommended) -> str | None:
+    """Format capability recommendations by category."""
+    if not recommended:
+        return None
+
+    parts = []
+
+    # Skills
+    skills = recommended.skills if hasattr(recommended, "skills") else recommended.get("skills")
+    if skills:
+        parts.append(f"🎯 **Skills:** {', '.join(skills)}")
+
+    # Agents
+    agents = recommended.agents if hasattr(recommended, "agents") else recommended.get("agents")
+    if agents:
+        parts.append(f"🤖 **Agents:** {', '.join(agents)}")
+
+    # MCP Tools
+    mcp = recommended.mcp_tools if hasattr(recommended, "mcp_tools") else recommended.get("mcp_tools")
+    if mcp:
+        parts.append(f"🔧 **MCP Tools:** {', '.join(mcp)}")
+
+    # Ops Scripts
+    ops = recommended.ops_scripts if hasattr(recommended, "ops_scripts") else recommended.get("ops_scripts")
+    if ops:
+        parts.append(f"📜 **Ops Scripts:** {', '.join(ops)}")
+
+    if not parts:
+        return None
+
+    return "**Recommended Capabilities:**\n" + "\n".join(parts)
+
+
 def _get_current_session_id(data: dict) -> str | None:
     """Get current Claude session ID from hook input data.
 
@@ -157,6 +244,18 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         priming_pack = _format_priming_pack(task_type)
         if priming_pack:
             context_parts.append(priming_pack)
+
+        # Inject action hints (prescriptive recommendations)
+        action_hints = routing.get("action_hints") if routing else None
+        hints_formatted = _format_action_hints(action_hints)
+        if hints_formatted:
+            context_parts.append(hints_formatted)
+
+        # Inject recommended capabilities (toolbox for this task)
+        recommended = routing.get("recommended") if routing else None
+        caps_formatted = _format_recommended_capabilities(recommended)
+        if caps_formatted:
+            context_parts.append(caps_formatted)
 
         # Add research recommendation if needed
         needs_research = routing.get("needs_research", False) if routing else False

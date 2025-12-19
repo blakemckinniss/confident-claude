@@ -52,6 +52,41 @@ Research triggers (set needs_research=true):
 - Best practices: "what's the best way", "recommended approach"
 - Error investigation: specific error messages with potential online solutions
 
+ALWAYS recommend relevant capabilities by category (1-3 each, pick most relevant):
+
+Skills (from ~/.claude/commands/):
+- frontend-design, testing, debugging, refactoring, code-analysis, api-development
+- database, performance, security-audit, git-workflow, docker-containers
+- browser-automation, research-docs, memory-workflow, serena-analysis
+
+Agents (Task tool subagent_type):
+- Explore (codebase search), Plan (implementation design), scout (find files)
+- deep-research (multi-agent research), deep-security (security audit)
+- refactor-planner, test-analyzer, error-tracer, dependency-mapper
+- api-cartographer, bundle-analyzer, git-archeologist
+
+MCP Tools:
+- mcp__pal__debug, mcp__pal__planner, mcp__pal__codereview, mcp__pal__consensus
+- mcp__pal__chat, mcp__pal__apilookup, mcp__pal__thinkdeep, mcp__pal__analyze
+- mcp__crawl4ai__crawl, mcp__crawl4ai__ddg_search
+- mcp__serena__find_symbol, mcp__serena__search_for_pattern, mcp__serena__write_memory
+- mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot
+
+Ops Scripts (~/.claude/ops/):
+- audit.py (code quality), void.py (completeness check), fp.py (false positive)
+- unified_context.py (aggregate context), health.py (system health)
+- bead_claim.py, bead_release.py (agent lifecycle)
+
+Action hints (max 3, pick most impactful):
+- research.crawl4ai, research.ddg_search, research.apilookup
+- debug.pal_debug, debug.probe, debug.external_perspective
+- planning.pal_planner, planning.beads
+- review.pal_codereview, review.consensus
+- script.tmp_python, script.parallel_agents
+- policy.auth_review, policy.security_sensitive, policy.migration_rollback, policy.deploy_risk
+- hygiene.serena_memory, hygiene.update_docs, hygiene.commit_changes
+- clarify.ambiguous
+
 Output JSON only:
 {
   "classification": "trivial|medium|complex",
@@ -60,7 +95,14 @@ Output JSON only:
   "suggested_tool": "debug|planner|codereview|consensus|apilookup|precommit|clink|clink_codex|chat",
   "reason_codes": ["code1", "code2"],
   "needs_research": false,
-  "research_topics": []
+  "research_topics": [],
+  "action_hints": [{"id": "hint.id", "priority": "p0|p1|p2"}],
+  "recommended": {
+    "skills": ["skill1", "skill2"],
+    "agents": ["agent1", "agent2"],
+    "mcp_tools": ["mcp__tool1", "mcp__tool2"],
+    "ops_scripts": ["script1.py", "script2.py"]
+  }
 }
 
 Reason codes (pick 1-3):
@@ -83,6 +125,24 @@ Reason codes (pick 1-3):
 
 
 @dataclass
+class ActionHint:
+    """Structured action hint from router."""
+
+    id: str  # e.g., "research.crawl4ai", "policy.auth_review"
+    priority: str = "p1"  # p0 (critical), p1 (recommended), p2 (optional)
+
+
+@dataclass
+class RecommendedCapabilities:
+    """Capability shortlist by category."""
+
+    skills: list[str] | None = None
+    agents: list[str] | None = None
+    mcp_tools: list[str] | None = None
+    ops_scripts: list[str] | None = None
+
+
+@dataclass
 class RouterResponse:
     """Parsed router classification response."""
 
@@ -97,6 +157,8 @@ class RouterResponse:
     )
     needs_research: bool = False  # whether web research should be done first
     research_topics: list[str] | None = None  # specific topics to search (max 3)
+    action_hints: list[ActionHint] | None = None  # prescriptive action recommendations
+    recommended: RecommendedCapabilities | None = None  # capability shortlist
     error: str | None = None
 
     @property
@@ -182,7 +244,7 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
-        "max_tokens": 150,
+        "max_tokens": 500,  # Increased for action_hints + recommended capabilities
         "response_format": {"type": "json_object"},
     }
 
@@ -207,6 +269,26 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
 
         try:
             parsed = _parse_response(raw_text)
+
+            # Parse action hints
+            action_hints = None
+            if raw_hints := parsed.get("action_hints"):
+                action_hints = [
+                    ActionHint(id=h.get("id", ""), priority=h.get("priority", "p1"))
+                    for h in raw_hints
+                    if h.get("id")
+                ]
+
+            # Parse recommended capabilities
+            recommended = None
+            if raw_rec := parsed.get("recommended"):
+                recommended = RecommendedCapabilities(
+                    skills=raw_rec.get("skills") or None,
+                    agents=raw_rec.get("agents") or None,
+                    mcp_tools=raw_rec.get("mcp_tools") or None,
+                    ops_scripts=raw_rec.get("ops_scripts") or None,
+                )
+
             return RouterResponse(
                 classification=parsed.get("classification", "complex"),
                 confidence=float(parsed.get("confidence", 0.5)),
@@ -217,6 +299,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 suggested_tool=parsed.get("suggested_tool", "chat"),
                 needs_research=bool(parsed.get("needs_research", False)),
                 research_topics=parsed.get("research_topics") or [],
+                action_hints=action_hints,
+                recommended=recommended,
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Parse error - default to complex (safe fallback)

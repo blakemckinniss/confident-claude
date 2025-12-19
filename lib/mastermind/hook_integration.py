@@ -526,6 +526,8 @@ def handle_session_start_routing(
         result["suggested_tool"] = router_response.suggested_tool
         result["needs_research"] = router_response.needs_research
         result["research_topics"] = router_response.research_topics or []
+        result["action_hints"] = router_response.action_hints
+        result["recommended"] = router_response.recommended
 
         # Save routing decision to state for confidence tracking
         state.routing_decision = RoutingDecision(
