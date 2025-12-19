@@ -184,7 +184,8 @@ def get_cpu_load() -> str:
         cores = os.cpu_count() or 1
         pct = (load / cores) * 100
         return colorize(f"{load:.1f}", pct, Thresholds.CPU_RED, Thresholds.CPU_YELLOW)
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"cpu_load failed: {e}")
         return f"{C.DIM}--{C.RESET}"
 
 
@@ -201,7 +202,8 @@ def get_ram_usage() -> str:
         available = mem.get("MemAvailable", 0)
         pct = ((total - available) / total) * 100
         return colorize(f"{pct:.0f}%", pct, Thresholds.RAM_RED, Thresholds.RAM_YELLOW)
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"ram_usage failed: {e}")
         return f"{C.DIM}--{C.RESET}"
 
 
@@ -216,7 +218,8 @@ def get_disk_usage() -> str:
         return colorize(
             f"{free_gb:.0f}G", pct, Thresholds.DISK_RED, Thresholds.DISK_YELLOW
         )
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"disk_usage failed: {e}")
         return f"{C.DIM}--{C.RESET}"
 
 
@@ -288,7 +291,8 @@ def get_network_status() -> str:
             if result.returncode == 0
             else f"{C.RED}NET{C.RESET}"
         )
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"network_status failed: {e}")
         return f"{C.RED}NET{C.RESET}"
 
 
@@ -323,7 +327,8 @@ def get_gpu_vram() -> str:
             Thresholds.GPU_RED,
             Thresholds.GPU_YELLOW,
         )
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"gpu_vram failed: {e}")
         return ""
 
 
@@ -355,7 +360,8 @@ def get_dev_ports() -> str:
             return ""
         labels = [DEV_PORTS[p] for p in sorted(listening)]
         return f"{C.MAGENTA}{' '.join(labels)}{C.RESET}"
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"dev_ports failed: {e}")
         return ""
 
 
@@ -405,7 +411,8 @@ def get_git_info() -> str:
                 status_str = f"[{' '.join(parts)}]"
 
         return f"{C.GREEN}{branch}{C.RESET}{status_str}"
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"git_info failed: {e}")
         return ""
 
 
@@ -425,7 +432,8 @@ def get_beads_status() -> str:
             if count > 0:
                 return f"{C.YELLOW}📋 {count}{C.RESET}"
         return ""
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"beads_status failed: {e}")
         return ""
 
 
@@ -448,7 +456,8 @@ def get_swap_usage() -> str:
         return colorize(
             f"{used_pct:.0f}%", used_pct, Thresholds.SWAP_RED, Thresholds.SWAP_YELLOW
         )
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"swap_usage failed: {e}")
         return ""
 
 
@@ -466,7 +475,8 @@ def get_project_info() -> tuple[str, str]:
         project_name = ctx.project_name or Path.cwd().name
         project_id = ctx.project_id
         return project_name, project_id
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"project_info failed: {e}")
         return Path.cwd().name, ""
 
 
@@ -488,7 +498,8 @@ def get_confidence_status() -> str:
             from _confidence_streaks import get_current_streak
 
             streak = get_current_streak(data)
-        except Exception:
+        except Exception as e:
+            log_debug("statusline", f"confidence_streak failed: {e}")
             streak = 0
 
         from confidence import get_tier_info, STASIS_FLOOR
@@ -522,7 +533,8 @@ def get_confidence_status() -> str:
             trajectory = " 📉"
 
         return f"{emoji} {confidence}%{streak_str}{fatigue_str}{trajectory}"
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"confidence_status failed: {e}")
         return ""
 
 
@@ -553,7 +565,8 @@ def get_mastermind_turn() -> str:
         if turn > 0:
             return f"{C.DIM}T{turn}{C.RESET}"
         return ""
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"mastermind_turn failed: {e}")
         return ""
 
 
@@ -571,7 +584,8 @@ def get_serena_status() -> str:
         if data.get("serena_activated", False):
             return f"{C.MAGENTA}🔮{C.RESET}"
         return ""
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"serena_status failed: {e}")
         return ""
 
 
@@ -590,7 +604,8 @@ def get_session_age(started_at: float) -> str:
             hours = int(elapsed / 3600)
             mins = int((elapsed % 3600) / 60)
             return f"{C.DIM}{hours}h{mins}m{C.RESET}"
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"session_age failed: {e}")
         return ""
 
 
@@ -654,10 +669,12 @@ def get_context_usage(
                     )
                     pct = (used / context_window) * 100 if context_window else 0
                     return used, context_window, pct
-            except Exception:
+            except Exception as e:
+                log_debug("statusline", f"context_usage line parse failed: {e}")
                 continue
         return 0, 0, 0.0
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"context_usage failed: {e}")
         return 0, 0, 0.0
 
 
@@ -669,7 +686,8 @@ def get_context_usage(
 def main() -> None:
     try:
         input_data = json.loads(sys.stdin.read())
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"input parse failed: {e}")
         input_data = {}
 
     # Model
@@ -733,7 +751,8 @@ def main() -> None:
                     val = future.result()
                     results[name] = val
                     set_cached(cache, name, val)
-                except Exception:
+                except Exception as e:
+                    log_debug("statusline", f"future {name} failed: {e}")
                     results[name] = ""
         save_cache(cache)
 
@@ -782,7 +801,8 @@ def main() -> None:
             session_age = get_session_age(state_data.get("started_at", 0))
         else:
             session_age = ""
-    except Exception:
+    except Exception as e:
+        log_debug("statusline", f"session_age_main failed: {e}")
         session_age = ""
 
     line2_parts = [f"{C.DIM}{session_id}{C.RESET}"]
