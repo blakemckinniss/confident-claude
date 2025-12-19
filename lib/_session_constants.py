@@ -18,8 +18,17 @@ CLAUDE_DIR = LIB_DIR.parent  # .claude
 MEMORY_DIR = CLAUDE_DIR / "memory"
 STATE_FILE = MEMORY_DIR / "session_state_v3.json"  # Legacy global (fallback only)
 OPS_DIR = LIB_DIR.parent / "ops"  # .claude/ops
-OPS_USAGE_FILE = MEMORY_DIR / "tool_usage.json"
+OPS_USAGE_FILE = MEMORY_DIR / "tool_usage.json"  # Legacy global (use get_ops_usage_file())
 STATE_LOCK_FILE = MEMORY_DIR / "session_state.lock"  # Legacy global lock
+
+
+def get_ops_usage_file() -> Path:
+    """Get project-isolated ops usage file.
+
+    Returns: ~/.claude/memory/projects/{project_id}/tool_usage.json
+    """
+    state_file = get_project_state_file()
+    return state_file.parent / "tool_usage.json"
 
 # =============================================================================
 # PROJECT-AWARE STATE PATHS (v3.13)

@@ -2,12 +2,15 @@
 """
 Thin MCP wrapper around the bd CLI for task tracking.
 
-Provides 5 core tools:
+Provides 8 core tools:
 - list_beads: List beads with optional status filter
 - create_bead: Create a new bead
 - update_bead: Update bead status
 - close_bead: Close a bead
 - get_ready: Get actionable beads (no blockers)
+- show_bead: Get detailed bead information
+- dep_add: Add a dependency between beads
+- dep_remove: Remove a dependency between beads
 """
 
 import json
@@ -165,6 +168,62 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="show_bead",
+            description="Get detailed information about a specific bead.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Bead ID to show (required)",
+                    },
+                },
+                "required": ["id"],
+            },
+        ),
+        Tool(
+            name="dep_add",
+            description="Add a dependency between beads (issue depends on depends_on).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issue_id": {
+                        "type": "string",
+                        "description": "Bead that has the dependency (required)",
+                    },
+                    "depends_on_id": {
+                        "type": "string",
+                        "description": "Bead that issue_id depends on (required)",
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "Dependency type",
+                        "enum": ["blocks", "related", "parent-child", "discovered-from"],
+                        "default": "blocks",
+                    },
+                },
+                "required": ["issue_id", "depends_on_id"],
+            },
+        ),
+        Tool(
+            name="dep_remove",
+            description="Remove a dependency between beads.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issue_id": {
+                        "type": "string",
+                        "description": "Bead that has the dependency (required)",
+                    },
+                    "depends_on_id": {
+                        "type": "string",
+                        "description": "Bead to remove as dependency (required)",
+                    },
+                },
+                "required": ["issue_id", "depends_on_id"],
+            },
+        ),
     ]
 
 
@@ -212,6 +271,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             if assignee := arguments.get("assignee"):
                 args.extend(["--assignee", assignee])
             result = run_bd(*args)
+
+        elif name == "show_bead":
+            result = run_bd("show", arguments["id"])
+
+        elif name == "dep_add":
+            args = ["dep", "add", arguments["issue_id"], arguments["depends_on_id"]]
+            if dep_type := arguments.get("type"):
+                args.extend(["--type", dep_type])
+            result = run_bd(*args)
+
+        elif name == "dep_remove":
+            result = run_bd("dep", "remove", arguments["issue_id"], arguments["depends_on_id"])
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]

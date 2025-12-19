@@ -15,7 +15,7 @@ from _session_constants import (
     _DOMAIN_SIGNAL_PATTERNS,
     RESEARCH_REQUIRED_LIBS,
     STDLIB_PATTERNS,
-    OPS_USAGE_FILE,
+    get_ops_usage_file,
 )
 
 if TYPE_CHECKING:
@@ -232,11 +232,14 @@ def track_ops_tool(state: "SessionState", tool_name: str, success: bool = True):
 
 
 def _persist_ops_tool_usage(tool_name: str, success: bool):
-    """Persist ops tool usage to cross-session file."""
+    """Persist ops tool usage to project-isolated file."""
     try:
+        ops_file = get_ops_usage_file()
+        ops_file.parent.mkdir(parents=True, exist_ok=True)
+
         data = {}
-        if OPS_USAGE_FILE.exists():
-            data = json.loads(OPS_USAGE_FILE.read_text())
+        if ops_file.exists():
+            data = json.loads(ops_file.read_text())
 
         if tool_name not in data:
             data[tool_name] = {
@@ -254,18 +257,19 @@ def _persist_ops_tool_usage(tool_name: str, success: bool):
         else:
             data[tool_name]["failures"] += 1
 
-        tmp = OPS_USAGE_FILE.with_suffix(".tmp")
+        tmp = ops_file.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2))
-        tmp.rename(OPS_USAGE_FILE)
+        tmp.rename(ops_file)
     except Exception:
         pass
 
 
 def get_ops_tool_stats() -> dict:
-    """Get cross-session ops tool usage statistics."""
-    if OPS_USAGE_FILE.exists():
+    """Get project-isolated ops tool usage statistics."""
+    ops_file = get_ops_usage_file()
+    if ops_file.exists():
         try:
-            return json.loads(OPS_USAGE_FILE.read_text())
+            return json.loads(ops_file.read_text())
         except Exception:
             pass
     return {}

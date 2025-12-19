@@ -35,6 +35,8 @@ from session_state import (
 )
 
 # Import project-aware state management
+from _cooldown import _resolve_state_path
+
 try:
     from project_detector import get_current_project
     from project_state import get_project_memory_dir
@@ -54,9 +56,6 @@ STATE_DIR = MEMORY_DIR / "state"  # Runtime state separated from semantic memory
 LESSONS_FILE = MEMORY_DIR / "__lessons.md"
 
 # Session log uses project-isolated state via _cooldown
-from _cooldown import _resolve_state_path
-
-
 def _get_session_log_file() -> Path:
     """Get project-isolated session log file."""
     return _resolve_state_path("session_log.jsonl")
