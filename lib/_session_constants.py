@@ -30,15 +30,27 @@ _CURRENT_PROJECT_ID: Optional[str] = None
 _CURRENT_PROJECT_ROOT: Optional[str] = None
 
 
+def _compute_cwd_hash() -> str:
+    """Compute stable hash from current working directory.
+
+    Used for isolation when no project markers are found.
+    """
+    import hashlib
+    import os
+
+    cwd = os.path.realpath(os.getcwd())
+    return hashlib.sha256(cwd.encode()).hexdigest()[:12]
+
+
 def get_project_state_file() -> Path:
     """Get project-specific state file path.
 
-    Returns per-project state file if in a detected project,
-    otherwise falls back to global state file.
+    Returns per-project state file - never uses global state.
+    Ephemeral contexts get cwd-hash isolation to prevent cross-project leakage.
 
     Layout:
       ~/.claude/memory/projects/{project_id}/session_state.json  (per-project)
-      ~/.claude/memory/session_state_v3.json                     (global fallback)
+      ~/.claude/memory/projects/cwd_{hash}/session_state.json    (cwd-hash fallback)
     """
     global _CURRENT_PROJECT_ID, _CURRENT_PROJECT_ROOT
 
@@ -58,9 +70,13 @@ def get_project_state_file() -> Path:
         _CURRENT_PROJECT_ID = ctx.project_id
         _CURRENT_PROJECT_ROOT = ctx.root_path
 
-        # Ephemeral contexts use global state
+        # Ephemeral contexts get cwd-hash isolation (no global state!)
         if ctx.project_type == "ephemeral":
-            return STATE_FILE
+            cwd_hash = _compute_cwd_hash()
+            _CURRENT_PROJECT_ID = f"cwd_{cwd_hash}"
+            project_dir = MEMORY_DIR / "projects" / _CURRENT_PROJECT_ID
+            project_dir.mkdir(parents=True, exist_ok=True)
+            return project_dir / "session_state.json"
 
         # Per-project state file
         project_dir = MEMORY_DIR / "projects" / ctx.project_id
@@ -68,8 +84,12 @@ def get_project_state_file() -> Path:
         return project_dir / "session_state.json"
 
     except Exception:
-        # Fallback to global on any detection failure
-        return STATE_FILE
+        # Fallback to cwd-hash on any detection failure (no global state!)
+        cwd_hash = _compute_cwd_hash()
+        _CURRENT_PROJECT_ID = f"cwd_{cwd_hash}"
+        project_dir = MEMORY_DIR / "projects" / _CURRENT_PROJECT_ID
+        project_dir.mkdir(parents=True, exist_ok=True)
+        return project_dir / "session_state.json"
 
 
 def get_project_lock_file() -> Path:

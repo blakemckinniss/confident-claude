@@ -17,13 +17,31 @@ DEFAULT_STATE_DIR = Path.home() / ".claude" / "tmp" / "mastermind"
 
 
 def _get_project_id() -> str:
-    """Get current project ID for state isolation."""
+    """Get current project ID for state isolation.
+
+    Never returns 'ephemeral' - uses cwd-hash for isolation when
+    no project markers are found.
+    """
+    import hashlib
+    import os
+
     try:
         from project_detector import detect_project
         ctx = detect_project()
-        return ctx.project_id if ctx else "ephemeral"
+
+        if ctx and ctx.project_type != "ephemeral":
+            return ctx.project_id
+
+        # Ephemeral or no context: use cwd-hash isolation
+        cwd = os.path.realpath(os.getcwd())
+        cwd_hash = hashlib.sha256(cwd.encode()).hexdigest()[:12]
+        return f"cwd_{cwd_hash}"
+
     except (ImportError, Exception):
-        return "ephemeral"
+        # Fallback: cwd-hash (never use global "ephemeral")
+        cwd = os.path.realpath(os.getcwd())
+        cwd_hash = hashlib.sha256(cwd.encode()).hexdigest()[:12]
+        return f"cwd_{cwd_hash}"
 
 
 @dataclass
