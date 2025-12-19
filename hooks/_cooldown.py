@@ -2,10 +2,17 @@
 Cooldown management utilities for hook runners.
 
 Replaces 8+ duplicate cooldown implementations with a single, file-locked manager.
+
+v2.0: Project-aware cooldown isolation
+- Each project gets isolated cooldown state via cwd-hash
+- Prevents cross-project cooldown pollution when running multiple shells
+- Falls back to legacy global paths during migration
 """
 
 import fcntl
+import hashlib
 import json
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -17,22 +24,89 @@ from _config import get_cooldown
 # =============================================================================
 
 MEMORY_DIR = Path.home() / ".claude" / "memory"
-STATE_DIR = MEMORY_DIR / "state"  # Runtime state separated from semantic memory
+STATE_DIR = MEMORY_DIR / "state"  # Legacy global (for migration fallback)
 
 
-def _resolve_state_path(filename: str) -> Path:
-    """Resolve state file path with backward compatibility.
+def _get_project_id() -> str:
+    """Get current project ID for state isolation.
 
-    Checks new location first, falls back to legacy location during migration.
+    Uses same isolation strategy as session_state and mastermind:
+    - Project ID from project_detector if available
+    - cwd-hash fallback for ephemeral contexts (never global)
     """
-    new_path = STATE_DIR / filename
-    if new_path.exists():
-        return new_path
+    try:
+        # Add lib to path for project_detector import
+        import sys
+        lib_dir = Path(__file__).parent.parent / "lib"
+        if str(lib_dir) not in sys.path:
+            sys.path.insert(0, str(lib_dir))
+
+        from project_detector import detect_project
+        ctx = detect_project()
+
+        if ctx and ctx.project_type != "ephemeral":
+            return ctx.project_id
+
+        # Ephemeral: use cwd-hash (never global "ephemeral")
+        cwd = os.path.realpath(os.getcwd())
+        return f"cwd_{hashlib.sha256(cwd.encode()).hexdigest()[:12]}"
+
+    except Exception:
+        # Fallback: always cwd-hash, never global
+        cwd = os.path.realpath(os.getcwd())
+        return f"cwd_{hashlib.sha256(cwd.encode()).hexdigest()[:12]}"
+
+
+def _get_project_state_dir() -> Path:
+    """Get project-specific state directory.
+
+    Returns: ~/.claude/memory/state/projects/{project_id}/
+    """
+    project_id = _get_project_id()
+    project_dir = STATE_DIR / "projects" / project_id
+    project_dir.mkdir(parents=True, exist_ok=True)
+    return project_dir
+
+
+def _resolve_state_path(filename: str, project_isolated: bool = True) -> Path:
+    """Resolve state file path with project isolation and backward compatibility.
+
+    Args:
+        filename: State file name (e.g., "assumption_cooldown.json")
+        project_isolated: If True, use project-specific path. If False, use global.
+
+    Resolution order:
+    1. New project-isolated path: state/projects/{project_id}/{filename}
+    2. Legacy global path: state/{filename} (migration fallback)
+    3. Very old path: memory/{filename} (ancient migration)
+    """
+    if project_isolated:
+        # New isolated path
+        project_dir = _get_project_state_dir()
+        new_path = project_dir / filename
+        if new_path.exists():
+            return new_path
+
+        # Check legacy global - if exists, migrate on next write
+        legacy_path = STATE_DIR / filename
+        if legacy_path.exists():
+            # Return new path for writes (migration happens naturally)
+            return new_path
+
+    # Global path (for intentionally shared state)
+    global_path = STATE_DIR / filename
+    if global_path.exists():
+        return global_path
+
+    # Very old legacy path
     legacy_path = MEMORY_DIR / filename
     if legacy_path.exists():
         return legacy_path
-    # Default to new location for new files
-    return new_path
+
+    # Default: new project-isolated or global based on flag
+    if project_isolated:
+        return _get_project_state_dir() / filename
+    return STATE_DIR / filename
 
 
 class CooldownManager:

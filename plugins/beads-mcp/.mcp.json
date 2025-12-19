@@ -1,0 +1,11 @@
+{
+  "name": "beads",
+  "description": "Task tracking with beads - thin wrapper around bd CLI",
+  "mcpServers": {
+    "beads": {
+      "type": "stdio",
+      "command": "/home/jinx/.claude/.venv/bin/python",
+      "args": ["/home/jinx/.claude/plugins/beads-mcp/server.py"]
+    }
+  }
+}

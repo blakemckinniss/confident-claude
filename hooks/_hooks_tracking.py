@@ -24,11 +24,13 @@ from session_state import SessionState, get_adaptive_threshold, record_threshold
 # SCRATCH ENFORCER (priority 55)
 # =============================================================================
 
-# State file with fallback to legacy location
-_state_dir = Path(__file__).parent.parent / "memory" / "state"
-_legacy_scratch = Path(__file__).parent.parent / "memory" / "scratch_enforcer_state.json"
-_new_scratch = _state_dir / "scratch_enforcer_state.json"
-SCRATCH_STATE_FILE = _new_scratch if _new_scratch.exists() else (_legacy_scratch if _legacy_scratch.exists() else _new_scratch)
+# State file with project isolation via _cooldown
+from _cooldown import _resolve_state_path
+
+
+def _get_scratch_state_file() -> Path:
+    """Get project-isolated scratch enforcer state file."""
+    return _resolve_state_path("scratch_enforcer_state.json")
 REPETITION_WINDOW = get_magic_number("repetition_window_seconds", 300)
 
 REPETITIVE_PATTERNS = {
@@ -291,7 +293,10 @@ def check_velocity(data: dict, state: SessionState, runner_state: dict) -> HookR
 # INFO GAIN TRACKER (priority 70)
 # =============================================================================
 
-INFO_GAIN_STATE_FILE = MEMORY_DIR / "info_gain_state.json"
+
+def _get_info_gain_state_file() -> Path:
+    """Get project-isolated info gain state file."""
+    return _resolve_state_path("info_gain_state.json")
 READS_BEFORE_WARN = get_magic_number("reads_before_warn", 5)
 READS_BEFORE_CRYSTALLIZE = get_magic_number("reads_before_crystallize", 8)
 

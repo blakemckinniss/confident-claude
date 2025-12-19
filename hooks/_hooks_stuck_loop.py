@@ -20,6 +20,7 @@ from difflib import SequenceMatcher
 from _hook_registry import register_hook
 from _hook_result import HookResult
 from _config import get_magic_number
+from _cooldown import _resolve_state_path
 from session_state import SessionState
 
 # =============================================================================
@@ -48,11 +49,10 @@ RESEARCH_TOOLS = {
     "mcp__pal__apilookup",
 }
 
-# State file for stuck loop tracking (with fallback to legacy location)
-_state_dir = Path(__file__).parent.parent / "memory" / "state"
-_legacy_stuck = Path(__file__).parent.parent / "memory" / "stuck_loop_state.json"
-_new_stuck = _state_dir / "stuck_loop_state.json"
-STUCK_LOOP_STATE_FILE = _new_stuck if _new_stuck.exists() else (_legacy_stuck if _legacy_stuck.exists() else _new_stuck)
+# State file for stuck loop tracking (project-isolated via _cooldown)
+def _get_stuck_loop_state_file() -> Path:
+    """Get project-isolated stuck loop state file."""
+    return _resolve_state_path("stuck_loop_state.json")
 
 # Patterns indicating debugging activity
 # IMPORTANT: These must be SPECIFIC to avoid false positives
