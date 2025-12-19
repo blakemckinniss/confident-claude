@@ -479,6 +479,40 @@ The `/resume` command will:
 # =============================================================================
 
 
+@register_hook("context_guard_activate", priority=1)
+def activate_context_guard(data: dict, state: SessionState) -> StopHookResult:
+    """Activate context guard after first Stop hook run.
+
+    This hook runs early (priority 1) to:
+    1. Increment stop_hook_runs counter
+    2. Update last_context_tokens with current usage
+    3. Activate context_guard_active after first run
+
+    The guard enables proactive context checking in UserPromptSubmit hooks.
+    """
+    import os
+
+    # Increment run counter
+    state.stop_hook_runs = getattr(state, "stop_hook_runs", 0) + 1
+
+    # Get current context usage
+    transcript_path = data.get("transcript_path", "")
+    context_window = data.get("model", {}).get("context_window", DEFAULT_CONTEXT_WINDOW)
+    used, _ = get_context_usage(transcript_path, context_window)
+
+    # Update last known tokens
+    state.last_context_tokens = used
+
+    # Activate guard after first stop if we have meaningful context
+    # Only activate if session has accumulated 20k+ tokens
+    if not getattr(state, "context_guard_active", False):
+        if used >= 20000:  # ACTIVATION_BUFFER_TOKENS
+            state.context_guard_active = True
+            state.context_guard_project_id = os.getcwd()
+
+    return StopHookResult.ok()
+
+
 @register_hook("context_warning", priority=3)
 def check_context_warning(data: dict, state: SessionState) -> StopHookResult:
     """Warn when context reaches 120K tokens - non-blocking heads up."""
@@ -577,7 +611,7 @@ def _extract_next_steps(transcript_path: str) -> str | None:
     match = re.search(
         r"#{1,3}\s*[^\n]*?\*{0,2}next\s+steps:?\*{0,2}[:\s]*\n(.*?)(?=\n#{1,3}\s|\Z)",
         content,
-        re.IGNORECASE | re.DOTALL
+        re.IGNORECASE | re.DOTALL,
     )
     if match:
         return match.group(1).strip()[:500]  # Limit to 500 chars
@@ -602,9 +636,7 @@ def check_session_close_protocol(data: dict, state: SessionState) -> StopHookRes
     # Skip Q&A sessions - no files edited, no files created, no beads touched
     # These are informational exchanges that don't need close protocol
     has_file_work = bool(state.files_edited or state.files_created)
-    has_bead_work = any(
-        "bd " in cmd for cmd in list(state.commands_succeeded)[-50:]
-    )
+    has_bead_work = any("bd " in cmd for cmd in list(state.commands_succeeded)[-50:])
 
     if not has_file_work and not has_bead_work:
         return StopHookResult.ok()
@@ -1596,7 +1628,7 @@ def check_session_commit(data: dict, state: SessionState) -> StopHookResult:
         msg_preview = decision.message.split("\n")[0][:50]
         return StopHookResult.warn(
             f"📦 **Uncommitted changes:** {real_count} files\n"
-            f"   Suggested: `git add -A && git commit -m \"{msg_preview}...\"`"
+            f'   Suggested: `git add -A && git commit -m "{msg_preview}..."`'
         )
 
     return StopHookResult.ok()

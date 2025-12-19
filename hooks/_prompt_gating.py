@@ -366,6 +366,79 @@ def check_confidence_override(data: dict, state: SessionState) -> HookResult:
     )
 
 
+@register_hook("context_guard_check", priority=1)
+def check_context_guard(data: dict, state: SessionState) -> HookResult:
+    """Proactive context exhaustion check (v4.22).
+
+    After context_guard_active is set (by Stop hook), checks if the new prompt
+    will fit in remaining context. If not, generates a /resume continuation prompt.
+
+    Thresholds:
+      - 75% projected: Soft warning (context may be tight)
+      - 90% projected: Hard block with resume prompt
+    """
+    # Skip if guard not active
+    if not getattr(state, "context_guard_active", False):
+        return HookResult.allow()
+
+    # Import context guard utilities
+    try:
+        from _context_guard import (
+            estimate_prompt_tokens,
+            check_context_fit,
+            generate_resume_prompt,
+            format_context_warning,
+            format_context_block,
+            DEFAULT_CONTEXT_WINDOW,
+        )
+    except ImportError:
+        return HookResult.allow()
+
+    prompt = data.get("prompt", "")
+    if not prompt:
+        return HookResult.allow()
+
+    # Get current context usage from state (updated by Stop hook)
+    used_tokens = getattr(state, "last_context_tokens", 0)
+    if used_tokens == 0:
+        return HookResult.allow()
+
+    # Get context window from data or use default
+    context_window = data.get("model", {}).get("context_window", DEFAULT_CONTEXT_WINDOW)
+
+    # Estimate tokens for new prompt
+    new_prompt_tokens = estimate_prompt_tokens(prompt)
+
+    # Check if it fits
+    status, projected_pct = check_context_fit(
+        used_tokens, context_window, new_prompt_tokens
+    )
+
+    if status == "ok":
+        return HookResult.allow()
+
+    if status == "warning":
+        # Soft warning - only show once per session
+        if getattr(state, "context_guard_warned", False):
+            return HookResult.allow()
+        state.context_guard_warned = True
+        warning_msg = format_context_warning(
+            used_tokens, context_window, projected_pct, new_prompt_tokens
+        )
+        return HookResult.allow(f"⚠️ {warning_msg}")
+
+    if status == "block":
+        # Hard block - generate resume prompt
+        transcript_path = data.get("transcript_path", "")
+        resume_prompt = generate_resume_prompt(state, transcript_path, prompt)
+        block_msg = format_context_block(
+            used_tokens, context_window, projected_pct, resume_prompt
+        )
+        return HookResult.deny(block_msg)
+
+    return HookResult.allow()
+
+
 @register_hook("goal_anchor", priority=1)
 def check_goal_anchor(data: dict, state: SessionState) -> HookResult:
     """Prevent scope drift and block scope expansion."""

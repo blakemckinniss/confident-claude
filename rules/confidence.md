@@ -297,6 +297,21 @@ This catches cases where multiple small failures accumulate without triggering t
 | `phantom_progress` | -5 | "making progress" without Edit/Write/Bash in same turn | 3 turns |
 | `question_avoidance` | -8 | 15+ turns on vague goal with 0 AskUserQuestion calls | 15 turns |
 
+**PAL maximization reducers (v4.19) - penalties for NOT using external LLMs:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `inline_complex_reasoning` | -3 | 500+ chars reasoning without PAL delegation | 3 turns |
+| `debug_loop_no_pal` | -5 | 2+ debug attempts without `mcp__pal__debug` | 5 turns |
+
+**Test enforcement reducers (v4.20) - ensure tests are always run:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `tests_exist_not_run` | -8 | 3+ files modified, project has tests, 0 test runs this session | 10 turns |
+| `orphaned_test_creation` | -8 | Test file created but not executed within 3 turns | 3 turns |
+| `pre_commit_no_tests` | -10 | `git commit` attempted without running tests | 1 turn |
+
 **Why tmp scripts over complex bash?**
 - **Debuggable**: Add print statements, step through logic
 - **Reusable**: Run again with tweaks, iterate quickly
@@ -430,6 +445,22 @@ Turn 10: Tests pass again → +2 more
 | `tmp_script_run` | +2 | Run script from ~/.claude/tmp/ |
 | `background_script` | +3 | Run script with run_in_background=true |
 
+**PAL maximization increasers (v4.19) - rewards for offloading to external LLMs:**
+
+| Increaser | Delta | Trigger |
+|-----------|-------|---------|
+| `pal_delegation` | +3 | Using PAL tools (thinkdeep, debug, analyze, etc.) |
+| `continuation_reuse` | +4 | Reusing PAL continuation_id (persistent second brain) |
+| `parallel_pal` | +3 | Multiple PAL calls in single turn |
+
+**Test enforcement increasers (v4.20) - rewards for running and creating tests:**
+
+| Increaser | Delta | Trigger |
+|-----------|-------|---------|
+| `test_creation_executed` | +5 | New test file created AND executed successfully |
+| `coverage_extension` | +3 | Added tests for previously untested code |
+| `test_first` | +4 | Test written before implementation (TDD style) |
+
 **Per-turn cap:** Maximum ±15 total change per turn normally. **When below 80% (stasis floor), positive cap raised to +30** to enable faster legitimate recovery.
 
 ## False Positive Handling
@@ -545,7 +576,7 @@ Say **SUDO** to bypass confidence gates. Use sparingly - it's logged.
 | `~/.claude/hooks/stop_runner.py` | Completion gate |
 | `~/.claude/tmp/confidence_journal.log` | Significant changes log (v4.6) |
 
-## Streak/Momentum System (v4.6)
+## Streak/Momentum System (v4.6, updated v4.21)
 
 Consecutive successes earn multiplied rewards:
 
@@ -555,7 +586,54 @@ Consecutive successes earn multiplied rewards:
 | 3 consecutive | 1.5x |
 | 5+ consecutive | 2.0x |
 
-**Resets to 0** on any reducer firing. Rewards flow states and sustained quality.
+**Streak Protection (v4.21):** Reducers are categorized by impact:
+
+| Category | Resets Streak? | Examples |
+|----------|----------------|----------|
+| FAILURE | Yes | `tool_failure`, `sunk_cost`, `edit_oscillation` |
+| BEHAVIORAL | Yes | `sycophancy`, `deferral`, `apologetic` |
+| AMBIENT | **No** | `decay`, `bash-risk`, `edit-risk`, `tool_debt` |
+
+AMBIENT reducers are background costs of taking action—they apply penalties but don't break momentum from consecutive good work. This prevents legitimate iteration from resetting streaks.
+
+## Category-Level Pattern Detection (v4.21)
+
+When multiple reducers in the same category fire within 10 turns, the system surfaces a meta-warning:
+
+```
+⚠️ 3 code_quality issues in 10 turns: placeholder_impl, silent_failure, incomplete_refactor
+```
+
+This helps identify systemic issues like "I'm writing sloppy code today" vs "I hit one edge case."
+
+**Categories tracked:**
+- `code_quality`: placeholder_impl, silent_failure, deep_nesting, etc.
+- `process`: tool_failure, sunk_cost, edit_oscillation, stuck_loop
+- `behavioral`: sycophancy, apologetic, deferral, hallmark_phrase
+- `verification`: unbacked_verification_claim, fixed_without_chain
+- `scope`: scope_creep, goal_drift, large_diff
+
+## Volatility Dampening (v4.21)
+
+If confidence oscillates wildly (Δ > 15 points in 3+ consecutive turns), the system warns:
+
+```
+⚠️ Confidence volatility: swings of [18, 15, 20] detected. Consider stabilizing.
+```
+
+This is awareness, not a penalty—indicating the session is "wobbly."
+
+## Recovery Intent Boost (v4.21)
+
+When a big penalty (≥10 points) fires, the **first recovery action** gets a +50% boost.
+
+Example:
+```
+Turn 5: edit_oscillation fires (-12) → 85% → 73%
+Turn 6: Run tests → test_pass normally +5, but +7 with recovery boost
+```
+
+This creates a "getting back on the horse" reward. Only works immediately after a big penalty (within 5 turns) and only applies once per penalty.
 
 ## Trajectory Prediction (v4.6)
 

@@ -7,6 +7,7 @@ PERFORMANCE: ~50ms for 29 hooks vs ~500ms for individual processes (10x faster)
 HOOKS INDEX (by priority):
   GATING (0-10) - _prompt_gating.py:
     0  confidence_override      - SUDO bypass and CONFIDENCE_BOOST
+    1  context_guard_check      - Proactive context exhaustion check (v4.22)
     1  goal_anchor              - Block scope expansion, warn on drift
     2  user_sentiment           - Detect user frustration/correction
     3  rock_bottom_realignment  - Force realignment at 0% confidence

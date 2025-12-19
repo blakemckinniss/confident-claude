@@ -137,6 +137,14 @@ from _confidence_streaks import (
     predict_trajectory,
     format_trajectory_warning,
     log_confidence_change,
+    # v4.21 enhancements
+    track_reducer_category,
+    detect_category_pattern,
+    track_confidence_value,
+    detect_volatility,
+    track_recovery_intent,
+    apply_recovery_intent_boost,
+    REDUCER_CATEGORIES,
 )
 
 # =============================================================================
@@ -287,4 +295,12 @@ __all__ = [
     "predict_trajectory",
     "format_trajectory_warning",
     "log_confidence_change",
+    # v4.21 enhancements
+    "track_reducer_category",
+    "detect_category_pattern",
+    "track_confidence_value",
+    "detect_volatility",
+    "track_recovery_intent",
+    "apply_recovery_intent_boost",
+    "REDUCER_CATEGORIES",
 ]

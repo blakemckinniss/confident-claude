@@ -1544,6 +1544,224 @@ class BeadAwareRoutingIncreaser(ConfidenceIncreaser):
         return has_bead and was_routed
 
 
+# =============================================================================
+# PAL MAXIMIZATION INCREASERS (v4.19) - Rewards for offloading to external LLMs
+# =============================================================================
+# PAL MCP provides "free" auxiliary context - offloading reasoning to external
+# models preserves Claude's limited context window. These increasers reward
+# aggressive PAL usage to maximize this benefit.
+# =============================================================================
+
+
+@dataclass
+class PalDelegationIncreaser(ConfidenceIncreaser):
+    """Triggers when using PAL tools for reasoning delegation.
+
+    PAL tools offload complex reasoning to external models, preserving
+    Claude's context window. This is a strategic benefit beyond just
+    "using an MCP tool" - it's context economy.
+
+    Higher reward than mcp_integration (+1) because PAL specifically
+    provides auxiliary reasoning capacity.
+    """
+
+    name: str = "pal_delegation"
+    delta: int = 3
+    description: str = "Delegated reasoning to PAL (context preserved)"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    # PAL tools that provide reasoning delegation
+    pal_reasoning_tools: tuple = (
+        "mcp__pal__thinkdeep",
+        "mcp__pal__debug",
+        "mcp__pal__analyze",
+        "mcp__pal__codereview",
+        "mcp__pal__planner",
+        "mcp__pal__consensus",
+        "mcp__pal__precommit",
+        "mcp__pal__chat",
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        return tool_name in self.pal_reasoning_tools
+
+
+@dataclass
+class ContinuationReuseIncreaser(ConfidenceIncreaser):
+    """Triggers when reusing a PAL continuation_id.
+
+    continuation_id allows multi-turn conversations with PAL that persist
+    across Claude's turns. This is essentially a "second brain" that
+    doesn't consume Claude's context. Reusing it maximizes this benefit.
+    """
+
+    name: str = "continuation_reuse"
+    delta: int = 4
+    description: str = "Reused PAL continuation (persistent second brain)"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        if not tool_name.startswith("mcp__pal__"):
+            return False
+
+        # Check if continuation_id was provided (reuse vs new)
+        tool_input = context.get("tool_input", {})
+        continuation_id = tool_input.get("continuation_id", "")
+
+        # Non-empty continuation_id means reusing existing conversation
+        return bool(continuation_id)
+
+
+@dataclass
+class ParallelPalIncreaser(ConfidenceIncreaser):
+    """Triggers when making multiple PAL calls in single turn.
+
+    Parallel PAL calls maximize throughput - getting multiple external
+    perspectives simultaneously while only using one of Claude's turns.
+    """
+
+    name: str = "parallel_pal"
+    delta: int = 3
+    description: str = "Multiple PAL calls in parallel (max throughput)"
+    requires_approval: bool = False
+    cooldown_turns: int = 2
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        # Check for multiple PAL calls in current turn
+        pal_calls_this_turn = context.get("pal_calls_this_turn", 0)
+        return pal_calls_this_turn >= 2
+
+
+# =============================================================================
+# TEST ENFORCEMENT INCREASERS (v4.20) - Rewards for running and creating tests
+# =============================================================================
+
+
+@dataclass
+class TestCreationExecutedIncreaser(ConfidenceIncreaser):
+    """Triggers when a newly created test file is actually run.
+
+    Rewards the full cycle: create test → run test → verify it works.
+    This prevents orphaned tests and ensures tests are validated.
+    """
+
+    name: str = "test_creation_executed"
+    delta: int = 5
+    description: str = "New test file created and executed"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        # Check if tests were run this turn
+        if not context.get("tests_passed", False):
+            return False
+
+        # Check if any test files created this session were executed
+        test_files_created = getattr(state, "test_files_created", {})
+        for path, info in test_files_created.items():
+            if info.get("executed", False):
+                # Only reward once per test file
+                if not info.get("rewarded", False):
+                    return True
+
+        return False
+
+
+@dataclass
+class CoverageExtensionIncreaser(ConfidenceIncreaser):
+    """Triggers when adding tests for previously untested code.
+
+    Rewards extending test coverage to files that didn't have tests before.
+    This improves overall project health.
+    """
+
+    name: str = "coverage_extension"
+    delta: int = 3
+    description: str = "Added tests for previously untested code"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        # Check if a test file was created that corresponds to an untested prod file
+        return context.get("coverage_extended", False)
+
+
+@dataclass
+class TestFirstIncreaser(ConfidenceIncreaser):
+    """Triggers when writing tests before implementation (TDD style).
+
+    Rewards test-driven development by detecting when a test file is
+    created/modified before its corresponding implementation file.
+    """
+
+    name: str = "test_first"
+    delta: int = 4
+    description: str = "Test written before implementation (TDD)"
+    requires_approval: bool = False
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        # Check test creation order tracking
+        test_creation_order = getattr(state, "test_creation_order", [])
+        if len(test_creation_order) < 2:
+            return False
+
+        # Look for pattern: test file created, then impl file created/edited
+        # within a short window (5 turns)
+        for i, (path, is_test, turn) in enumerate(test_creation_order):
+            if is_test:
+                # Look for corresponding impl file created after
+                for later_path, later_is_test, later_turn in test_creation_order[
+                    i + 1 :
+                ]:
+                    if not later_is_test and later_turn - turn <= 5:
+                        # Check if they're related (same stem)
+                        from pathlib import Path
+
+                        test_stem = (
+                            Path(path).stem.replace("test_", "").replace("_test", "")
+                        )
+                        impl_stem = Path(later_path).stem
+                        if test_stem in impl_stem or impl_stem in test_stem:
+                            return True
+
+        return False
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1612,4 +1830,12 @@ INCREASERS: list[ConfidenceIncreaser] = [
     # Mastermind alignment increasers (v4.12)
     GroqRoutingFollowedIncreaser(),
     BeadAwareRoutingIncreaser(),
+    # PAL maximization increasers (v4.19)
+    PalDelegationIncreaser(),
+    ContinuationReuseIncreaser(),
+    ParallelPalIncreaser(),
+    # Test enforcement increasers (v4.20)
+    TestCreationExecutedIncreaser(),
+    CoverageExtensionIncreaser(),
+    TestFirstIncreaser(),
 ]

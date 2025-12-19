@@ -245,6 +245,212 @@ def format_trajectory_warning(trajectory: dict) -> str:
 # CONFIDENCE JOURNAL (v4.6)
 
 
+# =============================================================================
+# CATEGORY-LEVEL PATTERN DETECTION (v4.21)
+# =============================================================================
+
+# Reducer category groupings for meta-pattern detection
+REDUCER_CATEGORIES = {
+    "code_quality": [
+        "placeholder_impl",
+        "silent_failure",
+        "incomplete_refactor",
+        "deep_nesting",
+        "long_function",
+        "mutable_default_arg",
+        "import_star",
+        "bare_raise",
+        "commented_code",
+        "magic_numbers",
+        "empty_test",
+        "orphaned_imports",
+    ],
+    "process": [
+        "tool_failure",
+        "sunk_cost",
+        "cascade_block",
+        "edit_oscillation",
+        "stuck_loop",
+        "no_research_debug",
+    ],
+    "behavioral": [
+        "sycophancy",
+        "apologetic",
+        "deferral",
+        "hallmark_phrase",
+        "overconfident_completion",
+        "hedging_language",
+        "phantom_progress",
+    ],
+    "verification": [
+        "unbacked_verification_claim",
+        "fixed_without_chain",
+        "git_spam",
+        "unverified_edits",
+    ],
+    "scope": [
+        "scope_creep",
+        "goal_drift",
+        "large_diff",
+    ],
+}
+
+# Invert for lookup
+_REDUCER_TO_CATEGORY = {}
+for cat, reducers in REDUCER_CATEGORIES.items():
+    for r in reducers:
+        _REDUCER_TO_CATEGORY[r] = cat
+
+
+def track_reducer_category(state: "SessionState", reducer_name: str) -> None:
+    """Track reducer firing for category-level pattern detection."""
+    category = _REDUCER_TO_CATEGORY.get(reducer_name, "other")
+
+    # Append to history (keep last 20)
+    if not hasattr(state, "reducer_category_history"):
+        state.reducer_category_history = []
+
+    state.reducer_category_history.append((category, reducer_name, state.turn_count))
+    state.reducer_category_history = state.reducer_category_history[-20:]
+
+
+def detect_category_pattern(
+    state: "SessionState", window_turns: int = 10
+) -> dict | None:
+    """Detect if multiple reducers in same category fired recently.
+
+    Returns dict with category and count if pattern detected, None otherwise.
+    """
+    if not hasattr(state, "reducer_category_history"):
+        return None
+
+    # Filter to recent turns
+    cutoff = state.turn_count - window_turns
+    recent = [
+        (cat, name, turn)
+        for cat, name, turn in state.reducer_category_history
+        if turn >= cutoff
+    ]
+
+    if len(recent) < 3:
+        return None
+
+    # Count by category
+    from collections import Counter
+
+    cat_counts = Counter(cat for cat, _, _ in recent)
+
+    # Check for category with 3+ distinct reducers
+    for cat, count in cat_counts.most_common(1):
+        if count >= 3 and cat != "other":
+            # Get the distinct reducer names
+            reducers_in_cat = [name for c, name, _ in recent if c == cat]
+            return {
+                "category": cat,
+                "count": count,
+                "reducers": list(set(reducers_in_cat)),
+                "message": f"⚠️ {count} {cat} issues in {window_turns} turns: {', '.join(set(reducers_in_cat)[:3])}",
+            }
+
+    return None
+
+
+# =============================================================================
+# VOLATILITY DAMPENING (v4.21)
+# =============================================================================
+
+
+def track_confidence_value(state: "SessionState", confidence: int) -> None:
+    """Track confidence value for volatility detection."""
+    if not hasattr(state, "confidence_history"):
+        state.confidence_history = []
+
+    state.confidence_history.append(confidence)
+    # Keep last 10 values
+    state.confidence_history = state.confidence_history[-10:]
+
+
+def detect_volatility(state: "SessionState", threshold: int = 15) -> dict | None:
+    """Detect if confidence is oscillating wildly.
+
+    Returns warning dict if volatility detected (Δ > threshold in 3+ consecutive turns).
+    """
+    if not hasattr(state, "confidence_history") or len(state.confidence_history) < 4:
+        return None
+
+    history = state.confidence_history
+
+    # Calculate deltas between consecutive values
+    deltas = [abs(history[i] - history[i - 1]) for i in range(1, len(history))]
+
+    # Check for 3+ consecutive large swings
+    consecutive_large = 0
+    for delta in deltas[-5:]:  # Check last 5 deltas
+        if delta >= threshold:
+            consecutive_large += 1
+        else:
+            consecutive_large = 0
+
+    if consecutive_large >= 3:
+        return {
+            "volatility": True,
+            "recent_deltas": deltas[-5:],
+            "message": f"⚠️ Confidence volatility: swings of {deltas[-3:]} detected. Consider stabilizing.",
+        }
+
+    return None
+
+
+# =============================================================================
+# RECOVERY INTENT BOOST (v4.21)
+# =============================================================================
+
+
+def track_recovery_intent(
+    state: "SessionState", reducer_name: str, amount: int
+) -> None:
+    """Track big penalty for recovery intent boost.
+
+    When a penalty >= 10 fires, the first recovery action gets +50% boost.
+    """
+    if amount < 10:
+        return  # Only track big penalties
+
+    if not hasattr(state, "recovery_intent_debt"):
+        state.recovery_intent_debt = {}
+
+    state.recovery_intent_debt[reducer_name] = {
+        "amount": amount,
+        "turn": state.turn_count,
+        "recovered": False,
+    }
+
+
+def apply_recovery_intent_boost(state: "SessionState", base_delta: int) -> int:
+    """Apply recovery intent boost if applicable.
+
+    Returns boosted delta if this is the first recovery action after a big penalty.
+    """
+    if not hasattr(state, "recovery_intent_debt") or not state.recovery_intent_debt:
+        return base_delta
+
+    # Find any unrecover ed debt from recent turns (within 5 turns)
+    cutoff = state.turn_count - 5
+    for reducer_name, debt in list(state.recovery_intent_debt.items()):
+        if debt["turn"] >= cutoff and not debt["recovered"]:
+            # Apply 50% boost
+            boosted = int(base_delta * 1.5)
+            # Mark as recovered
+            state.recovery_intent_debt[reducer_name]["recovered"] = True
+            return boosted
+
+    return base_delta
+
+
+# =============================================================================
+# CONFIDENCE JOURNAL (v4.6)
+
+
 def log_confidence_change(
     state: "SessionState",
     old_confidence: int,

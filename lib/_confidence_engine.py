@@ -7,12 +7,16 @@ Handles rate limiting, mean reversion, and applying confidence changes.
 
 from typing import TYPE_CHECKING
 
-from _confidence_reducers import REDUCERS
+from _confidence_reducers import REDUCERS, IMPACT_AMBIENT, IMPACT_FAILURE
 from _confidence_streaks import (
     update_streak,
     get_streak_multiplier,
     get_diminishing_multiplier,
     get_current_streak,
+    # v4.21 enhancements
+    track_reducer_category,
+    track_recovery_intent,
+    apply_recovery_intent_boost,
 )
 from _confidence_constants import STASIS_FLOOR
 from _confidence_increasers import INCREASERS
@@ -188,8 +192,18 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
                 state.nudge_history[key] = {}
             state.nudge_history[key]["last_turn"] = state.turn_count
 
-            # Reset streak on failure (v4.6)
-            update_streak(state, is_success=False)
+            # Reset streak on failure (v4.6), but protect from AMBIENT reducers (v4.21)
+            # AMBIENT reducers (decay, edit-risk, bash-risk) are background costs
+            # that shouldn't break momentum from consecutive successes
+            impact_cat = getattr(reducer, "impact_category", IMPACT_FAILURE)
+            if impact_cat != IMPACT_AMBIENT:
+                update_streak(state, is_success=False)
+
+            # Track category for pattern detection (v4.21)
+            track_reducer_category(state, reducer.name)
+
+            # Track recovery intent for big penalties (v4.21)
+            track_recovery_intent(state, reducer.name, abs(adjusted_delta))
 
             # Track repair debt for PROCESS-class reducers (v4.16)
             penalty_class = getattr(reducer, "penalty_class", "PROCESS")
@@ -207,7 +221,9 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
 
     # Tool debt penalties (v4.14) - special handling for variable delta
     should_trigger, penalty, reason = TOOL_DEBT_REDUCER.should_trigger(
-        context, state, -999  # No cooldown for debt
+        context,
+        state,
+        -999,  # No cooldown for debt
     )
     if should_trigger and penalty > 0:
         triggered.append(("tool_debt", -penalty, reason))
@@ -252,6 +268,9 @@ def apply_increasers(
             # Combined multiplier with streak and diminishing returns
             adjusted_delta = int(base_delta * streak_mult * diminish_mult)
 
+            # Apply recovery intent boost for first action after big penalty (v4.21)
+            adjusted_delta = apply_recovery_intent_boost(state, adjusted_delta)
+
             # Skip if diminished to zero
             if adjusted_delta <= 0:
                 continue
@@ -293,11 +312,18 @@ def apply_increasers(
 
     # Tool debt recovery (v4.14) - special handling for variable delta
     should_recover, recovery = TOOL_DEBT_RECOVERY_INCREASER.should_trigger(
-        context, state, -999  # No cooldown
+        context,
+        state,
+        -999,  # No cooldown
     )
     if should_recover and recovery > 0:
         triggered.append(
-            ("tool_debt_recovery", recovery, "Framework tool used (debt recovered)", False)
+            (
+                "tool_debt_recovery",
+                recovery,
+                "Framework tool used (debt recovered)",
+                False,
+            )
         )
         # Add to debt summary for visibility
         debt_info = get_debt_summary(state)
@@ -309,7 +335,7 @@ def apply_increasers(
 
 # Evidence tier multipliers for repair debt recovery (v4.16)
 EVIDENCE_TIER_MULTIPLIERS = {
-    0: 0.0,   # claim only - no recovery
+    0: 0.0,  # claim only - no recovery
     1: 0.05,  # user stops objecting
     2: 0.15,  # lint/build passes
     3: 0.35,  # tests pass

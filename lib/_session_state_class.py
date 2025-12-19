@@ -216,15 +216,17 @@ class SessionState:
     # Tracks turns since each tool family was used (v4.14, extended v4.15)
     # Format: {family: {turns_without: int, last_used_turn: int}}
     # Families: pal, serena, beads, agent_delegation, skills, clarification, tech_debt_cleanup
-    tool_debt: dict = field(default_factory=lambda: {
-        "pal": {"turns_without": 0, "last_used_turn": 0},
-        "serena": {"turns_without": 0, "last_used_turn": 0},
-        "beads": {"turns_without": 0, "last_used_turn": 0},
-        "agent_delegation": {"turns_without": 0, "last_used_turn": 0},
-        "skills": {"turns_without": 0, "last_used_turn": 0},
-        "clarification": {"turns_without": 0, "last_used_turn": 0},
-        "tech_debt_cleanup": {"turns_without": 0, "last_used_turn": 0},
-    })
+    tool_debt: dict = field(
+        default_factory=lambda: {
+            "pal": {"turns_without": 0, "last_used_turn": 0},
+            "serena": {"turns_without": 0, "last_used_turn": 0},
+            "beads": {"turns_without": 0, "last_used_turn": 0},
+            "agent_delegation": {"turns_without": 0, "last_used_turn": 0},
+            "skills": {"turns_without": 0, "last_used_turn": 0},
+            "clarification": {"turns_without": 0, "last_used_turn": 0},
+            "tech_debt_cleanup": {"turns_without": 0, "last_used_turn": 0},
+        }
+    )
 
     # ==========================================================================
     # REPAIR DEBT TRACKING (v4.16) - Redemption recovery for process penalties
@@ -234,3 +236,71 @@ class SessionState:
     # Format: {reducer_name: {amount: int, turn: int, evidence_tier: int, recovered: int}}
     # Evidence tiers: 0=claim, 1=user_accepts, 2=lint_pass, 3=test_pass, 4=user_confirms+test
     repair_debt: dict = field(default_factory=dict)
+
+    # ==========================================================================
+    # TEST ENFORCEMENT TRACKING (v4.20) - Ensure tests are always run
+    # ==========================================================================
+
+    # Session-level test tracking
+    # Which test frameworks have been run this session (pytest, jest, vitest, etc.)
+    test_frameworks_run: set = field(default_factory=set)
+
+    # Turn when tests were last run (for staleness detection)
+    last_test_run_turn: int = 0
+
+    # Files modified since last test run (cleared when tests pass)
+    files_modified_since_test: set = field(default_factory=set)
+
+    # Cached test file detection (None = not scanned yet)
+    # Format: {framework: [list of test file paths]}
+    project_test_files: Optional[dict] = None
+
+    # Test files created this session (for orphan detection)
+    # Format: {path: {created_turn, executed: bool}}
+    test_files_created: dict = field(default_factory=dict)
+
+    # Production files changed without corresponding test coverage
+    # Format: {path: {changed_turn, has_test: bool}}
+    untested_production_changes: dict = field(default_factory=dict)
+
+    # Test creation tracking (for test_first detection)
+    # If a test file is created before its corresponding impl file, that's test-first
+    test_creation_order: list = field(default_factory=list)  # [(path, is_test, turn)]
+
+    # ==========================================================================
+    # CONFIDENCE ENHANCEMENTS (v4.21)
+    # ==========================================================================
+
+    # Category-level pattern detection
+    # Tracks reducer categories that fired recently for meta-pattern detection
+    # Format: [(category, reducer_name, turn)]
+    reducer_category_history: list = field(default_factory=list)
+
+    # Volatility dampening
+    # Tracks recent confidence values for oscillation detection
+    # Format: [confidence_value, ...]  (last 10 values)
+    confidence_history: list = field(default_factory=list)
+
+    # Recovery intent tracking
+    # When a big penalty fires, the first recovery action gets a boost
+    # Format: {reducer_name: {amount: int, turn: int, recovered: bool}}
+    recovery_intent_debt: dict = field(default_factory=dict)
+
+    # ==========================================================================
+    # CONTEXT GUARD (v4.22) - Proactive context exhaustion safeguard
+    # ==========================================================================
+
+    # Activates after first Stop hook run - enables proactive context checking
+    context_guard_active: bool = False
+
+    # Number of Stop hook runs this session (triggers activation after first)
+    stop_hook_runs: int = 0
+
+    # Last known token usage (updated by Stop hook)
+    last_context_tokens: int = 0
+
+    # Project ID when context guard activated (for isolation)
+    context_guard_project_id: str = ""
+
+    # Whether context warning was shown this session (one-shot soft warning)
+    context_guard_warned: bool = False

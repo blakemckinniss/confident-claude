@@ -1722,6 +1722,75 @@ _RESEARCH_TOOLS = frozenset(
 _SEARCH_TOOLS = frozenset({"Grep", "Glob", "Task"})
 _DELEGATION_AGENTS = frozenset({"Explore", "scout", "Plan"})
 
+# PAL tools that provide reasoning delegation (v4.19)
+_PAL_REASONING_TOOLS = frozenset(
+    {
+        "mcp__pal__thinkdeep",
+        "mcp__pal__debug",
+        "mcp__pal__analyze",
+        "mcp__pal__codereview",
+        "mcp__pal__planner",
+        "mcp__pal__consensus",
+        "mcp__pal__precommit",
+        "mcp__pal__chat",
+    }
+)
+
+
+def _build_pal_signals(
+    tool_name: str, tool_input: dict, state: SessionState, context: dict
+) -> None:
+    """Build context for PAL maximization signals (v4.19).
+
+    Tracks PAL usage to reward offloading reasoning to external LLMs.
+    PAL provides 'free' auxiliary context - using it preserves Claude's context.
+    """
+    # Initialize PAL tracking in session state if needed
+    if not hasattr(state, "pal_tracking"):
+        state.pal_tracking = {
+            "calls_this_turn": 0,
+            "last_debug_turn": -100,
+            "debug_attempts_since_pal": 0,
+        }
+
+    pal_tracking = state.pal_tracking
+
+    # Track PAL tool usage
+    if tool_name.startswith("mcp__pal__"):
+        context["pal_used_this_turn"] = True
+        pal_tracking["calls_this_turn"] = pal_tracking.get("calls_this_turn", 0) + 1
+
+        # Track mcp__pal__debug specifically
+        if tool_name == "mcp__pal__debug":
+            pal_tracking["last_debug_turn"] = state.turn_count
+            pal_tracking["debug_attempts_since_pal"] = 0  # Reset on PAL debug
+
+        # Check for continuation_id reuse
+        continuation_id = tool_input.get("continuation_id", "")
+        if continuation_id:
+            context["continuation_reuse"] = True
+
+    # Expose PAL call count for ParallelPalIncreaser
+    context["pal_calls_this_turn"] = pal_tracking.get("calls_this_turn", 0)
+
+    # Check if PAL debug was used recently (within 5 turns)
+    last_debug = pal_tracking.get("last_debug_turn", -100)
+    context["pal_debug_used_recently"] = (state.turn_count - last_debug) <= 5
+
+    # Track debug attempts without PAL (for DebugLoopNoPalReducer)
+    # Increment when Edit/Bash follows a failure without PAL debug
+    if tool_name in {"Edit", "Bash"} and not context.get("pal_used_this_turn"):
+        # Check if we're in a debug session (recent failures)
+        recent_failures = len(getattr(state, "commands_failed", []))
+        if recent_failures > 0:
+            pal_tracking["debug_attempts_since_pal"] = (
+                pal_tracking.get("debug_attempts_since_pal", 0) + 1
+            )
+
+    context["debug_attempts_without_pal"] = pal_tracking.get(
+        "debug_attempts_since_pal", 0
+    )
+
 
 def _build_natural_signals(
     tool_name: str, tool_input: dict, data: dict, state: SessionState, context: dict
@@ -1837,6 +1906,94 @@ def _build_objective_signals(
                 context["lint_passed"] = True
 
 
+def _track_test_enforcement(
+    tool_name: str,
+    tool_input: dict,
+    tool_response: dict,
+    state: SessionState,
+    context: dict,
+) -> None:
+    """Track test enforcement signals (v4.20).
+
+    Updates session state for:
+    - test_frameworks_run: Which test frameworks have been executed
+    - last_test_run_turn: When tests were last run
+    - files_modified_since_test: Files modified that need test verification
+    - test_files_created: Test files created this session (for orphan detection)
+    """
+    from pathlib import Path
+
+    # Import test detection utilities
+    try:
+        import sys
+
+        lib_path = str(Path.home() / ".claude" / "lib")
+        if lib_path not in sys.path:
+            sys.path.insert(0, lib_path)
+        from _test_detection import (
+            is_test_file,
+            is_test_command,
+            get_test_framework_from_command,
+        )
+    except ImportError:
+        return  # Graceful degradation if module not available
+
+    # Initialize state fields if needed
+    if not hasattr(state, "test_frameworks_run"):
+        state.test_frameworks_run = set()
+    if not hasattr(state, "last_test_run_turn"):
+        state.last_test_run_turn = 0
+    if not hasattr(state, "files_modified_since_test"):
+        state.files_modified_since_test = set()
+    if not hasattr(state, "test_files_created"):
+        state.test_files_created = {}
+    if not hasattr(state, "test_creation_order"):
+        state.test_creation_order = []
+
+    # Track test execution from Bash commands
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if is_test_command(command):
+            framework = get_test_framework_from_command(command)
+            if framework:
+                state.test_frameworks_run.add(framework)
+            state.last_test_run_turn = state.turn_count
+
+            # Clear files_modified_since_test on successful test run
+            if context.get("tests_passed", False):
+                state.files_modified_since_test.clear()
+
+                # Mark any created test files as executed
+                for path, info in state.test_files_created.items():
+                    if not info.get("executed", False):
+                        info["executed"] = True
+                        info["executed_turn"] = state.turn_count
+
+    # Track file modifications
+    if tool_name in ("Edit", "Write"):
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            # Add to files modified since last test
+            state.files_modified_since_test.add(file_path)
+
+            # Track test file creation
+            if is_test_file(file_path):
+                if tool_name == "Write" and file_path not in state.test_files_created:
+                    state.test_files_created[file_path] = {
+                        "created_turn": state.turn_count,
+                        "executed": False,
+                    }
+                # Track creation order for test-first detection
+                state.test_creation_order.append((file_path, True, state.turn_count))
+            else:
+                # Track non-test file for test-first detection
+                state.test_creation_order.append((file_path, False, state.turn_count))
+
+            # Keep creation order bounded
+            if len(state.test_creation_order) > 50:
+                state.test_creation_order = state.test_creation_order[-50:]
+
+
 def _check_chained_commands(command: str) -> bool:
     """Check if command chains multiple meaningful operations."""
     if " && " not in command and not _RE_CHAIN_SEMICOLON.search(command):
@@ -1950,8 +2107,12 @@ def check_confidence_increaser(
     context = {
         "tool_name": tool_name,
         "tool_result": result_str,
+        "tool_input": tool_input,
         "assistant_output": data.get("assistant_output", ""),
     }
+
+    # PAL tracking (v4.19) - track PAL usage for maximization signals
+    _build_pal_signals(tool_name, tool_input, state, context)
 
     # Build signals from each category
     _build_natural_signals(tool_name, tool_input, data, state, context)
@@ -1960,6 +2121,7 @@ def check_confidence_increaser(
         _build_bash_signals(tool_input, data, context)
 
     _build_objective_signals(tool_name, tool_input, data, context)
+    _track_test_enforcement(tool_name, tool_input, tool_result, state, context)
     _build_time_saver_signals(
         tool_name, tool_input, tool_result, runner_state, state, context
     )

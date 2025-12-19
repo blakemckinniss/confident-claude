@@ -52,13 +52,14 @@ def get_session_id() -> str:
 
 # Brief models summary for PAL auto-selection context
 # Derived from PAL MCP's openrouter_models.json - update if models change significantly
+# IMPORTANT: Use full OpenRouter model IDs to avoid misrouting (e.g., "groq/kimi-k2" errors)
 PAL_MODELS_SUMMARY = """| Model | Score | Context | Best For |
 |-------|-------|---------|----------|
 | gpt-5.2 | 100 | 400K | Reasoning, code-gen, complex planning |
-| gemini-3-pro | 100 | 1M | Large context, multimodal, code-gen |
-| kimi-k2 | 94 | 256K | Long-horizon reasoning, coding |
-| gemini-3-flash | 91 | 1M | Fast reasoning, large context |
-| claude-haiku-4.5 | 68 | 200K | Efficient, quick tasks |"""
+| google/gemini-3-pro-preview | 100 | 1M | Large context, multimodal, code-gen |
+| moonshotai/kimi-k2-thinking | 94 | 256K | Long-horizon reasoning, coding |
+| google/gemini-3-flash-preview | 91 | 1M | Fast reasoning, large context |
+| anthropic/claude-haiku-4.5 | 68 | 200K | Efficient, quick tasks |"""
 
 
 # Tool descriptions for the suggestion template
@@ -152,7 +153,7 @@ For optimal tool selection, call `mcp__pal__chat` with the following prompt:
 {routing_prompt}
 </routing_prompt>
 
-**Model:** PAL auto-selects (or specify: gpt-5.2, gemini-3-pro, kimi-k2 for reasoning-heavy tasks)
+**Model:** PAL auto-selects (or specify: gpt-5.2, google/gemini-3-pro-preview, moonshotai/kimi-k2-thinking for reasoning-heavy tasks)
 
 The response will contain a staged toolchain recommendation with:
 - Primary tool for each stage

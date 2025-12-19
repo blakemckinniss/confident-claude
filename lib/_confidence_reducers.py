@@ -15,6 +15,15 @@ if TYPE_CHECKING:
     from session_state import SessionState
 
 
+# Impact categories for streak protection (v4.21)
+# FAILURE: Active failures that indicate things went wrong - resets streak
+# BEHAVIORAL: Bad language/process patterns - resets streak
+# AMBIENT: Background costs of taking action - does NOT reset streak
+IMPACT_FAILURE = "FAILURE"
+IMPACT_BEHAVIORAL = "BEHAVIORAL"
+IMPACT_AMBIENT = "AMBIENT"
+
+
 @dataclass
 class ConfidenceReducer:
     """A deterministic confidence reducer that fires on specific signals.
@@ -27,6 +36,11 @@ class ConfidenceReducer:
     - HYPOTHESIS/IGNORANCE (<51): 0.5x cooldown (maximum friction)
 
     Use get_effective_cooldown(state) instead of raw cooldown_turns for zone-scaling.
+
+    Impact Categories (v4.21):
+    - FAILURE: Active failures (tool_failure, sunk_cost) - resets streak
+    - BEHAVIORAL: Bad patterns (sycophancy, deferral) - resets streak
+    - AMBIENT: Background costs (decay, bash-risk, edit-risk) - does NOT reset streak
     """
 
     name: str
@@ -40,6 +54,7 @@ class ConfidenceReducer:
     max_recovery_fraction: float = (
         0.5  # Max % of penalty that can be recovered (0.0 for INTEGRITY)
     )
+    impact_category: str = IMPACT_FAILURE  # Default to FAILURE (streak-breaking)
 
     def get_effective_cooldown(self, state: "SessionState") -> int:
         """Get zone-scaled cooldown based on current confidence.
@@ -602,6 +617,7 @@ class OverconfidentCompletionReducer(ConfidenceReducer):
     cooldown_turns: int = 3
     penalty_class: str = "INTEGRITY"
     max_recovery_fraction: float = 0.0
+    impact_category: str = IMPACT_BEHAVIORAL
     patterns: list = field(
         default_factory=lambda: [
             r"\b100%\s*(done|complete|finished|ready)\b",
@@ -635,6 +651,7 @@ class DeferralReducer(ConfidenceReducer):
     description: str = "Deferred work ('skip for now', 'come back later')"
     remedy: str = "do it now, or delete the thought entirely"
     cooldown_turns: int = 3
+    impact_category: str = IMPACT_BEHAVIORAL
     patterns: list = field(
         default_factory=lambda: [
             r"\bskip\s+(this\s+)?(for\s+)?now\b",
@@ -674,6 +691,7 @@ class ApologeticReducer(ConfidenceReducer):
     cooldown_turns: int = 2
     penalty_class: str = "INTEGRITY"
     max_recovery_fraction: float = 0.0
+    impact_category: str = IMPACT_BEHAVIORAL
     patterns: list = field(
         default_factory=lambda: [
             r"\b(i'?m\s+)?sorry\b",
@@ -709,6 +727,7 @@ class SycophancyReducer(ConfidenceReducer):
     cooldown_turns: int = 2
     penalty_class: str = "INTEGRITY"
     max_recovery_fraction: float = 0.0
+    impact_category: str = IMPACT_BEHAVIORAL
     patterns: list = field(
         default_factory=lambda: [
             r"\byou'?re\s+(absolutely|totally|completely|entirely)\s+right\b",
@@ -1148,6 +1167,7 @@ class HallmarkPhraseReducer(ConfidenceReducer):
     description: str = "AI-speak hallmark phrase"
     remedy: str = "just do the thing directly"
     cooldown_turns: int = 2
+    impact_category: str = IMPACT_BEHAVIORAL
     patterns: list = field(
         default_factory=lambda: [
             r"^certainly[,!]?\s",
@@ -2340,7 +2360,14 @@ class PathHardcodingReducer(ConfidenceReducer):
         # Skip config/scratch/documentation files where paths are expected
         if any(
             p in file_path
-            for p in [".claude/tmp/", "/tmp/", ".env", "config.json", "settings.", ".md"]
+            for p in [
+                ".claude/tmp/",
+                "/tmp/",
+                ".env",
+                "config.json",
+                "settings.",
+                ".md",
+            ]
         ):
             return False
 
@@ -2721,6 +2748,233 @@ class QuestionAvoidanceReducer(ConfidenceReducer):
         return is_vague
 
 
+# =============================================================================
+# PAL MAXIMIZATION REDUCERS (v4.19) - Penalties for NOT using external LLMs
+# =============================================================================
+# PAL MCP provides "free" auxiliary context. These reducers create friction
+# when Claude does complex reasoning inline instead of delegating to PAL.
+# =============================================================================
+
+
+@dataclass
+class InlineComplexReasoningReducer(ConfidenceReducer):
+    """Triggers when doing complex reasoning inline without PAL delegation.
+
+    Long reasoning passages (500+ chars) in Claude's output consume precious
+    context window. This reasoning could be offloaded to PAL tools instead.
+
+    Exception: If PAL was used this turn, don't penalize - Claude may be
+    synthesizing PAL's response.
+    """
+
+    name: str = "inline_complex_reasoning"
+    delta: int = -3
+    description: str = "Complex reasoning without PAL delegation"
+    remedy: str = "use mcp__pal__thinkdeep or mcp__pal__chat to offload reasoning"
+    cooldown_turns: int = 3
+
+    # Minimum chars to consider "complex reasoning"
+    threshold_chars: int = 500
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Skip if PAL was used this turn (Claude synthesizing response)
+        if context.get("pal_used_this_turn", False):
+            return False
+
+        # Check assistant output length
+        assistant_output = context.get("assistant_output", "")
+        if len(assistant_output) < self.threshold_chars:
+            return False
+
+        # Check for reasoning indicators in output
+        reasoning_patterns = [
+            r"\blet me think\b",
+            r"\bconsidering\b",
+            r"\banalyzing\b",
+            r"\bevaluating\b",
+            r"\bweighing\b",
+            r"\btrade-?offs?\b",
+            r"\bpros? and cons?\b",
+            r"\boption[s]?\s*(?:1|2|a|b|:)",
+            r"\bapproach\s*(?:1|2|a|b|:)",
+        ]
+
+        import re
+
+        output_lower = assistant_output.lower()
+        has_reasoning = any(re.search(p, output_lower) for p in reasoning_patterns)
+
+        return has_reasoning
+
+
+@dataclass
+class DebugLoopNoPalReducer(ConfidenceReducer):
+    """Triggers when debugging iteratively without using PAL debug.
+
+    After 2+ debug attempts on same issue, should delegate to
+    mcp__pal__debug for external perspective. Iterative debugging
+    burns context without fresh insight.
+    """
+
+    name: str = "debug_loop_no_pal"
+    delta: int = -5
+    description: str = "Iterative debugging without PAL consultation"
+    remedy: str = "use mcp__pal__debug for external debugging perspective"
+    cooldown_turns: int = 5
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Check for debug loop indicators
+        debug_attempts = context.get("debug_attempts_without_pal", 0)
+        if debug_attempts < 2:
+            return False
+
+        # Check if mcp__pal__debug was used recently
+        recent_pal_debug = context.get("pal_debug_used_recently", False)
+        if recent_pal_debug:
+            return False
+
+        return True
+
+
+# =============================================================================
+# TEST ENFORCEMENT REDUCERS (v4.20) - Ensure tests are always run
+# =============================================================================
+
+
+@dataclass
+class TestsExistNotRunReducer(ConfidenceReducer):
+    """Triggers when tests exist in project but weren't run after code changes.
+
+    After modifying 3+ files in a project that has tests, if no test framework
+    has been executed this session, this reducer fires. Encourages running
+    tests early and often.
+    """
+
+    name: str = "tests_exist_not_run"
+    delta: int = -8
+    description: str = "Tests exist but weren't run after code changes"
+    remedy: str = "run pytest/jest/vitest to verify changes don't break existing tests"
+    cooldown_turns: int = 10
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Check if tests were run this session
+        test_frameworks_run = getattr(state, "test_frameworks_run", set())
+        if test_frameworks_run:
+            return False  # Tests were run at some point
+
+        # Check if we've modified enough files to warrant test run
+        files_modified = getattr(state, "files_modified_since_test", set())
+        if len(files_modified) < 3:
+            return False  # Not enough changes yet
+
+        # Check if project has tests (from context or cached)
+        has_tests = context.get("project_has_tests", False)
+        if not has_tests:
+            # Try cached value from state
+            project_test_files = getattr(state, "project_test_files", None)
+            if project_test_files is None or not any(project_test_files.values()):
+                return False
+
+        return True
+
+
+@dataclass
+class OrphanedTestCreationReducer(ConfidenceReducer):
+    """Triggers when a test file is created but not executed.
+
+    Creating tests without running them is technical debt waiting to happen.
+    Tests that are never run may be broken from the start.
+    """
+
+    name: str = "orphaned_test_creation"
+    delta: int = -8
+    description: str = "Test file created but not executed"
+    remedy: str = "run the test file you just created to verify it works"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Check for test files created but not run
+        test_files_created = getattr(state, "test_files_created", {})
+        for path, info in test_files_created.items():
+            if not info.get("executed", False):
+                # Test was created but not executed
+                created_turn = info.get("created_turn", 0)
+                # Give some grace period (3 turns) before penalizing
+                if state.turn_count - created_turn >= 3:
+                    return True
+
+        return False
+
+
+@dataclass
+class PreCommitNoTestsReducer(ConfidenceReducer):
+    """Triggers when attempting to commit without running tests.
+
+    If the project has tests and code was modified, tests should be run
+    before committing. This is a pre-commit quality gate.
+    """
+
+    name: str = "pre_commit_no_tests"
+    delta: int = -10
+    description: str = "Committing without running tests"
+    remedy: str = "run tests before committing to catch regressions"
+    cooldown_turns: int = 1
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Only trigger on git commit commands
+        tool_name = context.get("tool_name", "")
+        if tool_name != "Bash":
+            return False
+
+        command = context.get("bash_command", "")
+        if "git commit" not in command:
+            return False
+
+        # Check if tests were run this session
+        test_frameworks_run = getattr(state, "test_frameworks_run", set())
+        if test_frameworks_run:
+            return False  # Tests were run
+
+        # Check if project has tests
+        has_tests = context.get("project_has_tests", False)
+        if not has_tests:
+            project_test_files = getattr(state, "project_test_files", None)
+            if project_test_files is None or not any(project_test_files.values()):
+                return False  # No tests to run
+
+        # Check if any code files were modified
+        files_modified = getattr(state, "files_modified_since_test", set())
+        if not files_modified:
+            return False  # No code changes
+
+        return True
+
+
 # Registry of all reducers
 # All reducers now ENABLED with proper detection mechanisms
 
@@ -2805,4 +3059,11 @@ REDUCERS: list[ConfidenceReducer] = [
     HedgingLanguageReducer(),
     PhantomProgressReducer(),
     QuestionAvoidanceReducer(),
+    # PAL maximization reducers (v4.19)
+    InlineComplexReasoningReducer(),
+    DebugLoopNoPalReducer(),
+    # Test enforcement reducers (v4.20)
+    TestsExistNotRunReducer(),
+    OrphanedTestCreationReducer(),
+    PreCommitNoTestsReducer(),
 ]
