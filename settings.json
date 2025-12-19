@@ -132,6 +132,7 @@
     "type": "command",
     "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/statusline.py"
   },
+  "enabledMcpjsonServers": ["beads"],
   "enabledPlugins": {
     "claude-mem@thedotmack": true,
     "repomix-mcp@repomix": true,

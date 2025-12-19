@@ -53,10 +53,13 @@ SCRATCH_DIR = (
 STATE_DIR = MEMORY_DIR / "state"  # Runtime state separated from semantic memory
 LESSONS_FILE = MEMORY_DIR / "__lessons.md"
 
-# Session log uses state dir with fallback to legacy location
-_new_log = STATE_DIR / "session_log.jsonl"
-_legacy_log = MEMORY_DIR / "session_log.jsonl"
-SESSION_LOG_FILE = _new_log if _new_log.exists() else (_legacy_log if _legacy_log.exists() else _new_log)
+# Session log uses project-isolated state via _cooldown
+from _cooldown import _resolve_state_path
+
+
+def _get_session_log_file() -> Path:
+    """Get project-isolated session log file."""
+    return _resolve_state_path("session_log.jsonl")
 
 # Legacy paths (used as fallback when not project-aware)
 PROGRESS_FILE = MEMORY_DIR / "progress.json"  # Autonomous agent progress tracking
@@ -259,7 +262,9 @@ def log_session(state, lessons: list[dict]):
     summary["lessons_count"] = len(lessons)
     summary["timestamp"] = datetime.now().isoformat()
 
-    with open(SESSION_LOG_FILE, "a") as f:
+    log_file = _get_session_log_file()
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file, "a") as f:
         f.write(json.dumps(summary) + "\n")
 
 
