@@ -1,36 +1,31 @@
 #!/usr/bin/env python3
 """
-Confidence Reducers - Backward compatibility shim.
+Confidence Reducers Package.
 
-This file re-exports from lib/reducers/ package for backward compatibility.
-All reducers have been modularized into category-based files:
+Modularized from the original lib/_confidence_reducers.py (3000+ lines).
+Each category file contains related reducers for easier maintenance.
 
-  lib/reducers/
-  ├── _base.py          # ConfidenceReducer base class + IMPACT_* constants
-  ├── _core.py          # Tool failures, cascades, sunk cost, goal drift
-  ├── _behavioral.py    # Bad patterns (backup files, deferral, sycophancy)
-  ├── _efficiency.py    # Sequential ops, verbose output, token waste
-  ├── _verification.py  # Unbacked claims, test coverage
-  ├── _code_quality.py  # Placeholder impl, silent failures, AST checks
-  ├── _language.py      # Hedging, phantom progress, question avoidance
-  ├── _framework.py     # Tool preferences (crawl4ai > WebFetch)
-  ├── _stuck.py         # Stuck loops, no-research debugging
-  └── _mastermind.py    # Drift detection for blueprint execution
-
-New code should import from lib.reducers directly:
-    from lib.reducers import REDUCERS, ConfidenceReducer
+Categories:
+- _core: Tool failures, cascades, sunk cost, user correction, goal drift
+- _behavioral: Bad patterns (backup files, deferral, sycophancy, etc.)
+- _efficiency: Sequential operations, verbose output, token waste
+- _verification: Unbacked claims, test coverage, verification theater
+- _code_quality: Placeholder impl, silent failures, AST checks
+- _language: Hedging, phantom progress, question avoidance
+- _framework: Tool preferences (crawl4ai > WebFetch, serena > grep)
+- _stuck: Stuck loops, no-research debugging
+- _mastermind: Drift detection for blueprint execution
 """
 
-# Re-export everything from the new package
-from reducers import (
-    # Base
+from ._base import (
     ConfidenceReducer,
     IMPACT_FAILURE,
     IMPACT_BEHAVIORAL,
     IMPACT_AMBIENT,
-    # Aggregate list
-    REDUCERS,
-    # Core
+)
+
+# Core reducers
+from ._core import (
     ToolFailureReducer,
     CascadeBlockReducer,
     SunkCostReducer,
@@ -39,7 +34,10 @@ from reducers import (
     EditOscillationReducer,
     ContradictionReducer,
     FollowUpQuestionReducer,
-    # Behavioral
+)
+
+# Behavioral reducers (bad patterns)
+from ._behavioral import (
     BackupFileReducer,
     VersionFileReducer,
     MarkdownCreationReducer,
@@ -52,7 +50,10 @@ from reducers import (
     DebtBashReducer,
     LargeDiffReducer,
     HookBlockReducer,
-    # Efficiency
+)
+
+# Efficiency reducers (token/process waste)
+from ._efficiency import (
     SequentialRepetitionReducer,
     SequentialWhenParallelReducer,
     RereadUnchangedReducer,
@@ -62,7 +63,10 @@ from reducers import (
     TrivialQuestionReducer,
     ObviousNextStepsReducer,
     SequentialFileOpsReducer,
-    # Verification
+)
+
+# Verification reducers (claims without evidence)
+from ._verification import (
     UnbackedVerificationClaimReducer,
     FixedWithoutChainReducer,
     GitSpamReducer,
@@ -72,7 +76,10 @@ from reducers import (
     TestsExistNotRunReducer,
     OrphanedTestCreationReducer,
     PreCommitNoTestsReducer,
-    # Code quality
+)
+
+# Code quality reducers (AST-based and pattern checks)
+from ._code_quality import (
     PlaceholderImplReducer,
     SilentFailureReducer,
     HallmarkPhraseReducer,
@@ -88,13 +95,19 @@ from reducers import (
     MagicNumbersReducer,
     EmptyTestReducer,
     OrphanedImportsReducer,
-    # Language
+)
+
+# Language pattern reducers
+from ._language import (
     HedgingLanguageReducer,
     PhantomProgressReducer,
     QuestionAvoidanceReducer,
     InlineComplexReasoningReducer,
     DebugLoopNoPalReducer,
-    # Framework
+)
+
+# Framework alignment reducers
+from ._framework import (
     WebFetchOverCrawlReducer,
     WebSearchBasicReducer,
     TodoWriteBypassReducer,
@@ -103,17 +116,112 @@ from reducers import (
     FileReeditReducer,
     ComplexBashChainReducer,
     BashDataTransformReducer,
-    # Stuck
+)
+
+# Stuck loop reducers
+from ._stuck import (
     StuckLoopReducer,
     NoResearchDebugReducer,
-    # Mastermind
+)
+
+# Mastermind drift reducers
+from ._mastermind import (
     MastermindFileDriftReducer,
     MastermindTestDriftReducer,
     MastermindApproachDriftReducer,
 )
 
-# Also export the helper function used by GoalDriftReducer
-from reducers._core import _extract_semantic_keywords
+
+# Assemble the complete REDUCERS list (same order as original)
+REDUCERS: list[ConfidenceReducer] = [
+    # Core reducers
+    ToolFailureReducer(),
+    CascadeBlockReducer(),
+    SunkCostReducer(),
+    UserCorrectionReducer(),
+    GoalDriftReducer(),
+    EditOscillationReducer(),
+    ContradictionReducer(),
+    FollowUpQuestionReducer(),
+    # Bad behavior reducers
+    BackupFileReducer(),
+    VersionFileReducer(),
+    MarkdownCreationReducer(),
+    OverconfidentCompletionReducer(),
+    DeferralReducer(),
+    ApologeticReducer(),
+    SycophancyReducer(),
+    UnresolvedAntiPatternReducer(),
+    SpottedIgnoredReducer(),
+    DebtBashReducer(),
+    LargeDiffReducer(),
+    HookBlockReducer(),
+    SequentialRepetitionReducer(),
+    SequentialWhenParallelReducer(),
+    # Verification theater reducers
+    UnbackedVerificationClaimReducer(),
+    FixedWithoutChainReducer(),
+    GitSpamReducer(),
+    # Time waster reducers
+    RereadUnchangedReducer(),
+    VerbosePreambleReducer(),
+    HugeOutputDumpReducer(),
+    RedundantExplanationReducer(),
+    TrivialQuestionReducer(),
+    ObviousNextStepsReducer(),
+    # Code quality reducers
+    PlaceholderImplReducer(),
+    SilentFailureReducer(),
+    HallmarkPhraseReducer(),
+    ScopeCreepReducer(),
+    IncompleteRefactorReducer(),
+    # Test coverage reducers
+    TestIgnoredReducer(),
+    ChangeWithoutTestReducer(),
+    # AST-based code quality reducers
+    DeepNestingReducer(),
+    LongFunctionReducer(),
+    MutableDefaultArgReducer(),
+    ImportStarReducer(),
+    BareRaiseReducer(),
+    CommentedCodeReducer(),
+    # Verification bundling
+    UnverifiedEditsReducer(),
+    # Framework alignment reducers (v4.8)
+    WebFetchOverCrawlReducer(),
+    WebSearchBasicReducer(),
+    TodoWriteBypassReducer(),
+    RawSymbolHuntReducer(),
+    GrepOverSerenaReducer(),
+    FileReeditReducer(),
+    SequentialFileOpsReducer(),
+    # Stuck loop reducers (v4.9)
+    StuckLoopReducer(),
+    NoResearchDebugReducer(),
+    # Mastermind drift reducers (v4.10)
+    MastermindFileDriftReducer(),
+    MastermindTestDriftReducer(),
+    MastermindApproachDriftReducer(),
+    # Scripting escape hatch reducers (v4.11)
+    ComplexBashChainReducer(),
+    BashDataTransformReducer(),
+    # Coverage gap reducers (v4.18)
+    PathHardcodingReducer(),
+    MagicNumbersReducer(),
+    EmptyTestReducer(),
+    OrphanedImportsReducer(),
+    HedgingLanguageReducer(),
+    PhantomProgressReducer(),
+    QuestionAvoidanceReducer(),
+    # PAL maximization reducers (v4.19)
+    InlineComplexReasoningReducer(),
+    DebugLoopNoPalReducer(),
+    # Test enforcement reducers (v4.20)
+    TestsExistNotRunReducer(),
+    OrphanedTestCreationReducer(),
+    PreCommitNoTestsReducer(),
+]
+
 
 __all__ = [
     # Base
@@ -123,8 +231,6 @@ __all__ = [
     "IMPACT_AMBIENT",
     # Aggregate list
     "REDUCERS",
-    # Helper
-    "_extract_semantic_keywords",
     # Core
     "ToolFailureReducer",
     "CascadeBlockReducer",
