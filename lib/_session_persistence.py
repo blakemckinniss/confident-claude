@@ -47,15 +47,49 @@ def _release_state_lock(lock_fd: int):
     os.close(lock_fd)
 
 
+def _validate_session_id(data: dict, expected_session_id: str, state_file) -> bool:
+    """Validate that loaded state matches expected session_id.
+
+    Returns True if valid, False if mismatch detected.
+    On mismatch, logs warning but doesn't raise (defense-in-depth).
+    """
+    import sys
+
+    loaded_session_id = data.get("session_id", "")
+
+    # Normalize comparison (strip whitespace, handle truncation)
+    loaded_sid = str(loaded_session_id).strip()[:16]
+    expected_sid = str(expected_session_id).strip()[:16]
+
+    if loaded_sid and expected_sid and loaded_sid != expected_sid:
+        # Log warning with context for debugging
+        print(
+            f"[SESSION_MISMATCH] State file session_id mismatch: "
+            f"expected='{expected_sid}', found='{loaded_sid}', "
+            f"file={state_file}",
+            file=sys.stderr,
+        )
+        return False
+
+    return True
+
+
 def load_state() -> "SessionState":
-    """Load session state from file with in-memory caching (project-aware)."""
+    """Load session state from file with in-memory caching (project-aware).
+
+    Validates session_id on load - returns fresh state on mismatch.
+    """
     # Import here to avoid circular dependency
     from _session_state_class import SessionState
     from _session_context import _discover_ops_scripts
     from _session_thresholds import _apply_mean_reversion_on_load
     import _session_constants as const
+    from _session_constants import _get_current_session_id
 
     _ensure_memory_dir()
+
+    # Get expected session_id for validation
+    expected_session_id = _get_current_session_id()
 
     # Get project-specific state file
     state_file = get_project_state_file()
@@ -77,17 +111,22 @@ def load_state() -> "SessionState":
                 current_mtime = state_file.stat().st_mtime
                 with open(state_file) as f:
                     data = json.load(f)
-                    const._STATE_CACHE = _apply_mean_reversion_on_load(
-                        SessionState(**data)
-                    )
-                    const._STATE_CACHE_MTIME = current_mtime
-                    return const._STATE_CACHE
+                    # Validate session_id matches expected
+                    if not _validate_session_id(data, expected_session_id, state_file):
+                        # Mismatch: treat as no state (will create fresh below)
+                        pass
+                    else:
+                        const._STATE_CACHE = _apply_mean_reversion_on_load(
+                            SessionState(**data)
+                        )
+                        const._STATE_CACHE_MTIME = current_mtime
+                        return const._STATE_CACHE
             except (json.JSONDecodeError, TypeError, KeyError, OSError):
                 pass
     finally:
         _release_state_lock(lock_fd)
 
-    # No existing state - need exclusive lock to create
+    # No existing state or validation failed - need exclusive lock to create
     lock_fd = _acquire_state_lock(shared=False)
     try:
         # Double-check after acquiring exclusive lock
@@ -96,18 +135,19 @@ def load_state() -> "SessionState":
                 current_mtime = state_file.stat().st_mtime
                 with open(state_file) as f:
                     data = json.load(f)
-                    const._STATE_CACHE = _apply_mean_reversion_on_load(
-                        SessionState(**data)
-                    )
-                    const._STATE_CACHE_MTIME = current_mtime
-                    return const._STATE_CACHE
+                    # Validate session_id matches expected
+                    if _validate_session_id(data, expected_session_id, state_file):
+                        const._STATE_CACHE = _apply_mean_reversion_on_load(
+                            SessionState(**data)
+                        )
+                        const._STATE_CACHE_MTIME = current_mtime
+                        return const._STATE_CACHE
             except (json.JSONDecodeError, TypeError, KeyError, OSError):
                 pass
 
-        # Initialize new state for this project
+        # Initialize new state for this session
         state = SessionState(
-            session_id=os.environ.get("CLAUDE_SESSION_ID", "")[:16]
-            or f"ses_{int(time.time())}",
+            session_id=expected_session_id,
             started_at=time.time(),
             ops_scripts=_discover_ops_scripts(),
         )
