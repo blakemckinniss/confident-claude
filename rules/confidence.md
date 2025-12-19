@@ -93,6 +93,22 @@ Edit oscillation thresholds scale by confidence zone - lower confidence = less t
 | WORKING (51-70) | 3 edits | Standard sensitivity |
 | HYPOTHESIS/IGNORANCE (<51) | 2 edits | Force research earlier |
 
+### Zone-Scaled Cooldowns (v4.13)
+
+ALL reducer cooldowns scale by confidence zone - creating adaptive friction:
+
+| Zone | Multiplier | Effect |
+|------|------------|--------|
+| EXPERT/TRUSTED (86+) | 1.5× | Longer cooldowns, more freedom |
+| CERTAINTY (71-85) | 1.0× | Baseline (unchanged) |
+| WORKING (51-70) | 0.75× | Shorter cooldowns, more friction |
+| HYPOTHESIS/IGNORANCE (<51) | 0.5× | Maximum friction, reducers fire often |
+
+**Example:** A reducer with base cooldown of 8 turns:
+- At 95% confidence: 12 turns between triggers
+- At 75% confidence: 8 turns (baseline)
+- At 40% confidence: 4 turns (fires twice as often)
+
 ### Fatigue Signals
 
 The entity "gets tired" as sessions progress - **decay accelerates with session length**:

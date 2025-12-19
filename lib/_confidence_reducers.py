@@ -17,13 +17,23 @@ if TYPE_CHECKING:
 
 @dataclass
 class ConfidenceReducer:
-    """A deterministic confidence reducer that fires on specific signals."""
+    """A deterministic confidence reducer that fires on specific signals.
+
+    Zone-Scaled Cooldowns (v4.13):
+    Cooldowns scale by confidence zone - creating more friction at low confidence:
+    - EXPERT/TRUSTED (86+): 1.5x cooldown (more lenient, earned freedom)
+    - CERTAINTY (71-85): 1.0x cooldown (baseline)
+    - WORKING (51-70): 0.75x cooldown (more friction)
+    - HYPOTHESIS/IGNORANCE (<51): 0.5x cooldown (maximum friction)
+
+    Use get_effective_cooldown(state) instead of raw cooldown_turns for zone-scaling.
+    """
 
     name: str
     delta: int  # Negative value
     description: str
     remedy: str = ""  # What to do instead (actionable guidance)
-    cooldown_turns: int = 3  # Minimum turns between triggers
+    cooldown_turns: int = 3  # Minimum turns between triggers (baseline)
     penalty_class: str = (
         "PROCESS"  # "PROCESS" (recoverable) or "INTEGRITY" (not recoverable)
     )
@@ -31,12 +41,32 @@ class ConfidenceReducer:
         0.5  # Max % of penalty that can be recovered (0.0 for INTEGRITY)
     )
 
+    def get_effective_cooldown(self, state: "SessionState") -> int:
+        """Get zone-scaled cooldown based on current confidence.
+
+        Lower confidence = shorter cooldown = more friction = more signals.
+        This implements the crescendo theory: declining confidence intensifies guardrails.
+        """
+        confidence = getattr(state, "confidence", 75)
+
+        if confidence >= 86:  # EXPERT/TRUSTED - earned freedom
+            multiplier = 1.5
+        elif confidence >= 71:  # CERTAINTY - baseline
+            multiplier = 1.0
+        elif confidence >= 51:  # WORKING - increased friction
+            multiplier = 0.75
+        else:  # HYPOTHESIS/IGNORANCE - maximum friction
+            multiplier = 0.5
+
+        return max(1, int(self.cooldown_turns * multiplier))
+
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
         """Check if this reducer should fire. Override in subclasses."""
-        # Cooldown check
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        # Cooldown check (zone-scaled)
+        effective_cooldown = self.get_effective_cooldown(state)
+        if state.turn_count - last_trigger_turn < effective_cooldown:
             return False
         return False
 
@@ -54,7 +84,7 @@ class ToolFailureReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Check for NEW failures since last trigger (prevents double-fire)
         last_processed_ts = state.nudge_history.get(f"reducer_{self.name}_last_ts", 0)
@@ -86,7 +116,7 @@ class CascadeBlockReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Check consecutive_blocks from session_state
         for hook_name, entry in state.consecutive_blocks.items():
@@ -108,7 +138,7 @@ class SunkCostReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return state.consecutive_failures >= 3
 
@@ -138,7 +168,7 @@ class UserCorrectionReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         prompt = context.get("prompt", "").lower()
         for pattern in self.patterns:
@@ -231,7 +261,7 @@ class GoalDriftReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Use existing goal drift detection from session_state
         if not state.original_goal or not state.goal_keywords:
@@ -290,7 +320,7 @@ class EditOscillationReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
 
         # Get zone-scaled threshold
@@ -364,7 +394,7 @@ class ContradictionReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
 
         # Check for explicit contradiction flag (set by hooks)
@@ -412,7 +442,7 @@ class FollowUpQuestionReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         prompt = context.get("prompt", "").lower().strip()
         # Only trigger on short-to-medium prompts (follow-ups are usually brief)
@@ -452,7 +482,7 @@ class BackupFileReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         file_path = context.get("file_path", "")
         if not file_path:
@@ -494,7 +524,7 @@ class VersionFileReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         file_path = context.get("file_path", "")
         if not file_path:
@@ -541,7 +571,7 @@ class MarkdownCreationReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         file_path = context.get("file_path", "")
         if not file_path or not file_path.endswith(".md"):
@@ -585,7 +615,7 @@ class OverconfidentCompletionReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -622,7 +652,7 @@ class DeferralReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -657,7 +687,7 @@ class ApologeticReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -693,7 +723,7 @@ class SycophancyReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -741,7 +771,7 @@ class UnresolvedAntiPatternReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -803,7 +833,7 @@ class SpottedIgnoredReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -852,7 +882,7 @@ class DebtBashReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         command = context.get("bash_command", "")
         if not command:
@@ -881,7 +911,7 @@ class LargeDiffReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("large_diff", False)
 
@@ -899,7 +929,7 @@ class HookBlockReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("hook_blocked", False)
 
@@ -920,7 +950,7 @@ class SequentialRepetitionReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Now requires 3+ consecutive (set by detection logic)
         return context.get("sequential_repetition_3plus", False)
@@ -943,7 +973,7 @@ class UnbackedVerificationClaimReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("unbacked_verification", False)
 
@@ -965,7 +995,7 @@ class FixedWithoutChainReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("fixed_without_chain", False)
 
@@ -986,7 +1016,7 @@ class GitSpamReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("git_spam", False)
 
@@ -1043,7 +1073,7 @@ class PlaceholderImplReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Check content being written/edited
         new_content = context.get("new_string", "") or context.get("content", "")
@@ -1092,7 +1122,7 @@ class SilentFailureReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         new_content = context.get("new_string", "") or context.get("content", "")
         if not new_content:
@@ -1135,7 +1165,7 @@ class HallmarkPhraseReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -1175,7 +1205,7 @@ class ScopeCreepReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -1204,7 +1234,7 @@ class IncompleteRefactorReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Set by hooks when detecting partial refactors
         return context.get("incomplete_refactor", False)
@@ -1231,7 +1261,7 @@ class RereadUnchangedReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("reread_unchanged", False)
 
@@ -1259,7 +1289,7 @@ class VerbosePreambleReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -1288,7 +1318,7 @@ class HugeOutputDumpReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("huge_output_dump", False)
 
@@ -1317,7 +1347,7 @@ class RedundantExplanationReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -1344,7 +1374,7 @@ class TrivialQuestionReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         return context.get("trivial_question", False)
 
@@ -1384,7 +1414,7 @@ class ObviousNextStepsReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         output = context.get("assistant_output", "")
         if not output:
@@ -1421,7 +1451,7 @@ class SequentialWhenParallelReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Track consecutive single reads/searches (guard for mock states)
         return getattr(state, "consecutive_single_reads", 0) >= 3
@@ -1444,7 +1474,7 @@ class TestIgnoredReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Context-based: hook sets this when test file edited without test run
         return context.get("test_ignored", False)
@@ -1467,7 +1497,7 @@ class ChangeWithoutTestReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Context-based: hook sets this when prod code edited without tests
         return context.get("change_without_test", False)
@@ -1497,7 +1527,7 @@ class UnverifiedEditsReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
 
         # Track consecutive edits without verification
@@ -1573,7 +1603,7 @@ class DeepNestingReducer(ConfidenceReducer):
     ) -> bool:
         import ast
 
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         content = context.get("new_string", "") or context.get("content", "")
         file_path = context.get("file_path", "")
@@ -1607,7 +1637,7 @@ class LongFunctionReducer(ConfidenceReducer):
     ) -> bool:
         import ast
 
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         content = context.get("new_string", "") or context.get("content", "")
         file_path = context.get("file_path", "")
@@ -1646,7 +1676,7 @@ class MutableDefaultArgReducer(ConfidenceReducer):
     ) -> bool:
         import ast
 
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         content = context.get("new_string", "") or context.get("content", "")
         file_path = context.get("file_path", "")
@@ -1685,7 +1715,7 @@ class ImportStarReducer(ConfidenceReducer):
     ) -> bool:
         import ast
 
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         content = context.get("new_string", "") or context.get("content", "")
         file_path = context.get("file_path", "")
@@ -1722,7 +1752,7 @@ class BareRaiseReducer(ConfidenceReducer):
     ) -> bool:
         import ast
 
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         content = context.get("new_string", "") or context.get("content", "")
         file_path = context.get("file_path", "")
@@ -1761,7 +1791,7 @@ class CommentedCodeReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         content = context.get("new_string", "") or context.get("content", "")
         file_path = context.get("file_path", "")
@@ -1822,7 +1852,7 @@ class WebFetchOverCrawlReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         tool_name = context.get("tool_name", "")
         return tool_name == "WebFetch"
@@ -1844,7 +1874,7 @@ class WebSearchBasicReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         tool_name = context.get("tool_name", "")
         return tool_name == "WebSearch"
@@ -1867,7 +1897,7 @@ class TodoWriteBypassReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         tool_name = context.get("tool_name", "")
         return tool_name == "TodoWrite"
@@ -1890,7 +1920,7 @@ class RawSymbolHuntReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Check if serena is available but not activated
         if not context.get("serena_available", False):
@@ -1925,7 +1955,7 @@ class GrepOverSerenaReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Only if serena is activated
         if not context.get("serena_activated", False):
@@ -1970,7 +2000,7 @@ class FileReeditReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         tool_name = context.get("tool_name", "")
         if tool_name not in ("Edit", "Write"):
@@ -2018,7 +2048,7 @@ class SequentialFileOpsReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Context-based: hook sets this when detecting sequential pattern
         return context.get("sequential_file_ops", False)
@@ -2046,7 +2076,7 @@ class ComplexBashChainReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
 
         tool_name = context.get("tool_name", "")
@@ -2104,7 +2134,7 @@ class BashDataTransformReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
 
         tool_name = context.get("tool_name", "")
@@ -2147,7 +2177,7 @@ class StuckLoopReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Context-based: hook sets this when stuck loop detected
         return context.get("stuck_loop_detected", False)
@@ -2170,7 +2200,7 @@ class NoResearchDebugReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Context-based: hook sets when no research done in debug session
         return context.get("no_research_in_debug", False)
@@ -2201,7 +2231,7 @@ class MastermindFileDriftReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         # Check for drift signal in context
         drift_signals = context.get("mastermind_drift", {})
@@ -2224,7 +2254,7 @@ class MastermindTestDriftReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         drift_signals = context.get("mastermind_drift", {})
         return drift_signals.get("test_failures", False)
@@ -2247,7 +2277,7 @@ class MastermindApproachDriftReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
         drift_signals = context.get("mastermind_drift", {})
         return drift_signals.get("approach_change", False)
