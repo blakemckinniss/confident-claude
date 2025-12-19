@@ -263,7 +263,30 @@ def check_tool_permission(
             f"📝 WORKING: {confidence}% | Consider running tests after changes"
         )
 
-    # CERTAINTY+ (71+): Allow (with blast radius check for high-risk)
+    # CERTAINTY (71-85): Allow with gates - require audit/void for ops/hooks
+    if 71 <= confidence <= 85 and tool_name in _FILE_WRITE_TOOLS and not is_scratch:
+        # Blast radius check first
+        effective_requirement = _get_effective_confidence_requirement(file_path, 71)
+        if confidence < effective_requirement:
+            recovery = get_confidence_recovery_options(
+                confidence, target=effective_requirement
+            )
+            return False, (
+                f"{emoji} **BLOCKED: High-risk path requires {effective_requirement}%**\n"
+                f"Path `{file_path}` is high-risk. Current: {confidence}%.\n\n"
+                f"{recovery}"
+            )
+
+        # Gate enforcement for critical framework paths
+        if _is_gate_required_path(file_path):
+            return True, (
+                f"🚧 **CERTAINTY GATE** ({confidence}%)\n"
+                f"Writing to framework path: `{_get_short_path(file_path)}`\n"
+                f"**Required before commit:** `audit` AND `void` on this file.\n"
+                f"Or reach TRUSTED (86%+) for gate-free writes."
+            )
+
+    # TRUSTED+ (86+): Allow (with blast radius check for high-risk)
     if tool_name in _FILE_WRITE_TOOLS and not is_scratch:
         effective_requirement = _get_effective_confidence_requirement(file_path, 71)
         if confidence < effective_requirement:
@@ -277,6 +300,25 @@ def check_tool_permission(
             )
 
     return True, ""
+
+
+def _is_gate_required_path(file_path: str) -> bool:
+    """Check if path requires gate verification (audit/void) in CERTAINTY zone."""
+    gate_patterns = (
+        ".claude/ops/",
+        ".claude/hooks/",
+        ".claude/lib/",
+        "/ops/",
+        "/hooks/",
+    )
+    return any(pattern in file_path for pattern in gate_patterns)
+
+
+def _get_short_path(file_path: str) -> str:
+    """Get shortened path for display."""
+    if ".claude/" in file_path:
+        return file_path.split(".claude/")[-1]
+    return file_path.split("/")[-1]
 
 
 def suggest_alternatives(confidence: int, task_description: str = "") -> str:

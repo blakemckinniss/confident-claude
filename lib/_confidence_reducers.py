@@ -261,7 +261,14 @@ class GoalDriftReducer(ConfidenceReducer):
 
 @dataclass
 class EditOscillationReducer(ConfidenceReducer):
-    """Triggers when edits revert previous changes (actual oscillation)."""
+    """Triggers when edits revert previous changes (actual oscillation).
+
+    Zone-scaled thresholds (v4.12):
+    - EXPERT/TRUSTED (86+): 6 edits before trigger - more freedom to iterate
+    - CERTAINTY (71-85): 4 edits - moderate tolerance
+    - WORKING (51-70): 3 edits - standard sensitivity
+    - HYPOTHESIS/IGNORANCE (<51): 2 edits - force research earlier
+    """
 
     name: str = "edit_oscillation"
     delta: int = -12
@@ -269,18 +276,33 @@ class EditOscillationReducer(ConfidenceReducer):
     remedy: str = "step back, research the right solution first"
     cooldown_turns: int = 5
 
+    def _get_zone_threshold(self, confidence: int) -> int:
+        """Get oscillation detection threshold based on confidence zone."""
+        if confidence >= 86:  # EXPERT/TRUSTED
+            return 6
+        elif confidence >= 71:  # CERTAINTY
+            return 4
+        elif confidence >= 51:  # WORKING
+            return 3
+        else:  # HYPOTHESIS/IGNORANCE
+            return 2
+
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.cooldown_turns:
             return False
 
+        # Get zone-scaled threshold
+        confidence = getattr(state, "confidence", 75)
+        min_edits = self._get_zone_threshold(confidence)
+
         # Check for actual oscillation pattern in edit_history
         # Oscillation = latest edit's NEW content matches a PREVIOUS state
         # (i.e., reverting back to something we had before)
         edit_history = getattr(state, "edit_history", {})
         for filepath, history in edit_history.items():
-            if len(history) < 3:  # Need at least 3 edits to detect oscillation
+            if len(history) < min_edits:  # Zone-scaled threshold
                 continue
             # Collect ALL states from edits before the previous one
             # (skip immediately previous edit - that's normal iteration)
@@ -505,6 +527,7 @@ class MarkdownCreationReducer(ConfidenceReducer):
         default_factory=lambda: [
             r"\.claude/memory/",  # Memory files OK
             r"\.claude/skills/",  # Skills OK
+            r"\.claude/agents/",  # Agent definitions OK
             r"\.claude/commands/",  # Slash commands OK
             r"\.claude/rules/",  # Rules files OK (framework DNA)
             r"\.claude/tmp/",  # Scratch files OK (symlink)

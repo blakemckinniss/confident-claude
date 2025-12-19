@@ -11,7 +11,7 @@ HOOKS INDEX (by priority):
     5 session_close_protocol - Enforce bd sync + next steps before exit
 
   PERSISTENCE (6-20):
-    10 auto_commit        - Commit all changes (semantic backup)
+    (auto_commit removed - commits are now explicit)
 
   VALIDATION (30-60):
     30 session_blocks     - Require reflection on blocks
@@ -66,8 +66,9 @@ class StopHookResult:
     stop_reason: str = ""  # Warning message (non-blocking)
 
     @staticmethod
-    def ok() -> "StopHookResult":
-        return StopHookResult(decision="continue")
+    def ok(stop_reason: str = "") -> "StopHookResult":
+        """Return continue result, optionally with a non-blocking message."""
+        return StopHookResult(decision="continue", stop_reason=stop_reason)
 
     @staticmethod
     def warn(message: str) -> "StopHookResult":
@@ -147,6 +148,23 @@ COMPLETION_PATTERNS = [
     r"\b(all\s+)?(changes|work|tasks?)\s+(are\s+)?(complete|done)\b",
     r"\bnothing\s+(left|more|else)\s+to\s+do\b",
     r"^\*\*(?:session\s+)?summary\s+(?:of\s+)?(?:completed?\s+)?(?:work|changes|tasks?)",  # More specific
+]
+
+# Abort/Escalate patterns - these should be ALLOWED at low confidence
+# Low confidence + admitting failure = correct behavior (epistemic humility)
+ABORT_PATTERNS = [
+    r"\b(i\s+)?(can'?t|cannot|couldn'?t)\s+(figure|solve|fix|resolve|complete)\b",
+    r"\b(i'?m\s+)?(stuck|blocked|unable)\b",
+    r"\bneed\s+(help|assistance|guidance|input)\b",
+    r"\bescalat(e|ing)\s+(this|to)\b",
+    r"\babort(ing)?\s+(this|the)\b",
+    r"\b(giving|give)\s+up\b",
+    r"\b(this\s+)?(is\s+)?beyond\s+(my|what\s+i)\b",
+    r"\brequires?\s+(human|user|manual)\s+(intervention|input|review)\b",
+    r"\b(i\s+)?don'?t\s+(know|understand)\s+(how|why|what)\b",
+    r"\bask(ing)?\s+(for|the\s+user)\b",
+    r"\buncertain\s+(about|how)\b",
+    r"\bnot\s+(confident|sure)\s+(enough|about|how)\b",
 ]
 
 # Confidence threshold for completion claims
@@ -431,15 +449,13 @@ def _format_exhaustion_block(
 
 Session is approaching context limit. Complete these steps before stopping:
 
-### 1. Commit Your Work
-```bash
-git add -A && git commit -m "[auto] session checkpoint"
-```
-
-### 2. Sync Beads
+### 1. Sync Beads
 ```bash
 bd sync
 ```
+
+### 2. Commit (if needed)
+If you have uncommitted changes, commit them now (commits are explicit, not automatic).
 
 ### 3. Verify State Saved
 Session state is auto-persisted to `~/.claude/memory/session_state_v3.json`.
@@ -576,7 +592,7 @@ def check_session_close_protocol(data: dict, state: SessionState) -> StopHookRes
     1. bd sync must have been run (persists task state)
     2. Next steps must be documented (in handoff or response)
 
-    Git commit is handled by auto_commit hook at priority 10.
+    Git commits are explicit - handled by AI/user directive, not auto-hooks.
     """
     # SUDO bypass
     transcript_path = data.get("transcript_path", "")
@@ -634,39 +650,9 @@ def check_session_close_protocol(data: dict, state: SessionState) -> StopHookRes
     return StopHookResult.ok()
 
 
-@register_hook("auto_commit", priority=10)
-def check_auto_commit(data: dict, state: SessionState) -> StopHookResult:
-    """Commit all changes (semantic backup)."""
-    cwd = data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-
-    if not is_git_repo(cwd):
-        return StopHookResult.ok()
-
-    changes = get_changes(cwd)
-    total = sum(len(v) for v in changes.values())
-
-    if total == 0:
-        return StopHookResult.ok()
-
-    message = generate_commit_message(changes)
-    if not message:
-        return StopHookResult.ok()
-
-    # Stage all changes
-    code, _, stderr = run_git(["add", "-A"], cwd)
-    if code != 0:
-        return StopHookResult.warn(f"⚠️ Auto-commit: git add failed: {stderr}")
-
-    # Commit
-    code, _, stderr = run_git(["commit", "-m", message], cwd)
-    if code != 0:
-        if "nothing to commit" not in stderr.lower():
-            return StopHookResult.warn(f"⚠️ Auto-commit failed: {stderr}")
-        return StopHookResult.ok()
-
-    # Report success in state (not blocking)
-    summary = message.split("\n")[0]
-    return StopHookResult.warn(f"✅ Auto-committed: {summary} ({total} files)")
+# NOTE: auto_commit hook REMOVED
+# Git commits are now explicit - triggered by AI or user directive only.
+# This prevents unwanted automatic commits and gives full control to the user.
 
 
 @register_hook("session_blocks", priority=30)
@@ -748,6 +734,10 @@ def check_completion_confidence(data: dict, state: SessionState) -> StopHookResu
     This prevents lazy completion and reward hacking - Claude must earn
     confidence through actual verification (test pass, build success, user OK)
     before claiming a task is complete.
+
+    IMPORTANT: Abort/escalate signals are ALLOWED at low confidence.
+    Low confidence + admitting failure = correct epistemic behavior.
+    The gate only blocks SUCCESS claims, not failure acknowledgment.
     """
     # Import confidence utilities
     from confidence import get_tier_info, INCREASERS
@@ -763,11 +753,11 @@ def check_completion_confidence(data: dict, state: SessionState) -> StopHookResu
     if confidence >= COMPLETION_CONFIDENCE_THRESHOLD:
         # But block if in danger zone (< 75%) AND declining
         if confidence < COMPLETION_TREND_THRESHOLD and is_declining:
-            pass  # Fall through to block
+            pass  # Fall through to check patterns
         else:
             return StopHookResult.ok()
 
-    # Scan recent assistant output for completion claims
+    # Scan recent assistant output
     transcript_path = data.get("transcript_path", "")
     if not transcript_path or not Path(transcript_path).exists():
         return StopHookResult.ok()
@@ -781,7 +771,19 @@ def check_completion_confidence(data: dict, state: SessionState) -> StopHookResu
     except (OSError, PermissionError):
         return StopHookResult.ok()
 
-    # Check for completion patterns
+    # FIRST: Check for abort/escalate patterns - these are ALLOWED at low confidence
+    # Low confidence + admitting struggle = correct behavior (epistemic humility)
+    for pattern in ABORT_PATTERNS:
+        if re.search(pattern, content, re.IGNORECASE):
+            # Abort signal detected - this is the RIGHT response at low confidence
+            # Optionally reward this behavior
+            tier_name, emoji, _ = get_tier_info(confidence)
+            return StopHookResult.ok(
+                f"✅ **Abort/Escalate Acknowledged** - {emoji} {confidence}%\n"
+                f"Admitting uncertainty at low confidence is correct behavior."
+            )
+
+    # THEN: Check for completion claims (only block these)
     for pattern in COMPLETION_PATTERNS:
         if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
             tier_name, emoji, _ = get_tier_info(confidence)
@@ -806,7 +808,9 @@ def check_completion_confidence(data: dict, state: SessionState) -> StopHookResu
                 + (f" ↓ (was {prev_confidence}%)" if is_declining else "")
                 + "\n\n**How to raise confidence:**\n"
                 + "\n".join(boost_options[:5])
-                + "\n\nOr: 'CONFIDENCE_BOOST_APPROVED'"
+                + "\n\n**Alternatives:**\n"
+                + "  • Abort/escalate: 'I'm stuck, need help with X'\n"
+                + "  • Override: 'CONFIDENCE_BOOST_APPROVED'"
             )
 
     return StopHookResult.ok()
@@ -1451,29 +1455,18 @@ def sync_serena_memory(data: dict, state: SessionState) -> StopHookResult:
 
     memory_content = "\n".join(memory_lines)
 
-    # Write directly to Serena memories (fire and forget via Popen)
+    # Write directly to Serena memories
     memory_file = (
         serena_dir
         / "memories"
         / f"session_{timestamp.replace(':', '-').replace(' ', '_')}.md"
     )
 
-    # Use a simple background write - spawn detached process
-    write_script = f'''
-import os
-os.makedirs("{memory_file.parent}", exist_ok=True)
-with open("{memory_file}", "w") as f:
-    f.write("""{memory_content}""")
-'''
-
+    # Direct write - fast enough to not block, avoids subprocess injection risks
     try:
-        subprocess.Popen(
-            [sys.executable, "-c", write_script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,  # Detach from parent
-        )
-    except Exception:
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(memory_content)
+    except (OSError, PermissionError):
         pass  # Fire and forget - ignore errors
 
     return StopHookResult.ok()

@@ -78,9 +78,20 @@ Before risky actions (Edit, Write, Bash), the system **predicts trajectory** and
     - git status/diff (+10)
 ```
 
-Special detection for **edit_oscillation** risk (3+ edits to same file triggers -12 penalty).
+Special detection for **edit_oscillation** risk (zone-scaled, triggers -12 penalty).
 
 This is the "danger sense" - anticipating threats before they materialize.
+
+### Zone-Scaled Loop Detection (v4.13)
+
+Edit oscillation thresholds scale by confidence zone - lower confidence = less tolerance for iteration:
+
+| Zone | Threshold | Rationale |
+|------|-----------|-----------|
+| EXPERT/TRUSTED (86+) | 6 edits | More freedom to iterate |
+| CERTAINTY (71-85) | 4 edits | Moderate tolerance |
+| WORKING (51-70) | 3 edits | Standard sensitivity |
+| HYPOTHESIS/IGNORANCE (<51) | 2 edits | Force research earlier |
 
 ### Fatigue Signals
 
@@ -419,6 +430,33 @@ Example: `edit_oscillation` base cooldown is 5 turns.
 - **< 70%**: Cannot claim task "complete", "done", "finished"
 - **< 75% with negative trend**: Also blocked (prevents completing while falling)
 - Earn confidence through test_pass, build_success, git_explore, or user_ok
+
+### Abort Semantics (v4.13)
+
+The completion gate distinguishes between **Success claims** and **Abort/Escalate signals**:
+
+| Signal Type | At Low Confidence | Rationale |
+|-------------|-------------------|-----------|
+| Success claim | BLOCKED | Prevents lazy completion |
+| Abort/Escalate | ALLOWED | Epistemic humility is correct behavior |
+
+**Abort patterns that bypass the gate:**
+- "I can't figure out...", "I'm stuck/blocked"
+- "Need help/guidance", "Escalating to..."
+- "I don't know how...", "Uncertain about..."
+
+Low confidence + admitting failure = correct epistemic behavior. The gate only blocks unearned success claims.
+
+### Mechanical CERTAINTY Gates (v4.13)
+
+CERTAINTY zone (71-85%) requires audit/void for framework paths:
+
+| Path Pattern | Gate Behavior |
+|--------------|---------------|
+| `.claude/ops/`, `.claude/hooks/`, `.claude/lib/` | Warning: run `audit` and `void` before commit |
+| Other production paths | Normal CERTAINTY access |
+
+TRUSTED+ (86%+) bypasses these gates.
 
 ## Compounding Penalties (v4.7)
 
