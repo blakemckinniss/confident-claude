@@ -21,7 +21,7 @@
     "max_escalations_per_session": 2
   },
   "context_packer": {
-    "router_token_budget": 1200,
+    "router_token_budget": 4000,
     "planner_token_budget": 4000,
     "include_repo_structure": true,
     "include_git_diff": true,

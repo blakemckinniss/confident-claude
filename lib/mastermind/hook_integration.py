@@ -558,8 +558,18 @@ def handle_session_start_routing(
         )
         return result
 
-    # Pack context for router (include confidence for routing bias)
-    router_ctx = pack_for_router(prompt, cwd, confidence)
+    # Record prompt for conversation history tracking
+    state.record_prompt(prompt)
+
+    # Pack context for router (include confidence, conversation history, and turn count)
+    # Turn count determines context richness: turn 0-1 gets rich session start context
+    router_ctx = pack_for_router(
+        prompt,
+        cwd,
+        confidence,
+        conversation_history=state.recent_prompts,
+        turn_count=state.turn_count,
+    )
 
     # Redact before sending
     redacted_prompt, _ = redact_text(router_ctx.prompt)

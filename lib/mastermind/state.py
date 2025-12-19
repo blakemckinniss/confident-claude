@@ -124,6 +124,9 @@ class MastermindState:
     pal_consulted: bool = (
         False  # True once ANY PAL tool has been called (hybrid routing)
     )
+    recent_prompts: list[str] = field(
+        default_factory=list
+    )  # Last N user prompts for conversation context (max 5)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -190,6 +193,19 @@ class MastermindState:
         """Get stored continuation_id for a PAL tool type."""
         return self.pal_continuations.get(tool_type)
 
+    def record_prompt(self, prompt: str, max_prompts: int = 5) -> None:
+        """Record a user prompt for conversation context.
+
+        Args:
+            prompt: The user's prompt text
+            max_prompts: Maximum number of prompts to retain (default 5)
+        """
+        self.recent_prompts.append(prompt)
+        # Keep only the most recent N prompts
+        if len(self.recent_prompts) > max_prompts:
+            self.recent_prompts = self.recent_prompts[-max_prompts:]
+        self.updated_at = time.time()
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
@@ -209,6 +225,7 @@ class MastermindState:
             "test_failures": self.test_failures,
             "pal_bootstrapped": self.pal_bootstrapped,
             "pal_consulted": self.pal_consulted,
+            "recent_prompts": self.recent_prompts,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -228,6 +245,7 @@ class MastermindState:
             test_failures=data.get("test_failures", 0),
             pal_bootstrapped=data.get("pal_bootstrapped", False),
             pal_consulted=data.get("pal_consulted", False),
+            recent_prompts=data.get("recent_prompts", []),
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
         )

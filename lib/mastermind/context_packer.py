@@ -620,6 +620,70 @@ def get_recent_observations(max_items: int = 5) -> str:
         return ""
 
 
+def get_session_start_context(max_sessions: int = 2, max_chars: int = 800) -> str:
+    """Get high-value session context for first Groq call.
+
+    At session start, we have no conversation history. Compensate by pulling
+    rich context from claude-mem: recent session summaries with learned lessons
+    and next steps. These are the highest ROI tokens for task classification.
+
+    Args:
+        max_sessions: Maximum number of recent sessions to include
+        max_chars: Maximum total characters (token budget proxy)
+
+    Returns:
+        Formatted string with session summaries, or empty string on error.
+    """
+    import json
+    import urllib.request
+    import urllib.error
+
+    try:
+        # Query claude-mem for recent session context
+        url = f"http://localhost:37777/api/sessions?limit={max_sessions}"
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+
+        sessions = data.get("items", [])
+        if not sessions:
+            return ""
+
+        lines = []
+        total_chars = 0
+
+        for session in sessions:
+            # Extract high-value fields
+            summary = session.get("summary", {})
+            learned = summary.get("learned", "")
+            next_steps = summary.get("next_steps", "")
+            request = summary.get("request", "")[:100]  # Truncate request
+
+            # Build compact representation
+            parts = []
+            if request:
+                parts.append(f"Task: {request}")
+            if learned:
+                # Learned lessons are highest value - include more
+                learned_trunc = learned[:300] if len(learned) > 300 else learned
+                parts.append(f"Learned: {learned_trunc}")
+            if next_steps:
+                next_trunc = next_steps[:150] if len(next_steps) > 150 else next_steps
+                parts.append(f"Next: {next_trunc}")
+
+            if parts:
+                session_block = " | ".join(parts)
+                if total_chars + len(session_block) > max_chars:
+                    break
+                lines.append(f"• {session_block}")
+                total_chars += len(session_block)
+
+        return "\n".join(lines) if lines else ""
+
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        return ""
+
+
 def get_memory_hints(cwd: Path | None = None) -> dict[str, Any]:
     """Get lightweight memory signals for router (Path B).
 
@@ -859,16 +923,24 @@ def get_confidence_context(confidence: int | None) -> str:
 
 
 def pack_for_router(
-    user_prompt: str, cwd: Path | None = None, confidence: int | None = None
+    user_prompt: str,
+    cwd: Path | None = None,
+    confidence: int | None = None,
+    conversation_history: list[str] | None = None,
+    turn_count: int = 0,
 ) -> PackedContext:
-    """Pack minimal context for router classification (1200 token budget).
+    """Pack context for router classification (4000 token budget).
 
-    Focus on: user prompt, repo type, basic structure.
+    Focus on: user prompt, conversation context, repo type, basic structure.
+    At session start (turn 0-1), includes rich claude-mem context to compensate
+    for lack of conversation history.
 
     Args:
         user_prompt: The user's request
         cwd: Working directory for repo detection
         confidence: Current agent confidence level (0-100)
+        conversation_history: Recent user prompts for context (max 5)
+        turn_count: Current turn number (0-1 = session start, gets richer context)
     """
     config = get_config()
     budget = config.context_packer.router_token_budget
@@ -878,6 +950,10 @@ def pack_for_router(
 
     # User prompt is highest priority
     sections["prompt"] = user_prompt
+
+    # Conversation history (prior user prompts for context)
+    if conversation_history and len(conversation_history) > 0:
+        sections["conversation_history"] = conversation_history
 
     # Project name (helps with project-specific routing)
     project_name = get_project_name(cwd)
@@ -957,11 +1033,19 @@ def pack_for_router(
         if serena:
             sections["serena"] = serena
 
-    # Add recent observations from claude-mem (recent work context)
+    # Add claude-mem context (richer at session start, lighter afterward)
     if config.context_packer.include_memory_hints:
-        observations = get_recent_observations(max_items=5)
-        if observations:
-            sections["observations"] = observations
+        if turn_count <= 1:
+            # Session start: get rich context with learned lessons and next steps
+            # This compensates for lack of conversation history
+            session_context = get_session_start_context(max_sessions=2, max_chars=800)
+            if session_context:
+                sections["session_context"] = session_context
+        else:
+            # Later turns: lightweight observations (conversation history provides context)
+            observations = get_recent_observations(max_items=5)
+            if observations:
+                sections["observations"] = observations
 
     # Build packed prompt
     project_line = f" ({sections['project']})" if "project" in sections else ""
@@ -974,6 +1058,19 @@ def pack_for_router(
 ## Repository
 Type: {sections["repo_type"]}{project_line}{beads_line}
 """
+
+    # Add conversation history (high priority - helps understand context)
+    if "conversation_history" in sections:
+        history = sections["conversation_history"]
+        # Format as numbered list of prior prompts (excluding current)
+        history_lines = []
+        for i, prompt in enumerate(history[:-1], 1):  # Exclude last (current) prompt
+            # Truncate long prompts for readability
+            truncated = prompt[:200] + "..." if len(prompt) > 200 else prompt
+            history_lines.append(f"{i}. {truncated}")
+        if history_lines:
+            packed += "\n## Prior Context (recent user messages)\n"
+            packed += "\n".join(history_lines) + "\n"
 
     # Add confidence section (high priority - affects classification)
     if "confidence" in sections and sections["confidence"]:
@@ -1013,7 +1110,11 @@ Type: {sections["repo_type"]}{project_line}{beads_line}
     if "serena" in sections:
         packed += f"\n## Semantic Analysis\n{sections['serena']}\n"
 
-    if "observations" in sections:
+    if "session_context" in sections:
+        # Rich session start context (learned lessons, next steps)
+        packed += f"\n## Recent Sessions (claude-mem)\n{sections['session_context']}\n"
+    elif "observations" in sections:
+        # Lightweight observations for later turns
         packed += f"\n## Recent Work (claude-mem)\n{sections['observations']}\n"
 
     if "errors" in sections:
