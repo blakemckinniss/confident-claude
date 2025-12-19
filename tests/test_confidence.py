@@ -94,7 +94,7 @@ class MockSessionState:
 
     def __init__(self):
         self.turn_count = 10
-        self.confidence = 70  # Default confidence for rate limit tests
+        self.confidence = 75  # CERTAINTY zone (1.0x cooldown multiplier) for predictable tests
         self.nudge_history = {}
         self.reducer_triggers = {}
         self.increaser_triggers = {}
@@ -331,7 +331,8 @@ class TestEditOscillationReducer:
     """Tests for EditOscillationReducer."""
 
     def test_triggers_when_reverting_to_previous_state(self):
-        # Arrange - simulate: v0 -> v1 -> v2 -> v0 (revert detected)
+        # Arrange - simulate: v0 -> v1 -> v2 -> v3 -> v0 (revert detected)
+        # Need 4 edits to meet CERTAINTY zone threshold (confidence=75)
         reducer = EditOscillationReducer()
         state = MockSessionState()
         state.turn_count = 10
@@ -340,7 +341,8 @@ class TestEditOscillationReducer:
             "src/main.py": [
                 ("hash_v0", "hash_v1"),  # v0 -> v1
                 ("hash_v1", "hash_v2"),  # v1 -> v2
-                ("hash_v2", "hash_v0"),  # v2 -> v0 (revert!)
+                ("hash_v2", "hash_v3"),  # v2 -> v3
+                ("hash_v3", "hash_v0"),  # v3 -> v0 (revert!)
             ]
         }
         context = {}
