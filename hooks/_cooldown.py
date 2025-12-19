@@ -17,6 +17,22 @@ from _config import get_cooldown
 # =============================================================================
 
 MEMORY_DIR = Path.home() / ".claude" / "memory"
+STATE_DIR = MEMORY_DIR / "state"  # Runtime state separated from semantic memory
+
+
+def _resolve_state_path(filename: str) -> Path:
+    """Resolve state file path with backward compatibility.
+
+    Checks new location first, falls back to legacy location during migration.
+    """
+    new_path = STATE_DIR / filename
+    if new_path.exists():
+        return new_path
+    legacy_path = MEMORY_DIR / filename
+    if legacy_path.exists():
+        return legacy_path
+    # Default to new location for new files
+    return new_path
 
 
 class CooldownManager:
@@ -32,7 +48,7 @@ class CooldownManager:
         """
         self.name = name
         self.ttl = ttl if ttl is not None else get_cooldown(name)
-        self.file = MEMORY_DIR / f"{name}_cooldown.json"
+        self.file = _resolve_state_path(f"{name}_cooldown.json")
 
     def is_active(self) -> bool:
         """Check if cooldown is currently active (should skip)."""
@@ -150,7 +166,7 @@ class KeyedCooldownManager:
         self.name = name
         self.ttl = ttl if ttl is not None else get_cooldown(name)
         self.max_keys = max_keys
-        self.file = MEMORY_DIR / f"{name}_keyed_cooldown.json"
+        self.file = _resolve_state_path(f"{name}_keyed_cooldown.json")
         self._cache: Optional[dict] = None
         self._cache_mtime: float = 0
 

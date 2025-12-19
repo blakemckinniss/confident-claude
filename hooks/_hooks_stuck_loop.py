@@ -48,10 +48,11 @@ RESEARCH_TOOLS = {
     "mcp__pal__apilookup",
 }
 
-# State file for stuck loop tracking
-STUCK_LOOP_STATE_FILE = (
-    Path(__file__).parent.parent / "memory" / "stuck_loop_state.json"
-)
+# State file for stuck loop tracking (with fallback to legacy location)
+_state_dir = Path(__file__).parent.parent / "memory" / "state"
+_legacy_stuck = Path(__file__).parent.parent / "memory" / "stuck_loop_state.json"
+_new_stuck = _state_dir / "stuck_loop_state.json"
+STUCK_LOOP_STATE_FILE = _new_stuck if _new_stuck.exists() else (_legacy_stuck if _legacy_stuck.exists() else _new_stuck)
 
 # Patterns indicating debugging activity
 # IMPORTANT: These must be SPECIFIC to avoid false positives

@@ -24,6 +24,7 @@ CORE_MEMORY_FILES = [
     "__lessons.md",
     "__capabilities.md",
     "__integration_synergy.md",
+    "__infrastructure.md",  # Key directories/APIs reference
 ]
 
 # TF-IDF cache for memory relevance scoring

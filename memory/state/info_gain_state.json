@@ -1,0 +1,1 @@
+{"reads_since_progress": 2, "files_read_this_burst": ["memory.*cooldown|memory.*_state|memory.*session_log|memory.*_last", "_cooldown\\.json|_last\\.json|session_log\\.jsonl"], "last_stall_warn": 1766101899.6134303}

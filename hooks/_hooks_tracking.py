@@ -24,9 +24,11 @@ from session_state import SessionState, get_adaptive_threshold, record_threshold
 # SCRATCH ENFORCER (priority 55)
 # =============================================================================
 
-SCRATCH_STATE_FILE = (
-    Path(__file__).parent.parent / "memory" / "scratch_enforcer_state.json"
-)
+# State file with fallback to legacy location
+_state_dir = Path(__file__).parent.parent / "memory" / "state"
+_legacy_scratch = Path(__file__).parent.parent / "memory" / "scratch_enforcer_state.json"
+_new_scratch = _state_dir / "scratch_enforcer_state.json"
+SCRATCH_STATE_FILE = _new_scratch if _new_scratch.exists() else (_legacy_scratch if _legacy_scratch.exists() else _new_scratch)
 REPETITION_WINDOW = get_magic_number("repetition_window_seconds", 300)
 
 REPETITIVE_PATTERNS = {

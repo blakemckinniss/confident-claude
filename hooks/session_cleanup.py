@@ -50,8 +50,13 @@ except ImportError:
 SCRATCH_DIR = (
     Path(__file__).resolve().parent.parent / "tmp"
 )  # .claude/hooks -> .claude -> .claude/tmp
+STATE_DIR = MEMORY_DIR / "state"  # Runtime state separated from semantic memory
 LESSONS_FILE = MEMORY_DIR / "__lessons.md"
-SESSION_LOG_FILE = MEMORY_DIR / "session_log.jsonl"
+
+# Session log uses state dir with fallback to legacy location
+_new_log = STATE_DIR / "session_log.jsonl"
+_legacy_log = MEMORY_DIR / "session_log.jsonl"
+SESSION_LOG_FILE = _new_log if _new_log.exists() else (_legacy_log if _legacy_log.exists() else _new_log)
 
 # Legacy paths (used as fallback when not project-aware)
 PROGRESS_FILE = MEMORY_DIR / "progress.json"  # Autonomous agent progress tracking
