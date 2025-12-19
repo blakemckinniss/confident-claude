@@ -43,14 +43,28 @@ def _compute_cwd_hash() -> str:
 
 
 def _get_current_session_id() -> str:
-    """Get current session ID from environment or generate one."""
+    """Get current session ID from environment or generate one.
+    
+    Priority:
+    1. CLAUDE_SESSION_ID (explicit session ID)
+    2. CLAUDE_CODE_SSE_PORT (stable per Claude Code session)
+    3. Timestamp fallback (creates new session each invocation - BAD)
+    """
     import os
     import time
 
+    # Explicit session ID takes priority
     session_id = os.environ.get("CLAUDE_SESSION_ID", "")[:16]
-    if not session_id:
-        session_id = f"ses_{int(time.time())}"
-    return session_id
+    if session_id:
+        return session_id
+    
+    # Use SSE port as stable session identifier (unique per Claude Code session)
+    sse_port = os.environ.get("CLAUDE_CODE_SSE_PORT", "")
+    if sse_port:
+        return f"sse_{sse_port}"
+    
+    # Fallback: timestamp-based (not ideal - creates new session each invocation)
+    return f"ses_{int(time.time())}"
 
 
 def get_project_state_file(session_id: Optional[str] = None) -> Path:
