@@ -14,43 +14,22 @@ Provides 8 core tools:
 """
 
 import json
-import subprocess
-import shutil
+import sys
+from pathlib import Path
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-# Find bd binary
-BD_PATH = shutil.which("bd") or "/home/jinx/.claude/.venv/bin/bd"
+# Add lib to path for shared bd_client
+LIB_DIR = Path(__file__).parent.parent.parent / "lib"
+if str(LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(LIB_DIR))
+
+from bd_client import run_bd  # noqa: E402
 
 server = Server("beads")
-
-
-def run_bd(*args: str, json_output: bool = True) -> dict | list | str:
-    """Run bd command and return parsed output."""
-    cmd = [BD_PATH] + list(args)
-    if json_output and "--json" not in args:
-        cmd.append("--json")
-
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-    if result.returncode != 0:
-        raise RuntimeError(f"bd failed: {result.stderr.strip() or result.stdout.strip()}")
-
-    output = result.stdout.strip()
-    if not output:
-        return {} if json_output else ""
-
-    if json_output:
-        return json.loads(output)
-    return output
 
 
 @server.list_tools()

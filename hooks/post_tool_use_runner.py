@@ -95,7 +95,7 @@ import _hooks_quality  # noqa: F401 - Quality hooks (priority 22-50)
 import _hooks_tracking  # noqa: F401 - Tracking hooks (priority 55-72)
 import _hooks_stuck_loop  # noqa: F401 - Stuck loop detection (priority 78-83)
 import _hooks_mastermind  # noqa: F401 - Mastermind integration (priority 86-89)
-from _hooks_tracking import SCRATCH_STATE_FILE, INFO_GAIN_STATE_FILE
+from _hooks_tracking import _get_scratch_state_file, _get_info_gain_state_file
 
 # =============================================================================
 # MAIN RUNNER
@@ -124,9 +124,9 @@ def _save_state_file(path, data: dict) -> None:
 def _load_runner_state() -> dict:
     """Load persisted runner state from disk."""
     runner_state = {}
-    if scratch := _load_state_file(SCRATCH_STATE_FILE):
+    if scratch := _load_state_file(_get_scratch_state_file()):
         runner_state["scratch_state"] = scratch
-    if info_gain := _load_state_file(INFO_GAIN_STATE_FILE):
+    if info_gain := _load_state_file(_get_info_gain_state_file()):
         runner_state["info_gain_state"] = info_gain
     return runner_state
 
@@ -134,9 +134,9 @@ def _load_runner_state() -> dict:
 def _save_runner_state(runner_state: dict) -> None:
     """Save runner state to disk."""
     if "scratch_state" in runner_state:
-        _save_state_file(SCRATCH_STATE_FILE, runner_state["scratch_state"])
+        _save_state_file(_get_scratch_state_file(), runner_state["scratch_state"])
     if "info_gain_state" in runner_state:
-        _save_state_file(INFO_GAIN_STATE_FILE, runner_state["info_gain_state"])
+        _save_state_file(_get_info_gain_state_file(), runner_state["info_gain_state"])
 
 
 def run_hooks(data: dict, state: SessionState) -> dict:
