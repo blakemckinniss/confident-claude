@@ -42,17 +42,34 @@ def _compute_cwd_hash() -> str:
     return hashlib.sha256(cwd.encode()).hexdigest()[:12]
 
 
-def get_project_state_file() -> Path:
-    """Get project-specific state file path.
+def _get_current_session_id() -> str:
+    """Get current session ID from environment or generate one."""
+    import os
+    import time
 
-    Returns per-project state file - never uses global state.
+    session_id = os.environ.get("CLAUDE_SESSION_ID", "")[:16]
+    if not session_id:
+        session_id = f"ses_{int(time.time())}"
+    return session_id
+
+
+def get_project_state_file(session_id: Optional[str] = None) -> Path:
+    """Get project and session-specific state file path.
+
+    Returns per-project, per-session state file - never uses global state.
     Ephemeral contexts get cwd-hash isolation to prevent cross-project leakage.
 
     Layout:
-      ~/.claude/memory/projects/{project_id}/session_state.json  (per-project)
-      ~/.claude/memory/projects/cwd_{hash}/session_state.json    (cwd-hash fallback)
+      ~/.claude/memory/projects/{project_id}/{session_id}/session_state.json
+
+    Args:
+        session_id: Optional session ID. If None, uses CLAUDE_SESSION_ID env var
+                   or generates one based on timestamp.
     """
     global _CURRENT_PROJECT_ID, _CURRENT_PROJECT_ROOT
+
+    # Resolve session_id
+    sid = session_id or _get_current_session_id()
 
     try:
         # Ensure lib directory is on path for sibling module imports
@@ -74,27 +91,24 @@ def get_project_state_file() -> Path:
         if ctx.project_type == "ephemeral":
             cwd_hash = _compute_cwd_hash()
             _CURRENT_PROJECT_ID = f"cwd_{cwd_hash}"
-            project_dir = MEMORY_DIR / "projects" / _CURRENT_PROJECT_ID
-            project_dir.mkdir(parents=True, exist_ok=True)
-            return project_dir / "session_state.json"
 
-        # Per-project state file
-        project_dir = MEMORY_DIR / "projects" / ctx.project_id
-        project_dir.mkdir(parents=True, exist_ok=True)
-        return project_dir / "session_state.json"
+        # Per-project, per-session state file
+        session_dir = MEMORY_DIR / "projects" / _CURRENT_PROJECT_ID / sid
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return session_dir / "session_state.json"
 
     except Exception:
         # Fallback to cwd-hash on any detection failure (no global state!)
         cwd_hash = _compute_cwd_hash()
         _CURRENT_PROJECT_ID = f"cwd_{cwd_hash}"
-        project_dir = MEMORY_DIR / "projects" / _CURRENT_PROJECT_ID
-        project_dir.mkdir(parents=True, exist_ok=True)
-        return project_dir / "session_state.json"
+        session_dir = MEMORY_DIR / "projects" / _CURRENT_PROJECT_ID / sid
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return session_dir / "session_state.json"
 
 
-def get_project_lock_file() -> Path:
-    """Get project-specific lock file path."""
-    state_file = get_project_state_file()
+def get_project_lock_file(session_id: Optional[str] = None) -> Path:
+    """Get project and session-specific lock file path."""
+    state_file = get_project_state_file(session_id)
     return state_file.parent / "session_state.lock"
 
 
