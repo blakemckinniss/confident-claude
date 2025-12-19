@@ -41,7 +41,7 @@ def get_tier_info(confidence: int) -> tuple[str, str, str]:
     elif TIER_HYPOTHESIS[0] <= confidence <= TIER_HYPOTHESIS[1]:
         return "HYPOTHESIS", TIER_EMOJI["HYPOTHESIS"], "Scratch only"
     elif TIER_WORKING[0] <= confidence <= TIER_WORKING[1]:
-        return "WORKING", TIER_EMOJI["WORKING"], "Scratch + git read"
+        return "WORKING", TIER_EMOJI["WORKING"], "Production with warnings (graduated)"
     elif TIER_CERTAINTY[0] <= confidence <= TIER_CERTAINTY[1]:
         return "CERTAINTY", TIER_EMOJI["CERTAINTY"], "Production with gates"
     elif TIER_TRUSTED[0] <= confidence <= TIER_TRUSTED[1]:
@@ -136,6 +136,37 @@ _READ_ONLY_AGENTS = frozenset(
 )
 _RISKY_BASH_PATTERNS = ("git push", "git commit", "rm -rf", "deploy", "kubectl")
 
+# High-risk paths that shift required confidence upward (Blast Radius)
+_HIGH_RISK_PATH_PATTERNS = (
+    "/migrations/",
+    "/auth/",
+    "/security/",
+    "/.env",
+    "/credentials",
+    "/secrets/",
+    "/deploy/",
+    "/production/",
+    "/database/",
+    "docker-compose.prod",
+    "Dockerfile",
+    ".github/workflows/",
+)
+_HIGH_RISK_CONFIDENCE_BOOST = 15  # Require 15% more confidence for high-risk paths
+
+
+def _is_high_risk_path(file_path: str) -> bool:
+    """Check if file path is high-risk (requires elevated confidence)."""
+    if not file_path:
+        return False
+    return any(pattern in file_path for pattern in _HIGH_RISK_PATH_PATTERNS)
+
+
+def _get_effective_confidence_requirement(file_path: str, base_requirement: int) -> int:
+    """Get effective confidence requirement, boosted for high-risk paths."""
+    if _is_high_risk_path(file_path):
+        return min(95, base_requirement + _HIGH_RISK_CONFIDENCE_BOOST)
+    return base_requirement
+
 
 def _is_tool_always_allowed(tool_name: str, tool_input: dict) -> bool:
     """Check if tool is unconditionally allowed."""
@@ -204,7 +235,47 @@ def check_tool_permission(
                 tool_input.get("command", ""), confidence, emoji
             )
 
-    # WORKING+ tiers: Allow (gates enforced by pre_tool_use)
+    # WORKING (51-70): Graduated production access with warnings
+    if 51 <= confidence <= 70 and tool_name in _FILE_WRITE_TOOLS and not is_scratch:
+        # Check blast radius - high-risk paths need higher confidence
+        effective_requirement = _get_effective_confidence_requirement(file_path, 51)
+        if confidence < effective_requirement:
+            recovery = get_confidence_recovery_options(
+                confidence, target=effective_requirement
+            )
+            return False, (
+                f"{emoji} **BLOCKED: High-risk path requires {effective_requirement}%**\n"
+                f"Path `{file_path}` is high-risk. Current: {confidence}%.\n\n"
+                f"{recovery}"
+            )
+
+        # 51-60%: Warn strongly, recommend verification first
+        if confidence <= 60:
+            return True, (
+                f"⚠️ **WORKING ZONE WARNING** ({confidence}%)\n"
+                f"Production write allowed, but confidence is low.\n"
+                f"**Strongly recommend**: Run tests/lint after this change.\n"
+                f"Gap to CERTAINTY: {71 - confidence}%"
+            )
+
+        # 61-70%: Mild warning
+        return True, (
+            f"📝 WORKING: {confidence}% | Consider running tests after changes"
+        )
+
+    # CERTAINTY+ (71+): Allow (with blast radius check for high-risk)
+    if tool_name in _FILE_WRITE_TOOLS and not is_scratch:
+        effective_requirement = _get_effective_confidence_requirement(file_path, 71)
+        if confidence < effective_requirement:
+            recovery = get_confidence_recovery_options(
+                confidence, target=effective_requirement
+            )
+            return False, (
+                f"{emoji} **BLOCKED: High-risk path requires {effective_requirement}%**\n"
+                f"Path `{file_path}` is high-risk. Current: {confidence}%.\n\n"
+                f"{recovery}"
+            )
+
     return True, ""
 
 

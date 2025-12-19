@@ -106,12 +106,35 @@ Check fatigue status: `~/.claude/ops/health.py --quick`
 |------|-------|-------|-----------------|
 | IGNORANCE | 0-30 | 🔴 | Read, Grep, Glob, WebSearch only. External LLM MANDATORY. |
 | HYPOTHESIS | 31-50 | 🟠 | Above + scratch writes. Research REQUIRED. |
-| WORKING | 51-70 | 🟡 | Above + git read. Research suggested. |
+| WORKING | 51-70 | 🟡 | **Graduated**: 51-60 strong warning, 61-70 mild warning. Research suggested. |
 | CERTAINTY | 71-85 | 🟢 | Production writes WITH gates (audit/void). |
 | TRUSTED | 86-94 | 💚 | Production writes with warnings only. |
 | EXPERT | 95-100 | 💎 | Full access. |
 
-**Default starting confidence: 75 (WORKING)**
+**Default starting confidence: 75 (CERTAINTY)**
+
+### Graduated WORKING Zone (v4.12)
+
+The WORKING zone (51-70%) now has graduated restrictions instead of a cliff at 51%:
+
+| Sub-zone | Behavior |
+|----------|----------|
+| 51-60% | Production writes allowed with **strong warning**. Recommends verification. |
+| 61-70% | Production writes allowed with **mild warning**. |
+
+### Blast Radius Detection (v4.12)
+
+High-risk file paths require **+15% additional confidence**:
+
+| Pattern | Effect |
+|---------|--------|
+| `/auth/`, `/security/` | 51% base → 66% required |
+| `/migrations/`, `/database/` | 71% base → 86% required |
+| `/.env`, `/secrets/`, `/credentials` | Elevated confidence required |
+| `/deploy/`, `/production/` | Elevated confidence required |
+| `Dockerfile`, `.github/workflows/` | Elevated confidence required |
+
+This prevents "96% confident but catastrophic outcome" scenarios.
 
 ## Reducers (Automatic Penalties)
 
