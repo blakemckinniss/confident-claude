@@ -42,10 +42,10 @@ if TYPE_CHECKING:
 TOOL_DEBT_CONFIG = {
     # === Original Tool Families ===
     "pal": {
-        "rate": 1,        # -1 per turn without PAL
+        "rate": 1,  # -1 per turn without PAL
         "recovery": 0.5,  # Get back 50% when used
-        "cap": 15,        # Max debt accumulation
-        "grace_turns": 3, # Don't penalize first N turns
+        "cap": 15,  # Max debt accumulation
+        "grace_turns": 3,  # Don't penalize first N turns
         "description": "PAL MCP consultation",
     },
     "serena": {
@@ -63,7 +63,6 @@ TOOL_DEBT_CONFIG = {
         "grace_turns": 3,
         "description": "Beads task tracking",
     },
-
     # === New Families (v2.0) ===
     "agent_delegation": {
         "rate": 1,
@@ -82,7 +81,7 @@ TOOL_DEBT_CONFIG = {
         "description": "Skill invocation",
     },
     "clarification": {
-        "rate": 2,        # Higher rate - assumptions are costly
+        "rate": 2,  # Higher rate - assumptions are costly
         "recovery": 0.5,
         "cap": 10,
         "grace_turns": 2,  # Should clarify early
@@ -146,6 +145,7 @@ TECH_DEBT_INDICATORS = [
 # =============================================================================
 # STATE HELPERS
 # =============================================================================
+
 
 def _init_debt_entry() -> dict:
     """Create a new debt tracking entry."""
@@ -229,7 +229,9 @@ def detect_skill_match(prompt: str, available_skills: list[str]) -> bool:
     """Detect if any available skill matches the prompt."""
     prompt_lower = prompt.lower()
     for skill, keywords in SKILL_KEYWORDS.items():
-        if skill in available_skills or any(s.endswith(skill) for s in available_skills):
+        if skill in available_skills or any(
+            s.endswith(skill) for s in available_skills
+        ):
             if any(kw in prompt_lower for kw in keywords):
                 return True
     return False
@@ -243,7 +245,9 @@ def detect_tech_debt_surfaced(output: str) -> bool:
     return False
 
 
-def tick_tool_debt(state: "SessionState", tools_used_this_turn: set, context: dict) -> int:
+def tick_tool_debt(
+    state: "SessionState", tools_used_this_turn: set, context: dict
+) -> int:
     """
     Called at end of turn to increment debt for unused tools.
 
@@ -253,10 +257,20 @@ def tick_tool_debt(state: "SessionState", tools_used_this_turn: set, context: di
         context: Context dict with detection flags
 
     Returns:
-        Total penalty to apply this turn.
+        Total penalty to apply this turn (capped at MAX_TOOL_DEBT_PER_TURN).
     """
+    # CRITICAL: Only tick once per turn to prevent accumulating penalties
+    # from multiple tool uses in the same turn
+    last_ticked = getattr(state, "_tool_debt_last_tick", -1)
+    if last_ticked == state.turn_count:
+        return 0  # Already ticked this turn
+    state._tool_debt_last_tick = state.turn_count
+
     debt = get_tool_debt(state)
     total_penalty = 0
+
+    # Cap total tool debt penalty per turn to prevent excessive passive drain
+    MAX_TOOL_DEBT_PER_TURN = 2
 
     for family, config in TOOL_DEBT_CONFIG.items():
         grace = config.get("grace_turns", 3)
@@ -280,7 +294,8 @@ def tick_tool_debt(state: "SessionState", tools_used_this_turn: set, context: di
             if current_debt > 0:
                 total_penalty += rate
 
-    return total_penalty
+    # Cap total penalty to prevent multi-family piling
+    return min(total_penalty, MAX_TOOL_DEBT_PER_TURN)
 
 
 def get_debt_summary(state: "SessionState") -> str:
@@ -316,7 +331,10 @@ def get_debt_for_family(state: "SessionState", family: str) -> int:
 # TOOL DETECTION HELPERS
 # =============================================================================
 
-def detect_tool_family(tool_name: str, bash_command: str = "", context: dict = None) -> str | None:
+
+def detect_tool_family(
+    tool_name: str, bash_command: str = "", context: dict = None
+) -> str | None:
     """
     Detect which tool family a tool belongs to.
 
@@ -376,6 +394,7 @@ def detect_tech_debt_fix(tool_name: str, context: dict) -> bool:
 # REDUCERS
 # =============================================================================
 
+
 @dataclass
 class ToolDebtReducer:
     """
@@ -426,7 +445,9 @@ class ToolDebtReducer:
                 turns = debt[family]["turns_without"]
                 if turns > 0:
                     reasons.append(f"{family}:{turns}t")
-            reason = f"tool_debt ({', '.join(reasons[:4])})"  # Limit to 4 for readability
+            reason = (
+                f"tool_debt ({', '.join(reasons[:4])})"  # Limit to 4 for readability
+            )
             return True, penalty, reason
 
         return False, 0, ""
@@ -435,6 +456,7 @@ class ToolDebtReducer:
 # =============================================================================
 # INCREASERS
 # =============================================================================
+
 
 @dataclass
 class ToolDebtRecoveryIncreaser:
@@ -483,6 +505,7 @@ class ToolDebtRecoveryIncreaser:
 # CONTEXT ENRICHMENT
 # =============================================================================
 
+
 def enrich_context_for_debt(context: dict, state: "SessionState") -> dict:
     """
     Enrich context with debt-related detection flags.
@@ -497,7 +520,9 @@ def enrich_context_for_debt(context: dict, state: "SessionState") -> dict:
     # Detect skill match (need available skills from somewhere)
     available_skills = context.get("available_skills", [])
     if user_prompt and available_skills:
-        context["_skill_match_detected"] = detect_skill_match(user_prompt, available_skills)
+        context["_skill_match_detected"] = detect_skill_match(
+            user_prompt, available_skills
+        )
 
     # Detect tech debt surfaced in recent output
     recent_output = context.get("recent_output", "")

@@ -25,7 +25,7 @@ TIER_EMOJI = {
 }
 
 # Default starting confidence for new sessions
-DEFAULT_CONFIDENCE = 70  # Start at WORKING level
+DEFAULT_CONFIDENCE = 75  # Start closer to stasis (80), preserves "earn your way up"
 
 # Rate limit constants
 MAX_CONFIDENCE_DELTA_PER_TURN = 15

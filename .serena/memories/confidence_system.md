@@ -41,7 +41,7 @@ The confidence system is a **mechanical behavioral regulation system** that prev
 | TRUSTED | 86-94 | 💚 | Production with warnings |
 | EXPERT | 95-100 | 💎 | Maximum freedom |
 
-**Default starting confidence**: 70 (WORKING tier)
+**Default starting confidence**: 75 (WORKING tier)
 
 ## Reducer Categories (59 total)
 

@@ -111,7 +111,7 @@ Check fatigue status: `~/.claude/ops/health.py --quick`
 | TRUSTED | 86-94 | 💚 | Production writes with warnings only. |
 | EXPERT | 95-100 | 💎 | Full access. |
 
-**Default starting confidence: 70 (WORKING)**
+**Default starting confidence: 75 (WORKING)**
 
 ## Reducers (Automatic Penalties)
 
@@ -170,12 +170,12 @@ These fire **mechanically** based on signals - no self-judgment involved.
 
 | Reducer | Delta | Trigger | Cooldown |
 |---------|-------|---------|----------|
-| `webfetch_over_crawl` | -1 | WebFetch used (prefer crawl4ai) | None |
-| `websearch_basic` | -1 | WebSearch used (prefer crawl4ai.ddg_search) | None |
-| `todowrite_bypass` | -2 | TodoWrite used (beads required) | None |
-| `raw_symbol_hunt` | -1 | Reading code file without serena activation | None |
-| `grep_over_serena` | -1 | Grep on code when serena is active | None |
-| `file_reedit` | -2 | Re-editing file already edited this session | None |
+| `webfetch_over_crawl` | -1 | WebFetch used (prefer crawl4ai) | 2 turns |
+| `websearch_basic` | -1 | WebSearch used (prefer crawl4ai.ddg_search) | 2 turns |
+| `todowrite_bypass` | -2 | TodoWrite used (beads required) | 2 turns |
+| `raw_symbol_hunt` | -1 | Reading code file without serena activation | 2 turns |
+| `grep_over_serena` | -1 | Grep on code when serena is active | 2 turns |
+| `file_reedit` | -2 | Re-editing file already edited this session | 2 turns |
 | `sequential_file_ops` | -1 | 3+ Read/Edit/Write without batching | 3 turns |
 
 **Stuck loop reducers (v4.9) - detect debugging without progress:**

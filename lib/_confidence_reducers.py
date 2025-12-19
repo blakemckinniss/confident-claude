@@ -24,8 +24,12 @@ class ConfidenceReducer:
     description: str
     remedy: str = ""  # What to do instead (actionable guidance)
     cooldown_turns: int = 3  # Minimum turns between triggers
-    penalty_class: str = "PROCESS"  # "PROCESS" (recoverable) or "INTEGRITY" (not recoverable)
-    max_recovery_fraction: float = 0.5  # Max % of penalty that can be recovered (0.0 for INTEGRITY)
+    penalty_class: str = (
+        "PROCESS"  # "PROCESS" (recoverable) or "INTEGRITY" (not recoverable)
+    )
+    max_recovery_fraction: float = (
+        0.5  # Max % of penalty that can be recovered (0.0 for INTEGRITY)
+    )
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -836,37 +840,9 @@ class DebtBashReducer(ConfidenceReducer):
         return False
 
 
-@dataclass
-class ManualCommitReducer(ConfidenceReducer):
-    """Triggers on manual git commit attempts.
-
-    Since auto-commit hooks handle commits, manual commits are:
-    1. Unnecessary (auto-commit does the work)
-    2. A potential reward hacking vector (was +3, now -1)
-
-    Rate-limited to prevent stacking from retries.
-    Added v4.13 to close reward hacking loophole.
-    """
-
-    name: str = "manual_commit"
-    delta: int = -1
-    description: str = "Manual commit attempt (auto-commit handles this)"
-    remedy: str = "let auto-commit handle it"
-    cooldown_turns: int = 3  # Rate-limit to prevent stacking
-
-    def should_trigger(
-        self, context: dict, state: "SessionState", last_trigger_turn: int
-    ) -> bool:
-        if state.turn_count - last_trigger_turn < self.cooldown_turns:
-            return False
-        command = context.get("bash_command", "")
-        if not command:
-            return False
-        # Match git commit commands (not just mentions in heredocs)
-        # Exclude: git commit --amend in hook recovery scenarios
-        if re.match(r"^\s*git\s+commit\b", command):
-            return True
-        return False
+# NOTE: ManualCommitReducer REMOVED (v4.17)
+# Git commits are now explicit - no auto-commit means no penalty for manual commits.
+# All commits require AI or user directive.
 
 
 @dataclass
@@ -1818,11 +1794,13 @@ class WebFetchOverCrawlReducer(ConfidenceReducer):
     delta: int = -1
     description: str = "WebFetch used (prefer crawl4ai)"
     remedy: str = "use mcp__crawl4ai__crawl instead"
-    cooldown_turns: int = 0  # No cooldown - frequency is the point
+    cooldown_turns: int = 2  # One signal per behavior is enough
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
         tool_name = context.get("tool_name", "")
         return tool_name == "WebFetch"
 
@@ -1838,11 +1816,13 @@ class WebSearchBasicReducer(ConfidenceReducer):
     delta: int = -1
     description: str = "WebSearch used (prefer crawl4ai.ddg_search)"
     remedy: str = "use mcp__crawl4ai__ddg_search instead"
-    cooldown_turns: int = 0  # No cooldown - frequency is the point
+    cooldown_turns: int = 2  # One signal per behavior is enough
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
         tool_name = context.get("tool_name", "")
         return tool_name == "WebSearch"
 
@@ -1859,11 +1839,13 @@ class TodoWriteBypassReducer(ConfidenceReducer):
     delta: int = -2
     description: str = "TodoWrite used (beads required)"
     remedy: str = "use bd create/update instead"
-    cooldown_turns: int = 0  # No cooldown - every use is a violation
+    cooldown_turns: int = 2  # One signal per behavior is enough
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
         tool_name = context.get("tool_name", "")
         return tool_name == "TodoWrite"
 
@@ -1880,11 +1862,13 @@ class RawSymbolHuntReducer(ConfidenceReducer):
     delta: int = -1
     description: str = "Reading code file without serena (use symbolic tools)"
     remedy: str = "activate serena, use find_symbol"
-    cooldown_turns: int = 0  # No cooldown - frequency is the point
+    cooldown_turns: int = 2  # One signal per behavior is enough
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
         # Check if serena is available but not activated
         if not context.get("serena_available", False):
             return False
@@ -1913,11 +1897,13 @@ class GrepOverSerenaReducer(ConfidenceReducer):
     delta: int = -1
     description: str = "Grep on code (serena has semantic search)"
     remedy: str = "use serena search_for_pattern instead"
-    cooldown_turns: int = 0  # No cooldown - frequency is the point
+    cooldown_turns: int = 2  # One signal per behavior is enough
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
         # Only if serena is activated
         if not context.get("serena_activated", False):
             return False
@@ -1947,7 +1933,7 @@ class FileReeditReducer(ConfidenceReducer):
     delta: int = -2
     description: str = "Re-editing file (get it right first time)"
     remedy: str = "get it right the first time"
-    cooldown_turns: int = 0  # No cooldown - every re-edit counts
+    cooldown_turns: int = 2  # One signal per behavior is enough
 
     # Files exempt from re-edit penalty (iterative refinement expected)
     exempt_patterns: tuple = (
@@ -1961,6 +1947,8 @@ class FileReeditReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
         tool_name = context.get("tool_name", "")
         if tool_name not in ("Edit", "Write"):
             return False
@@ -2266,7 +2254,7 @@ REDUCERS: list[ConfidenceReducer] = [
     UnresolvedAntiPatternReducer(),
     SpottedIgnoredReducer(),
     DebtBashReducer(),
-    ManualCommitReducer(),  # v4.13: commits are auto-handled, manual = gaming
+    # ManualCommitReducer removed v4.17 - commits are now explicit
     LargeDiffReducer(),
     HookBlockReducer(),
     SequentialRepetitionReducer(),
