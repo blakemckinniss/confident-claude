@@ -32,6 +32,11 @@ _idf_cache: dict[str, float] | None = None
 _idf_cache_time: float = 0
 _IDF_CACHE_TTL = 300  # 5 minutes
 
+# Bead status cache (per-turn, keyed by timestamp truncated to 10s)
+_bead_cache: dict[str, bool] = {}
+_bead_cache_time: float = 0
+_BEAD_CACHE_TTL = 10  # 10 seconds (covers a single turn)
+
 
 def _compute_idf(documents: list[str]) -> dict[str, float]:
     """Compute IDF values for all terms in document corpus."""
@@ -235,7 +240,21 @@ def has_in_progress_bead() -> bool:
 
     Used for bead-aware routing - if work is already tracked and in progress,
     we can adjust PAL routing recommendations.
+
+    Results are cached for 10 seconds to avoid repeated subprocess calls
+    within the same turn.
     """
+    global _bead_cache, _bead_cache_time
+    import time
+
+    now = time.time()
+
+    # Check cache (TTL-based)
+    if now - _bead_cache_time < _BEAD_CACHE_TTL and "in_progress" in _bead_cache:
+        return _bead_cache["in_progress"]
+
+    # Cache miss - run subprocess
+    result_value = False
     try:
         result = subprocess.run(
             ["bd", "list", "--status=in_progress"],
@@ -251,10 +270,14 @@ def has_in_progress_bead() -> bool:
                 for line in result.stdout.strip().split("\n")
                 if line.strip() and not line.startswith("ID")
             ]
-            return len(lines) > 0
+            result_value = len(lines) > 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
-    return False
+
+    # Update cache
+    _bead_cache["in_progress"] = result_value
+    _bead_cache_time = now
+    return result_value
 
 
 def get_test_status(cwd: Path) -> str:
@@ -270,6 +293,258 @@ def get_test_status(cwd: Path) -> str:
         return "[npm tests available]"
 
     return "[no test info]"
+
+
+def get_git_diff_compact(cwd: Path, max_files: int = 10) -> str:
+    """Get compact git diff - just modified file names for router context."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--name-only"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            files = result.stdout.strip().split("\n")
+            if len(files) > max_files:
+                return (
+                    ", ".join(files[:max_files]) + f" (+{len(files) - max_files} more)"
+                )
+            return ", ".join(files)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return ""
+
+
+def get_in_progress_beads(max_items: int = 3) -> str:
+    """Get in_progress beads - the active task context."""
+    try:
+        result = subprocess.run(
+            ["bd", "list", "--status=in_progress"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={"BEADS_DIR": str(Path.home() / ".beads"), **subprocess.os.environ},
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split("\n")
+            # Skip header, get task lines
+            tasks = [
+                line for line in lines[1:] if line.strip() and not line.startswith("-")
+            ]
+            if tasks:
+                if len(tasks) > max_items:
+                    return (
+                        "\n".join(tasks[:max_items])
+                        + f"\n(+{len(tasks) - max_items} more)"
+                    )
+                return "\n".join(tasks)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return ""
+
+
+def get_serena_status() -> str:
+    """Check if serena is active and which project."""
+    # Check for serena state file
+    serena_state = Path.home() / ".claude" / "tmp" / "serena_active.json"
+    if serena_state.exists():
+        try:
+            import json
+
+            data = json.loads(serena_state.read_text())
+            project = data.get("project", "unknown")
+            return f"Serena active: {project}"
+        except (json.JSONDecodeError, OSError, KeyError):
+            # Malformed state file or read error - fall through to .serena check
+            pass
+
+    # Check for .serena directory in cwd
+    cwd = Path.cwd()
+    if (cwd / ".serena").exists():
+        return "Serena available (project has .serena/)"
+
+    return ""
+
+
+def get_recent_errors(max_items: int = 3) -> str:
+    """Get recent tool errors from session state."""
+    import json
+
+    state_file = Path.home() / ".claude" / "tmp" / "session_state.json"
+    if not state_file.exists():
+        return ""
+
+    try:
+        data = json.loads(state_file.read_text())
+        errors = data.get("recent_errors", [])
+        if not errors:
+            return ""
+
+        # Format: tool: error (compact)
+        lines = []
+        for err in errors[-max_items:]:
+            tool = err.get("tool", "unknown")[:20]
+            msg = err.get("message", "")[:40]
+            lines.append(f"• {tool}: {msg}")
+
+        return "\n".join(lines)
+    except (json.JSONDecodeError, OSError, KeyError):
+        return ""
+
+
+def get_confidence_trend() -> str:
+    """Get confidence trend from recent history."""
+    import json
+
+    state_file = Path.home() / ".claude" / "tmp" / "session_state.json"
+    if not state_file.exists():
+        return ""
+
+    try:
+        data = json.loads(state_file.read_text())
+        history = data.get("confidence_history", [])
+        if len(history) < 3:
+            return ""
+
+        # Get last 5 values
+        recent = history[-5:]
+        start, end = recent[0], recent[-1]
+        diff = end - start
+
+        if diff > 10:
+            return "📈 Rising (+{})".format(diff)
+        elif diff < -10:
+            return "📉 Falling ({})".format(diff)
+        else:
+            return "➡️ Stable"
+    except (json.JSONDecodeError, OSError, KeyError, IndexError):
+        return ""
+
+
+def get_test_results() -> str:
+    """Get actual test results from recent runs."""
+    # Check for pytest results
+    pytest_cache = Path.cwd() / ".pytest_cache" / "v" / "cache" / "lastfailed"
+    if pytest_cache.exists():
+        try:
+            import json
+
+            data = json.loads(pytest_cache.read_text())
+            if data:
+                return f"⚠️ {len(data)} failing tests"
+            return "✅ Tests passing"
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Check for jest results
+    jest_results = Path.cwd() / "jest-results.json"
+    if jest_results.exists():
+        try:
+            import json
+
+            data = json.loads(jest_results.read_text())
+            failed = data.get("numFailedTests", 0)
+            if failed > 0:
+                return f"⚠️ {failed} failing tests"
+            return "✅ Tests passing"
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return ""
+
+
+def get_open_beads_count() -> int:
+    """Get count of open beads for routing context."""
+    try:
+        result = subprocess.run(
+            ["bd", "list", "--status=open"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            env={"BEADS_DIR": str(Path.home() / ".beads"), **subprocess.os.environ},
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split("\n")
+            # Count non-header, non-separator lines
+            return len(
+                [ln for ln in lines[1:] if ln.strip() and not ln.startswith("-")]
+            )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return 0
+
+
+def get_project_name(cwd: Path) -> str:
+    """Get project name from various sources."""
+    # Check for CLAUDE.md with project name
+    claude_md = cwd / "CLAUDE.md"
+    if claude_md.exists():
+        return cwd.name
+
+    # Check for package.json name
+    pkg_json = cwd / "package.json"
+    if pkg_json.exists():
+        try:
+            import json
+
+            data = json.loads(pkg_json.read_text())
+            return data.get("name", cwd.name)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Check for pyproject.toml
+    pyproject = cwd / "pyproject.toml"
+    if pyproject.exists():
+        return cwd.name
+
+    return ""
+
+
+def get_recent_observations(max_items: int = 5) -> str:
+    """Get recent claude-mem observations for router context.
+
+    Queries the claude-mem worker API to get recent observations.
+    Returns compact format: type + title for each observation.
+    """
+    import json
+    import urllib.request
+    import urllib.error
+
+    # Type emoji mapping for compact display
+    type_emoji = {
+        "bugfix": "🔴",
+        "feature": "🟣",
+        "refactor": "🔄",
+        "discovery": "🔵",
+        "decision": "⚖️",
+        "change": "✅",
+    }
+
+    try:
+        url = f"http://localhost:37777/api/observations?limit={max_items}"
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read().decode())
+
+        items = data.get("items", [])
+        if not items:
+            return ""
+
+        # Format: emoji title (compact)
+        lines = []
+        for obs in items:
+            obs_type = obs.get("type", "change")
+            emoji = type_emoji.get(obs_type, "📝")
+            title = obs.get("title", "")[:60]  # Truncate long titles
+            lines.append(f"{emoji} {title}")
+
+        return "\n".join(lines)
+
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        # Worker not running or error - gracefully degrade
+        return ""
 
 
 def get_memory_hints(cwd: Path | None = None) -> dict[str, Any]:
@@ -531,6 +806,16 @@ def pack_for_router(
     # User prompt is highest priority
     sections["prompt"] = user_prompt
 
+    # Project name (helps with project-specific routing)
+    project_name = get_project_name(cwd)
+    if project_name:
+        sections["project"] = project_name
+
+    # Open beads count (work queue awareness)
+    open_beads = get_open_beads_count()
+    if open_beads > 0:
+        sections["open_beads"] = open_beads
+
     # Repo type detection
     repo_type = "unknown"
     if (cwd / "package.json").exists():
@@ -550,6 +835,20 @@ def pack_for_router(
     # Add confidence context if provided
     if confidence is not None:
         sections["confidence"] = get_confidence_context(confidence)
+        # Add trend if available
+        trend = get_confidence_trend()
+        if trend:
+            sections["confidence"] += f" | {trend}"
+
+    # Add recent errors (critical for debugging classification)
+    errors = get_recent_errors()
+    if errors:
+        sections["errors"] = errors
+
+    # Add test results (actual pass/fail status)
+    test_results = get_test_results()
+    if test_results:
+        sections["tests"] = test_results
 
     # Add memory hints (Path B - lightweight signals)
     if config.context_packer.include_memory_hints:
@@ -557,12 +856,40 @@ def pack_for_router(
         if memory_hints["memory_count"] > 0:
             sections["memory_hints"] = memory_hints
 
+    # Add compact git diff (file names only - critical for "continue" prompts)
+    if config.context_packer.include_git_diff:
+        git_diff = get_git_diff_compact(cwd)
+        if git_diff:
+            sections["git_diff"] = git_diff
+
+    # Add in-progress beads (active task context)
+    if config.context_packer.include_beads:
+        beads = get_in_progress_beads()
+        if beads:
+            sections["beads"] = beads
+
+    # Add serena status (semantic analysis availability)
+    if config.context_packer.include_serena_context:
+        serena = get_serena_status()
+        if serena:
+            sections["serena"] = serena
+
+    # Add recent observations from claude-mem (recent work context)
+    if config.context_packer.include_memory_hints:
+        observations = get_recent_observations(max_items=5)
+        if observations:
+            sections["observations"] = observations
+
     # Build packed prompt
+    project_line = f" ({sections['project']})" if "project" in sections else ""
+    beads_line = (
+        f" | Open tasks: {sections['open_beads']}" if "open_beads" in sections else ""
+    )
     packed = f"""## User Request
 {sections["prompt"]}
 
 ## Repository
-Type: {sections["repo_type"]}
+Type: {sections["repo_type"]}{project_line}{beads_line}
 """
 
     # Add confidence section (high priority - affects classification)
@@ -580,6 +907,25 @@ Type: {sections["repo_type"]}
 
     if "structure" in sections:
         packed += f"\n## Structure (top-level)\n{sections['structure']}\n"
+
+    # Add current work context (high signal for routing)
+    if "git_diff" in sections:
+        packed += f"\n## Modified Files\n{sections['git_diff']}\n"
+
+    if "beads" in sections:
+        packed += f"\n## Active Tasks\n{sections['beads']}\n"
+
+    if "serena" in sections:
+        packed += f"\n## Semantic Analysis\n{sections['serena']}\n"
+
+    if "observations" in sections:
+        packed += f"\n## Recent Work (claude-mem)\n{sections['observations']}\n"
+
+    if "errors" in sections:
+        packed += f"\n## Recent Errors\n{sections['errors']}\n"
+
+    if "tests" in sections:
+        packed += f"\n## Test Status\n{sections['tests']}\n"
 
     # Check budget and truncate if needed
     token_est = estimate_tokens(packed)

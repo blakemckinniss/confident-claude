@@ -43,6 +43,8 @@ PAL_TOOL_TYPES = [
     "thinkdeep",
     "challenge",
     "apilookup",
+    "analyze",
+    "clink",
 ]
 
 

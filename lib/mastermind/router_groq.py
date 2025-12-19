@@ -87,6 +87,11 @@ Action hints (max 3, pick most impactful):
 - hygiene.serena_memory, hygiene.update_docs, hygiene.commit_changes
 - clarify.ambiguous
 
+ALWAYS include these three discovery aids (1-3 items each):
+- research_suggestions: Topics to web search that would provide useful context
+- tools_suggested: Language-specific libraries, CLI tools, or bash commands that could help
+- discovery_questions: Self-reflection questions to help Claude think deeper about the task
+
 Output JSON only:
 {
   "classification": "trivial|medium|complex",
@@ -102,7 +107,10 @@ Output JSON only:
     "agents": ["agent1", "agent2"],
     "mcp_tools": ["mcp__tool1", "mcp__tool2"],
     "ops_scripts": ["script1.py", "script2.py"]
-  }
+  },
+  "research_suggestions": ["topic to search 1", "topic to search 2"],
+  "tools_suggested": ["ruff check", "pytest -x", "git bisect"],
+  "discovery_questions": ["What assumptions am I making?", "What could cause this to fail?"]
 }
 
 Reason codes (pick 1-3):
@@ -143,6 +151,15 @@ class RecommendedCapabilities:
 
 
 @dataclass
+class DiscoveryAids:
+    """Discovery aids to help Claude think deeper."""
+
+    research_suggestions: list[str] | None = None  # topics to web search
+    tools_suggested: list[str] | None = None  # libraries, CLI tools, bash commands
+    discovery_questions: list[str] | None = None  # self-reflection questions
+
+
+@dataclass
 class RouterResponse:
     """Parsed router classification response."""
 
@@ -159,6 +176,7 @@ class RouterResponse:
     research_topics: list[str] | None = None  # specific topics to search (max 3)
     action_hints: list[ActionHint] | None = None  # prescriptive action recommendations
     recommended: RecommendedCapabilities | None = None  # capability shortlist
+    discovery: DiscoveryAids | None = None  # discovery aids (always populated)
     error: str | None = None
 
     @property
@@ -289,6 +307,13 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                     ops_scripts=raw_rec.get("ops_scripts") or None,
                 )
 
+            # Parse discovery aids (always populated)
+            discovery = DiscoveryAids(
+                research_suggestions=parsed.get("research_suggestions") or None,
+                tools_suggested=parsed.get("tools_suggested") or None,
+                discovery_questions=parsed.get("discovery_questions") or None,
+            )
+
             return RouterResponse(
                 classification=parsed.get("classification", "complex"),
                 confidence=float(parsed.get("confidence", 0.5)),
@@ -301,6 +326,7 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 research_topics=parsed.get("research_topics") or [],
                 action_hints=action_hints,
                 recommended=recommended,
+                discovery=discovery,
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Parse error - default to complex (safe fallback)
@@ -399,6 +425,11 @@ def apply_risk_lexicon(prompt: str, response: RouterResponse) -> RouterResponse:
             latency_ms=response.latency_ms,
             task_type=response.task_type,
             suggested_tool=response.suggested_tool,
+            needs_research=response.needs_research,
+            research_topics=response.research_topics,
+            action_hints=response.action_hints,
+            recommended=response.recommended,
+            discovery=response.discovery,
             error=response.error,
         )
 
