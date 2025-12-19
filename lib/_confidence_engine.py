@@ -243,9 +243,10 @@ def apply_increasers(
             # Apply diminishing returns for farmable increasers (v4.7)
             diminish_mult = get_diminishing_multiplier(state, increaser.name)
 
-            # Apply project-specific weights (v4.7)
+            # Apply zone-scaled rewards (v4.13) then project-specific weights
+            zone_scaled_delta = increaser.get_effective_delta(state)
             base_delta = get_adjusted_delta(
-                increaser.delta, increaser.name, is_reducer=False
+                zone_scaled_delta, increaser.name, is_reducer=False
             )
 
             # Combined multiplier with streak and diminishing returns

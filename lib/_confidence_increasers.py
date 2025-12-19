@@ -18,13 +18,43 @@ if TYPE_CHECKING:
 
 @dataclass
 class ConfidenceIncreaser:
-    """A confidence increaser that fires on success signals."""
+    """A confidence increaser that fires on success signals.
+
+    Zone-Scaled Rewards (v4.13):
+    Rewards scale INVERSELY by confidence zone - helping recovery at low confidence:
+    - HYPOTHESIS/IGNORANCE (<51): 1.5× reward (recovery boost)
+    - WORKING (51-70): 1.25× reward (encouragement)
+    - CERTAINTY (71-85): 1.0× reward (baseline)
+    - EXPERT/TRUSTED (86+): 0.75× reward (already doing well)
+
+    This implements crescendo symmetry: low confidence makes penalties more frequent
+    AND rewards more valuable, creating strong pull back toward stasis.
+    """
 
     name: str
     delta: int  # Positive value
     description: str
     requires_approval: bool = False
     cooldown_turns: int = 1
+
+    def get_effective_delta(self, state: "SessionState") -> int:
+        """Get zone-scaled reward based on current confidence.
+
+        Lower confidence = higher reward = easier recovery.
+        This is inverse of reducer cooldown scaling.
+        """
+        confidence = getattr(state, "confidence", 75)
+
+        if confidence < 51:  # HYPOTHESIS/IGNORANCE - recovery boost
+            multiplier = 1.5
+        elif confidence < 71:  # WORKING - encouragement
+            multiplier = 1.25
+        elif confidence < 86:  # CERTAINTY - baseline
+            multiplier = 1.0
+        else:  # EXPERT/TRUSTED - already doing well
+            multiplier = 0.75
+
+        return max(1, int(self.delta * multiplier))
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
@@ -463,9 +493,9 @@ class GitExploreIncreaser(ConfidenceIncreaser):
         return context.get("git_explored", False)
 
 
-# NOTE: GitCommitIncreaser REMOVED (v4.13)
-# Commits are auto-handled by hooks - rewarding them was a reward hacking vector.
-# Manual commits now trigger ManualCommitReducer (-1) in _confidence_reducers.py
+# NOTE: GitCommitIncreaser REMOVED (v4.13), ManualCommitReducer REMOVED (v4.17)
+# Commits are now explicit - triggered by AI or user directive only.
+# No automatic reward or penalty for commits.
 
 # =============================================================================
 # TIME SAVER INCREASERS (Reward efficient patterns)

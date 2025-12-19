@@ -109,6 +109,26 @@ ALL reducer cooldowns scale by confidence zone - creating adaptive friction:
 - At 75% confidence: 8 turns (baseline)
 - At 40% confidence: 4 turns (fires twice as often)
 
+### Zone-Scaled Rewards (v4.13)
+
+Increaser rewards scale INVERSELY - easier recovery at low confidence:
+
+| Zone | Multiplier | Effect |
+|------|------------|--------|
+| HYPOTHESIS/IGNORANCE (<51) | 1.5× | Recovery boost |
+| WORKING (51-70) | 1.25× | Encouragement |
+| CERTAINTY (71-85) | 1.0× | Baseline |
+| EXPERT/TRUSTED (86+) | 0.75× | Already doing well |
+
+**Example:** `test_pass` with base delta +5:
+- At 40% confidence: +7 (easier to recover)
+- At 75% confidence: +5 (baseline)
+- At 90% confidence: +3 (already doing well)
+
+**Crescendo Symmetry:**
+At low confidence, penalties fire MORE often AND rewards are LARGER.
+This creates strong pull back toward stasis (80-90%).
+
 ### Fatigue Signals
 
 The entity "gets tired" as sessions progress - **decay accelerates with session length**:
