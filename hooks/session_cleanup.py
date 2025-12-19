@@ -96,46 +96,6 @@ LESSON_EDIT_THRESHOLD = 3
 # =============================================================================
 
 
-def check_abandoned_creations(state) -> list[dict]:
-    """Check for files created this session that may have stubs/TODOs."""
-    warnings = []
-
-    if not state.files_created:
-        return warnings
-
-    # Import centralized patterns
-    from _patterns import STUB_BYTE_PATTERNS
-
-    for filepath in state.files_created:
-        path = Path(filepath)
-        if not path.exists():
-            continue
-
-        # Skip non-code files
-        if path.suffix not in {".py", ".js", ".ts", ".rs", ".go", ".java"}:
-            continue
-
-        try:
-            content = path.read_bytes()
-            found_stubs = []
-            for pattern in STUB_BYTE_PATTERNS:
-                if pattern in content:
-                    found_stubs.append(pattern.decode())
-
-            if found_stubs:
-                warnings.append(
-                    {
-                        "file": filepath,
-                        "name": path.name,
-                        "stubs": found_stubs[:3],  # Limit to 3
-                    }
-                )
-        except (OSError, PermissionError):
-            pass
-
-    return warnings
-
-
 def extract_lessons(state) -> list[dict]:
     """Extract lessons from session patterns.
 
@@ -147,26 +107,15 @@ def extract_lessons(state) -> list[dict]:
     - unresearched_libs: Lists stdlib modules - garbage
     - domain_focus: "Session focused on X" - trivia
     - recurring_error: Rarely actionable without context
+    - abandoned_stubs: Became noise - files with stubs pile up across projects
+      without being actionable. Better tracked via beads or linting.
 
-    Keep only:
-    - abandoned_stubs: Actual incomplete work needing attention
+    Currently: Returns empty. Lessons should be manually added via remember.py
+    or auto-remember hooks that extract from assistant output, not auto-generated
+    from session telemetry patterns.
     """
-    lessons = []
-
-    # LESSON: Files created with stubs (abandoned work warning)
-    # This is actionable - user should know about incomplete work
-    abandoned = check_abandoned_creations(state)
-    if abandoned:
-        files = [a["name"] for a in abandoned]
-        lessons.append(
-            {
-                "type": "abandoned_stubs",
-                "files": files,
-                "insight": f"⚠️ ABANDONED WORK: {', '.join(files)} contain stubs/TODOs",
-            }
-        )
-
-    return lessons
+    # No auto-generated lessons - they all became noise over time
+    return []
 
 
 def _extract_recent_insights(existing: str) -> set[str]:

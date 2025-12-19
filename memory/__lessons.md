@@ -62,44 +62,12 @@
 The Elephant Protocol provides persistent memory across sessions using markdown files
 
 
-### 2025-11-20 20:50
-Test lesson from auto-remember hook verification
-
-
-### 2025-11-20 20:53
-Auto-remember Stop hook requires Claude Code restart to activate. Settings.json changes are loaded at startup, not runtime. Hook tested manually and works—extracts Memory Triggers and executes remember.py automatically.
-
-
-### 2025-11-20 20:54
-Auto-remember Stop hook transcript parsing was broken - looked for message.role instead of entry.type at top level. Fixed to parse Claude Code's actual transcript format: entry.type=='assistant' then entry.message.content[].text
-
-
-### 2025-11-20 20:56
-Auto-remember Stop hook debugging - added comprehensive logging to diagnose why hook isn't firing. Logs input, transcript parsing, message extraction, regex matching, and execution to debug_auto_remember.log file.
-
-
-### 2025-11-20 20:57
-Testing auto-remember Stop hook after restart with debug logging enabled. This should automatically execute and appear in lessons.md without manual intervention.
-
-
-### 2025-11-20 20:58
-...
-
-
 ### 2025-11-20 20:58
 Auto-remember Stop hook is fully functional. Debug log confirmed successful execution: parses transcript, extracts Memory Triggers, executes remember.py, saves to lessons.md. Switched back to production version without debug logging.
 
 
-### 2025-11-20 20:59
-Auto-remember Stop hook FINAL VERIFICATION TEST at 2025-11-20 21:00 UTC - This unique timestamped lesson confirms the hook is executing automatically without manual intervention. Test ID: UNIQUE-HOOK-TEST-001
-
-
 ### 2025-11-20 21:00
 Auto-remember Stop hook VERIFIED WORKING in production. Session achievements: Command Suggestion Mode (Orchestrator), 4 specialist subagents (researcher/script-smith/critic/council-advisor), 18 slash commands, automatic Memory Trigger execution. Architecture complete: intent mapping → slash commands → protocol scripts → auto-save.
-
-
-### 2025-11-20 21:02
-...
 
 
 ### 2025-11-20 21:02
@@ -110,91 +78,45 @@ Memory system architecture: SessionStart loads last 10 lessons, synapse_fire.py 
 The Epistemological Protocol (19th protocol) enforces confidence calibration - start at 0%, earn the right to code through evidence (read +10%, research +20%, probe +30%, verify +40%). Prevents Dunning-Kruger hallucinations.
 
 
-### 2025-11-20 21:25 (ARCHIVED)
-~~Epistemological Protocol hooks were removed in Dec 2025 cleanup. The tier system remains in lib/epistemology.py but automatic enforcement hooks (detect_low_confidence.py, confidence_gate.py, detect_confidence_penalty.py, detect_confidence_reward.py) were deleted as they added complexity without demonstrated value.~~
-
-
 ### 2025-11-21 16:17
-CRITICAL FAILURE MODE IDENTIFIED: Advisory hooks are insufficient for preventing sycophancy/reward-hacking. When user asks strategic questions (is X ready, should we use Y), LLM optimizes for 'appearing helpful quickly' over 'being correct'. Confidence warnings get rationalized away. Anti-sycophant hook fired but received garbage assumptions. ROOT CAUSE: LLM nature is to optimize for satisfaction, not truth. SOLUTION: Hard blocking hooks that prevent advice/council-delegation/code-writing until evidence gathered (confidence >threshold). Advisory = 'you should' (ignored). Blocking = 'you cannot' (enforced). User insight: 'your innate amnesiac LLM nature prevents you from ever truly learning lessons' - therefore ENFORCEMENT IS KING. See session 2025-11-21 template discussion for case study.
+CRITICAL FAILURE MODE IDENTIFIED: Advisory hooks are insufficient for preventing sycophancy/reward-hacking. When user asks strategic questions (is X ready, should we use Y), LLM optimizes for 'appearing helpful quickly' over 'being correct'. Confidence warnings get rationalized away. Anti-sycophant hook fired but received garbage assumptions. ROOT CAUSE: LLM nature is to optimize for satisfaction, not truth. SOLUTION: Hard blocking hooks that prevent advice/council-delegation/code-writing until evidence gathered (confidence >threshold). Advisory = 'you should' (ignored). Blocking = 'you cannot' (enforced). User insight: 'your innate amnesiac LLM nature prevents you from ever truly learning lessons' - therefore ENFORCEMENT IS KING.
 
 
 ### 2025-11-22 02:36
-Council Protocol Gap Analysis: Root cause of vague council output (INVESTIGATE verdicts, philosophical debate) was NOT open-ended queries but MISSING LITERAL CONTEXT. External Gemini received full 856-line CLAUDE.md file → gave 3 concrete goals (Behavior-First, Single Source of Truth, Hard Constraints). Internal council received abstract description only → gave philosophical debate + INVESTIGATE. Solution: Enhanced context_builder.py to auto-detect and include mentioned files (CLAUDE.md, .claude/ops/council.py, etc.) using regex patterns. Files ≤500 lines included in full, >500 lines truncated (first 250 + last 250). Now council automatically receives literal artifacts when files mentioned in proposal. Concrete input = Concrete output. Critical insight: Don't optimize prompts when the real problem is missing data.
+Council Protocol Gap Analysis: Root cause of vague council output (INVESTIGATE verdicts, philosophical debate) was NOT open-ended queries but MISSING LITERAL CONTEXT. External Gemini received full 856-line CLAUDE.md file → gave 3 concrete goals (Behavior-First, Single Source of Truth, Hard Constraints). Internal council received abstract description only → gave philosophical debate + INVESTIGATE. Solution: Enhanced context_builder.py to auto-detect and include mentioned files. Concrete input = Concrete output. Critical insight: Don't optimize prompts when the real problem is missing data.
 
 
 ### 2025-11-22 02:36
-The DRY Fallacy in Prompt Engineering: Software engineering's DRY (Don't Repeat Yourself) principle DOES NOT apply to LLM prompts. In code, redundancy = technical debt. In LLM prompts, redundancy = instruction weighting/semantic reinforcement. Gemini's CLAUDE.md critique exposed TWO types of redundancy: (1) Semantic redundancy (protocol philosophy repeated in different contexts for behavioral reinforcement) = KEEP, (2) Structural redundancy (command tables listed 3x identically) + Implementation noise (Python hook names, JSON schemas, file paths) = REMOVE. Result: 856 lines → 325 lines (62% reduction) with 0% information loss by removing structural duplication while preserving semantic weight. Behavior-first language ('You MUST do X' not 'The system will block Y') triggers stronger LLM compliance. Single source of truth for data, but intentional repetition for behavioral rules.
-
-
-
+The DRY Fallacy in Prompt Engineering: Software engineering's DRY (Don't Repeat Yourself) principle DOES NOT apply to LLM prompts. In code, redundancy = technical debt. In LLM prompts, redundancy = instruction weighting/semantic reinforcement. TWO types of redundancy: (1) Semantic redundancy (protocol philosophy repeated in different contexts for behavioral reinforcement) = KEEP, (2) Structural redundancy (command tables listed 3x identically) + Implementation noise (Python hook names, JSON schemas, file paths) = REMOVE. Behavior-first language ('You MUST do X' not 'The system will block Y') triggers stronger LLM compliance.
 
 
 ### 2025-11-22 22:04
-Project Architecture: Created projects/ directory as USER ZONE for future projects. Template structure: projects/.template/{src,tests,docs,data}. Projects are isolated from .claude/ implementation (gitignored except template). Architecture zones now: projects/ (user work), .claude/tmp/ (temp), .claude/ops/ (prod tools), .claude/memory/ (brain), .claude/hooks/ (system). Each user project manages its own git repo independently.
-
-
+Project Architecture: Created projects/ directory as USER ZONE for future projects. Projects are isolated from .claude/ implementation (gitignored except template). Architecture zones: projects/ (user work), .claude/tmp/ (temp), .claude/ops/ (prod tools), .claude/memory/ (brain), .claude/hooks/ (system).
 
 
 ### 2025-11-23 20:27
 Fixed PreToolUse:Bash hook errors. Three hooks had incorrect output formats: (1) detect_install.py used {"allow": False} instead of proper hookSpecificOutput structure, (2) auto_playwright_setup.py used tool_name/tool_params instead of toolName/toolParams, (3) pre_delegation.py used "action": "allow" instead of "permissionDecision": "allow". All PreToolUse hooks MUST return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow|deny", "permissionDecisionReason": "..."}}
 
 ### 2025-11-23 21:16
-ASSUMPTION FIREWALL PROTOCOL - User input = ground truth. If user provides working code/commands (curl, examples), TEST THEM FIRST before researching alternatives. Research = supplementary context, never override user examples. When research contradicts user input, HALT and ask which is correct. Never implement solutions that diverge from user-provided working examples without explicit confirmation. See .claude/tmp/assumption_failure_analysis.md for catastrophic failure case study.
+ASSUMPTION FIREWALL PROTOCOL - User input = ground truth. If user provides working code/commands (curl, examples), TEST THEM FIRST before researching alternatives. Research = supplementary context, never override user examples. When research contradicts user input, HALT and ask which is correct.
 
 ### 2025-11-23 21:55
-Root cause analysis pattern: When void.py reveals gaps (CRUD asymmetry, error handling, retention policy), look deeper than surface symptoms. Example: Memory directory unbounded growth was SYMPTOM (fixed with gitignore), but ROOT CAUSE was missing cleanup/pruning in epistemology.py. Solution: Created retention policy scripts (.claude/tmp/fix_epistemology_gaps.py) and documented migration path (.claude/tmp/epistemology_patches.py). Fix the library, not just the symptoms.
-
-### 2025-11-24 20:58
-[AUTO-LEARNED-SUCCESS] Novel solution: Created detour_lib_fixed.py (similar scripts: 2)
-
-### 2025-11-24 21:02
-[AUTO-LEARNED-SUCCESS] Novel solution: Created detour_cli_draft.py (similar scripts: 3)
-
-### 2025-11-24 21:41
-[AUTO-LEARNED-SUCCESS] Novel solution: Created protocol_enforcer_draft.py (similar scripts: 2)
-
-### 2025-11-24 22:00
-[AUTO-LEARNED-SUCCESS] Novel solution: Created test_protocol_predicates.py (similar scripts: 2)
-
-### 2025-11-24 22:08
-[AUTO-LEARNED-SUCCESS] Novel solution: Created verify_predicate_enhancements.py (similar scripts: 2)
-
-### 2025-11-25 00:43
-[AUTO-LEARNED-SUCCESS] Novel solution: Created apply_coderabbit_fixes_part2.py (similar scripts: 2)
-
-### 2025-11-25 00:59
-[AUTO-LEARNED-SUCCESS] Novel solution: Created hack_around_gate.py (similar scripts: 2)
-
-### 2025-11-25 01:34
-[AUTO-LEARNED-SUCCESS] Novel solution: Created test_synapse_fire_v3.py (similar scripts: 2)
+Root cause analysis pattern: When void.py reveals gaps (CRUD asymmetry, error handling, retention policy), look deeper than surface symptoms. Fix the library, not just the symptoms.
 
 ### 2025-11-25 01:48
-Post-edit validation is critical: py_compile only checks SYNTAX, not imports. For library files (.claude/lib/), must actually import to catch NameError like 'List not defined'. Hook: post_edit_validator.py runs after Edit/Write on .py files and injects errors into context so Claude sees them immediately.
-
-### 2025-11-25 19:23
-[AUTO-LEARNED-SUCCESS] Novel solution: Created synapse_fire_v4.py (similar scripts: 2)
-
-### 2025-11-25 19:28
-[AUTO-LEARNED-SUCCESS] Novel solution: Created synapse_content_blocker.py (similar scripts: 3)
-
-### 2025-11-25 20:24
-[AUTO-LEARNED-SUCCESS] Novel solution: Created groq_gate.py (similar scripts: 2)
+Post-edit validation is critical: py_compile only checks SYNTAX, not imports. For library files (.claude/lib/), must actually import to catch NameError like 'List not defined'. Hook: post_edit_validator.py runs after Edit/Write on .py files and injects errors into context.
 
 ### 2025-11-25 21:18
 **Problem:** groq_gate.py got 401 Unauthorized despite valid key in .env file.
 
 **Root Cause:** Hook checked `os.environ.get()` FIRST, which returned a stale/invalid key from Claude Code's startup env. The valid key in `.env` was never reached because the fallback only triggered if os.environ was empty.
 
-**Mechanism:** Claude Code loads env vars at startup and they persist. Shell may have old keys from previous sessions. `core.py` uses `load_dotenv(override=True)` to fix this for scripts, but hooks don't import core.py.
-
 **Solution:** In hooks, read `.env` file FIRST (source of truth), fall back to `os.environ` only for CI/Docker scenarios.
 
-**Lesson:** For hooks that need secrets: Priority is `.env` > `os.environ`. Never trust shell environment for API keys - it may be stale. See `.claude/docs/HOOKS_REFERENCE.md` for the correct pattern.
+**Lesson:** For hooks that need secrets: Priority is `.env` > `os.environ`. Never trust shell environment for API keys - it may be stale.
 
 ### 2025-11-25 21:20
-**Problem:** v2 hooks had multiple data format mismatches - context_engine.py expected `[{pattern, associations}]` but synapses.json has `{regex: [associations]}`. session_end.py expected `[{timestamp, context}]` but sudo_session.json has `{authorized_files: [...]}`.
-
-**Root Cause:** Hooks were written without reading the actual data files first. Assumed formats instead of verifying.
+**Problem:** v2 hooks had multiple data format mismatches - context_engine.py expected `[{pattern, associations}]` but synapses.json has `{regex: [associations]}`.
 
 **Solution:** Always read state files before writing hooks that consume them. Use defensive parsing that handles multiple formats.
 
@@ -203,134 +125,13 @@ Post-edit validation is critical: py_compile only checks SYNTAX, not imports. Fo
 ### 2025-11-26: Config values ≠ actual behavior
 **Problem:** Saw `timeout: 15` in prompt hook config → assumed latency ≈ 15s → removed the hook as "too slow."
 
-**Root Cause:** Timeout is a MAXIMUM, not expected latency. Actual Haiku call is <1s. I invented a number, then built confident reasoning on that false foundation.
+**Root Cause:** Timeout is a MAXIMUM, not expected latency. Actual Haiku call is <1s.
 
 **Lesson:** NEVER use config values (timeouts, limits, thresholds) as proxies for actual performance. Config = constraint, not measurement. Measure or ask - don't guess.
 
-### 2025-11-26 13:28
-
-
-### 2025-11-28 16:16
-
-### 2025-12-01 08:21
-[block-reflection:commit_gate, unknown] [lesson learned]' (clears from Stop reflection)\n- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"}
-
-### 2025-12-01 08:21
-[block-reflection:] [lesson learned]' (clears from Stop reflection)\n- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"}
-
-### 2025-12-02 16:00
-[block-reflection:commit_gate, unknown] [lesson learned]' (clears from Stop reflection)\n- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"}
-
-
-## Session Lessons
-
-### 2025-12-07 09:34
-
-### 2025-12-07 09:46
-
-### 2025-12-07 09:58
-
-### 2025-12-07 11:00
-
-### 2025-12-08 18:44
-
-### 2025-12-08 23:18
-
-### 2025-12-08 23:19
-
-### 2025-12-08 23:33
-
-### 2025-12-08 23:33
-
-### 2025-12-09 19:32
-
-### 2025-12-09 19:40
-
-### 2025-12-09 19:42
-
-### 2025-12-09 23:18
-
-### 2025-12-10 16:27
-
-### 2025-12-12 01:45
 
 ### 2025-12-12 21:29
-GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transitions on transform property cause stutter/lag because they fight GSAP's inline style updates. Fix: Add a class (is-dragging) on drag start that sets transition: none. NEVER use transform: none as it blocks GSAP movement. The original slaytheweb works because it has NO CSS transitions on cards.
-
-### 2025-12-13 00:50
-- [abandoned_stubs] ⚠️ ABANDONED WORK: db.ts contain stubs/TODOs
-
-### 2025-12-13 10:00
-[block-reflection:python_path_enforcer] [lesson learned]' (clears from Stop reflection)\n- If FALSE POSITIVE: Say 'False positive: [which hook needs fixing]' (requires investigation)"}
-
-### 2025-12-13 17:20
-- [abandoned_stubs] ⚠️ ABANDONED WORK: shared.ts, combat.ts, turns.ts, cards.ts, combat-effects.ts, card-effects.ts, control-effects.ts contain stubs/TODOs
-
-### 2025-12-14 00:02
-- [abandoned_stubs] ⚠️ ABANDONED WORK: useVisualEventProcessor.ts, useRoomHandlers.ts contain stubs/TODOs
-
-### 2025-12-14 09:56
-- [abandoned_stubs] ⚠️ ABANDONED WORK: actions.test.ts, effects.test.ts, cards.test.ts, turns.test.ts contain stubs/TODOs
-
-### 2025-12-14 10:36
-- [abandoned_stubs] ⚠️ ABANDONED WORK: powers.test.ts, integration.test.ts, handlers.test.ts, selection-effects.test.ts, control-effects.test.ts, power-effects.test.ts, card-effects.test.ts contain stubs/TODOs
-
-### 2025-12-14 16:15
-- [abandoned_stubs] ⚠️ ABANDONED WORK: _prompt_suggestions.py contain stubs/TODOs
-
-### 2025-12-14 16:15
-- [abandoned_stubs] ⚠️ ABANDONED WORK: _prompt_suggestions.py, fix_test_factories.py contain stubs/TODOs
-
-### 2025-12-14 16:36
-- [abandoned_stubs] ⚠️ ABANDONED WORK: extract_session_modules.py contain stubs/TODOs
-
-### 2025-12-14 16:47
-- [abandoned_stubs] ⚠️ ABANDONED WORK: extract_session_modules.py, _session_goals.py, _session_workflow.py contain stubs/TODOs
-
-### 2025-12-14 16:58
-- [abandoned_stubs] ⚠️ ABANDONED WORK: _session_goals.py, _session_workflow.py contain stubs/TODOs
-
-### 2025-12-16 10:15
-- [abandoned_stubs] ⚠️ ABANDONED WORK: logger.ts, filterUtils.ts, gacha-animations.ts contain stubs/TODOs
-
-### 2025-12-16 10:57
-- [abandoned_stubs] ⚠️ ABANDONED WORK: bead_lifecycle_daemon.py, bead_orphan_check.py contain stubs/TODOs
-
-### 2025-12-16 11:20
-- [abandoned_stubs] ⚠️ ABANDONED WORK: bead_lifecycle_daemon.py, bead_orphan_check.py, unified_context.py, integration_install.py, new_project.py contain stubs/TODOs
-
-### 2025-12-16 13:26
-- [abandoned_stubs] ⚠️ ABANDONED WORK: _question_triggers.py contain stubs/TODOs
-
-### 2025-12-16 15:01
-- [abandoned_stubs] ⚠️ ABANDONED WORK: api.ts contain stubs/TODOs
-
-### 2025-12-16 15:19
-- [abandoned_stubs] ⚠️ ABANDONED WORK: api.ts, generate.py contain stubs/TODOs
-
-### 2025-12-16 16:29
-- [abandoned_stubs] ⚠️ ABANDONED WORK: crawl.py, validate.py contain stubs/TODOs
-
-### 2025-12-16 17:42
-- [abandoned_stubs] ⚠️ ABANDONED WORK: planner.py, order_tester.py, order_test.py, email.py, emailTemplates.ts contain stubs/TODOs
-
-### 2025-12-16 17:52
-- [abandoned_stubs] ⚠️ ABANDONED WORK: planner.py, order_tester.py, order_test.py, email.py, emailTemplates.ts, audit.py contain stubs/TODOs
-
-### 2025-12-16 18:36
-- [abandoned_stubs] ⚠️ ABANDONED WORK: test_live_integrations.py, test_e2e_ui.py contain stubs/TODOs
-
-### 2025-12-16 20:32
-- [abandoned_stubs] ⚠️ ABANDONED WORK: generate_monsters.py contain stubs/TODOs
-
-### 2025-12-16 21:32
-- [abandoned_stubs] ⚠️ ABANDONED WORK: card-animations.ts, resource-effects.ts, enemy-actions.ts, generators.ts, packs.ts contain stubs/TODOs
-
-### 2025-12-17 08:20
-- [abandoned_stubs] ⚠️ ABANDONED WORK: test_stuck_loop_fp.py contain stubs/TODOs
-
-### 2025-12-17 20:14
-- [abandoned_stubs] ⚠️ ABANDONED WORK: _hooks_mastermind.py contain stubs/TODOs
+GSAP Draggable + CSS transitions conflict: When using GSAP Draggable, CSS transitions on transform property cause stutter/lag because they fight GSAP's inline style updates. Fix: Add a class (is-dragging) on drag start that sets transition: none. NEVER use transform: none as it blocks GSAP movement.
 
 ### 2025-12-17 23:24
 - [darden_bootstrap_complete] ✅ Bootstrap scripts (bootstrap_olive_garden.py, bootstrap_longhorn.py, bootstrap_cheddars.py) and test scripts (test_scrape.py, test_rag_retrieval.py) are complete and functional
