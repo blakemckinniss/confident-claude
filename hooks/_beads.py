@@ -10,10 +10,7 @@ Integration Synergy:
 - Can fire observations to claude-mem
 """
 
-import json
-import os
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -28,58 +25,41 @@ LIB_DIR = Path(__file__).parent.parent / "lib"
 if str(LIB_DIR) not in sys.path:
     sys.path.insert(0, str(LIB_DIR))
 
+# Import shared bd client (no more temp file dance!)
+from bd_client import (  # noqa: E402
+    get_blocked_beads as _get_blocked,
+    get_open_beads as _get_open,
+    get_in_progress_beads as _get_in_progress,
+)
+
 # Simple per-process cache (hooks run as subprocesses, so this resets each call)
 _BD_CACHE: list | None = None
 
 
 def get_open_beads(state: "SessionState") -> list:
-    """Get open beads. Caches within single hook invocation.
-
-    Note: Uses temp file + os.system instead of subprocess.run due to bd pipe issues.
-    """
+    """Get open beads. Caches within single hook invocation."""
     global _BD_CACHE
 
     # Use cached result if already queried this invocation
     if _BD_CACHE is not None:
         return _BD_CACHE
 
-    # Query bd for both open and in_progress beads
-    # Using temp file approach because bd has issues with subprocess pipes
-    all_beads = []
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            tmp_path = f.name
-
-        for status in ["open", "in_progress"]:
-            exit_code = os.system(
-                f'bd list --status={status} --json > "{tmp_path}" 2>/dev/null'
-            )
-            if exit_code == 0:
-                try:
-                    with open(tmp_path) as f:
-                        content = f.read().strip()
-                    if content:
-                        all_beads.extend(json.loads(content))
-                except (json.JSONDecodeError, OSError):
-                    pass
-
-        _BD_CACHE = all_beads
+        _BD_CACHE = _get_open()
     except Exception as e:
-        log_debug("_beads", f"bd list parsing failed: {e}")
-    finally:
-        # Clean up temp file
-        try:
-            os.unlink(tmp_path)
-        except Exception as e:
-            log_debug("_beads", f"temp file cleanup failed: {e}")
+        log_debug("_beads", f"bd list failed: {e}")
+        _BD_CACHE = []
 
-    return all_beads
+    return _BD_CACHE
 
 
 def get_in_progress_beads(state: "SessionState") -> list:
     """Get beads currently being worked on."""
-    beads = get_open_beads(state)
-    return [b for b in beads if b.get("status") == "in_progress"]
+    try:
+        return _get_in_progress()
+    except Exception as e:
+        log_debug("_beads", f"bd list in_progress failed: {e}")
+        return []
 
 
 def get_independent_beads(state: "SessionState") -> list:
@@ -96,21 +76,13 @@ def get_independent_beads(state: "SessionState") -> list:
     if not beads:
         return []
 
-    # Get blocked beads to exclude (using temp file due to bd pipe issues)
+    # Get blocked beads to exclude
     blocked_ids = set()
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            tmp_path = f.name
-        exit_code = os.system(f'bd blocked --json > "{tmp_path}" 2>/dev/null')
-        if exit_code == 0:
-            with open(tmp_path) as f:
-                content = f.read().strip()
-            if content:
-                blocked = json.loads(content)
-                blocked_ids = {b.get("id") for b in blocked}
-        os.unlink(tmp_path)
+        blocked = _get_blocked()
+        blocked_ids = {b.get("id") for b in blocked}
     except Exception as e:
-        log_debug("_beads", f"bd blocked parsing failed: {e}")
+        log_debug("_beads", f"bd blocked failed: {e}")
 
     # Filter to independent beads
     independent = [b for b in beads if b.get("id") not in blocked_ids]
