@@ -54,6 +54,12 @@ from ._bash import (
     check_tool_preference,
     check_hf_cli_redirect,
 )
+from ._pal import (
+    check_pal_mandate_enforcer,
+    track_pal_tool_usage,
+    check_pal_mandate_lock,
+    clear_pal_mandate_lock,
+)
 
 __all__ = [
     "HOOKS",
@@ -96,4 +102,9 @@ __all__ = [
     "check_commit_gate",
     "check_tool_preference",
     "check_hf_cli_redirect",
+    # PAL mandate gates
+    "check_pal_mandate_enforcer",
+    "track_pal_tool_usage",
+    "check_pal_mandate_lock",
+    "clear_pal_mandate_lock",
 ]
