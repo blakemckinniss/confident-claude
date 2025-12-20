@@ -21,7 +21,7 @@ from _confidence_streaks import (
 from _confidence_constants import STASIS_FLOOR
 from _confidence_increasers import INCREASERS
 from _confidence_tool_debt import (
-    TOOL_DEBT_REDUCER,
+    # TOOL_DEBT_REDUCER,  # DISABLED 2025-12-20
     TOOL_DEBT_RECOVERY_INCREASER,
     get_debt_summary,
 )
@@ -219,15 +219,8 @@ def apply_reducers(state: "SessionState", context: dict) -> list[tuple[str, int,
                     "max_recovery_fraction": max_recovery,
                 }
 
-    # Tool debt penalties (v4.14) - special handling for variable delta
-    should_trigger, penalty, reason = TOOL_DEBT_REDUCER.should_trigger(
-        context,
-        state,
-        -999,  # No cooldown for debt
-    )
-    if should_trigger and penalty > 0:
-        triggered.append(("tool_debt", -penalty, reason))
-        # Don't reset streak for debt - it's passive accumulation, not active failure
+    # Tool debt system DISABLED (2025-12-20) - see git history
+    # Caused excessive FPs on standard tool use during legitimate work.
 
     return triggered
 
