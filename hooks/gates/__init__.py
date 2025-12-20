@@ -9,6 +9,7 @@ Modules:
   _serena.py     - Serena activation and code tool gates
   _content.py    - Content quality gates (dangerous patterns, stubs, docs, etc.)
   _confidence.py - Confidence system gates (Entity Model self-regulation)
+  _bash.py       - Bash command validation and guidance gates
 """
 
 from ._common import HOOKS, register_hook, HookResult
@@ -42,6 +43,17 @@ from ._confidence import (
     check_integration_gate,
     check_error_suppression,
 )
+from ._bash import (
+    check_loop_detector,
+    check_python_path_enforcer,
+    check_script_nudge,
+    check_inline_server_background,
+    check_background_enforcer,
+    check_probe_gate,
+    check_commit_gate,
+    check_tool_preference,
+    check_hf_cli_redirect,
+)
 
 __all__ = [
     "HOOKS",
@@ -74,4 +86,14 @@ __all__ = [
     "check_confidence_external_suggestion",
     "check_integration_gate",
     "check_error_suppression",
+    # Bash gates
+    "check_loop_detector",
+    "check_python_path_enforcer",
+    "check_script_nudge",
+    "check_inline_server_background",
+    "check_background_enforcer",
+    "check_probe_gate",
+    "check_commit_gate",
+    "check_tool_preference",
+    "check_hf_cli_redirect",
 ]
