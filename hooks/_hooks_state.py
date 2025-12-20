@@ -699,7 +699,12 @@ def check_serena_activation(
 
     Note: Claude Code doesn't pass tool_result for MCP tools, so we detect
     activation by the presence of a project input (assumes success if called).
+
+    v4.22: Also registers activation in global registry (keyed by project:session)
+    to handle hooks running from ~/.claude CWD instead of project directory.
     """
+    from gates._serena import _detect_serena_project, _register_serena_activation
+
     tool_input = data.get("tool_input", {})
     project = tool_input.get("project", "")
 
@@ -708,6 +713,12 @@ def check_serena_activation(
     if project:
         state.serena_activated = True
         state.serena_project = project
+
+        # Register in global activation registry for cross-CWD detection
+        serena_dir, _ = _detect_serena_project()
+        if serena_dir:
+            _register_serena_activation(project, serena_dir)
+
         return HookResult(
             context=f"🔮 **SERENA ACTIVATED**: Project `{project}` ready for semantic analysis"
         )
@@ -721,6 +732,12 @@ def check_serena_activation(
     ):
         state.serena_activated = True
         state.serena_project = project
+
+        # Register in global activation registry for cross-CWD detection
+        serena_dir, _ = _detect_serena_project()
+        if serena_dir:
+            _register_serena_activation(project, serena_dir)
+
         return HookResult(
             context=f"🔮 **SERENA ACTIVATED**: Project `{project}` ready for semantic analysis"
         )

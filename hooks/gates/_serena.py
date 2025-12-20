@@ -8,22 +8,40 @@ When .serena/ exists, these gates enforce semantic tooling over raw text search.
 Hooks:
   - check_serena_activation_gate (priority 6): Block Serena MCP until activated
   - check_code_tools_require_serena (priority 6): Block Read/Grep/Glob on code
+
+Architecture Note (v4.22):
+  Hooks run from ~/.claude CWD, not the project directory. Project detection
+  must use file paths from tool_input, not os.getcwd(). State loading must
+  use project-specific paths derived from the file being accessed.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from ._common import register_hook, HookResult, SessionState
 
 
-def _detect_serena_project() -> tuple[Path | None, str]:
+def _detect_serena_project(from_path: Optional[str] = None) -> tuple[Path | None, str]:
     """Detect .serena/ directory and extract project name.
+
+    Args:
+        from_path: Optional file path to detect from. If None, uses CWD.
+                   IMPORTANT: Hooks should pass tool_input file paths here,
+                   since hooks run from ~/.claude, not the project directory.
 
     Returns:
         (serena_dir, project_name) - serena_dir is None if not found,
         project_name defaults to parent folder name if not in project.yml
     """
-    cwd = Path.cwd()
-    for parent in [cwd, *cwd.parents]:
+    if from_path:
+        start = Path(from_path).resolve()
+        # If it's a file, start from its parent directory
+        if start.is_file() or not start.exists():
+            start = start.parent
+    else:
+        start = Path.cwd()
+
+    for parent in [start, *start.parents]:
         serena_dir = parent / ".serena"
         if serena_dir.is_dir():
             project_name = ""
@@ -46,6 +64,83 @@ def _detect_serena_project() -> tuple[Path | None, str]:
     return None, ""
 
 
+def _get_session_id() -> str:
+    """Get current session ID for isolation.
+
+    Multiple shells on same project need separate activation tracking.
+    """
+    import os
+
+    # Priority: explicit session ID > SSE port > fallback
+    session_id = os.environ.get("CLAUDE_SESSION_ID", "")[:16]
+    if session_id:
+        return session_id
+
+    sse_port = os.environ.get("CLAUDE_CODE_SSE_PORT", "")
+    if sse_port:
+        return f"sse_{sse_port}"
+
+    return "default"
+
+
+def _is_serena_activated_for_project(serena_dir: Path) -> bool:
+    """Check if Serena is activated for the project in THIS session.
+
+    Uses a global activation registry keyed by project_root:session_id
+    since per-project state files are loaded based on CWD (which is
+    ~/.claude for hooks), not the target project.
+
+    The registry is at ~/.claude/memory/.serena_activations.json
+    """
+    import json
+
+    registry_path = Path.home() / ".claude" / "memory" / ".serena_activations.json"
+    if not registry_path.exists():
+        return False
+
+    try:
+        with open(registry_path) as f:
+            activations = json.load(f)
+        # Key is project_root:session_id for full isolation
+        project_root = str(serena_dir.parent.resolve())
+        session_id = _get_session_id()
+        key = f"{project_root}:{session_id}"
+        return activations.get(key, False)
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def _register_serena_activation(project_name: str, serena_dir: Path) -> None:
+    """Register that Serena was activated for a project in THIS session.
+
+    Called by post-tool-use hook after activate_project succeeds.
+    """
+    import json
+
+    registry_path = Path.home() / ".claude" / "memory" / ".serena_activations.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+    activations = {}
+    if registry_path.exists():
+        try:
+            with open(registry_path) as f:
+                activations = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Key is project_root:session_id for full isolation
+    project_root = str(serena_dir.parent.resolve())
+    session_id = _get_session_id()
+    key = f"{project_root}:{session_id}"
+    activations[key] = True
+
+    try:
+        with open(registry_path, "w") as f:
+            json.dump(activations, f, indent=2)
+    except OSError:
+        pass
+
+
 @register_hook("serena_activation_gate", "mcp__serena__.*", priority=6)
 def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
     """Block Serena tools until project is activated.
@@ -59,12 +154,14 @@ def check_serena_activation_gate(data: dict, state: SessionState) -> HookResult:
     if "activate_project" in tool_name:
         return HookResult.approve()
 
-    # Check if Serena was activated this session
-    if getattr(state, "serena_activated", False):
+    # Check global activation registry (handles CWD != project dir issue)
+    serena_dir, serena_project = _detect_serena_project()
+    if serena_dir and _is_serena_activated_for_project(serena_dir):
         return HookResult.approve()
 
-    # Block with helpful message
-    _, serena_project = _detect_serena_project()
+    # Fallback: also check per-project state (backward compat)
+    if getattr(state, "serena_activated", False):
+        return HookResult.approve()
 
     return HookResult.deny(
         f"🔮 **SERENA NOT ACTIVATED**: Call `mcp__serena__activate_project"
@@ -79,22 +176,14 @@ def check_code_tools_require_serena(data: dict, state: SessionState) -> HookResu
 
     Forces Serena activation before any code navigation, ensuring semantic
     tools are used instead of raw text search.
+
+    IMPORTANT: Detects project from file path in tool_input, not CWD.
+    This is critical because hooks run from ~/.claude, not the project dir.
     """
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
 
-    # Check if .serena/ exists
-    serena_dir, serena_project = _detect_serena_project()
-
-    # No .serena/ found - allow
-    if not serena_dir:
-        return HookResult.approve()
-
-    # Serena already activated - allow
-    if getattr(state, "serena_activated", False):
-        return HookResult.approve()
-
-    # Get the target path
+    # Get target path from tool input (critical for correct project detection)
     target_path = ""
     if tool_name == "Read":
         target_path = tool_input.get("file_path", "")
@@ -102,8 +191,25 @@ def check_code_tools_require_serena(data: dict, state: SessionState) -> HookResu
         target_path = tool_input.get("path", "")
     elif tool_name == "Glob":
         target_path = tool_input.get("path", "")
+
+    # Detect project from the file path, not CWD
+    serena_dir, serena_project = _detect_serena_project(from_path=target_path)
+
+    # No .serena/ found for this file's project - allow
+    if not serena_dir:
+        return HookResult.approve()
+
+    # Check global activation registry (keyed by project_root:session_id)
+    if _is_serena_activated_for_project(serena_dir):
+        return HookResult.approve()
+
+    # Fallback: also check per-project state (backward compat)
+    if getattr(state, "serena_activated", False):
+        return HookResult.approve()
+
+    # For Glob, check if pattern targets code files
+    if tool_name == "Glob":
         pattern = tool_input.get("pattern", "")
-        # Check if pattern targets code files
         code_patterns = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java")
         if any(ext in pattern for ext in code_patterns):
             return HookResult.deny(
