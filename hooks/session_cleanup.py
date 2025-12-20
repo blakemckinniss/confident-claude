@@ -45,6 +45,18 @@ try:
 except ImportError:
     PROJECT_AWARE = False
 
+# Import thinking memory for auto-indexing (v3.15)
+try:
+    from thinking_memory import (
+        index_recent_sessions,
+        prune_old_records,
+        get_thinking_stats,
+    )
+
+    THINKING_MEMORY_AVAILABLE = True
+except ImportError:
+    THINKING_MEMORY_AVAILABLE = False
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -55,10 +67,12 @@ SCRATCH_DIR = (
 STATE_DIR = MEMORY_DIR / "state"  # Runtime state separated from semantic memory
 LESSONS_FILE = MEMORY_DIR / "__lessons.md"
 
+
 # Session log uses project-isolated state via _cooldown
 def _get_session_log_file() -> Path:
     """Get project-isolated session log file."""
     return _resolve_state_path("session_log.jsonl")
+
 
 # Legacy paths (used as fallback when not project-aware)
 PROGRESS_FILE = MEMORY_DIR / "progress.json"  # Autonomous agent progress tracking
@@ -92,6 +106,33 @@ SCRATCH_CLEANUP_AGE = 86400  # 24 hours
 
 # Minimum edits to a file before generating a lesson
 LESSON_EDIT_THRESHOLD = 3
+
+# Serena memory grooming settings
+SERENA_SESSION_MEMORY_KEEP = 30  # Keep last N session_* memories
+SERENA_STRUCTURAL_MEMORIES = {
+    # These are kept forever (not session ephemera)
+    "beads_system.md",
+    "codebase_structure.md",
+    "confidence_increasers.md",
+    "confidence_reducers.md",
+    "confidence_system.md",
+    "hook_registry.md",
+    "integration_synergy.md",
+    "lib_modules.md",
+    "memory_index.md",
+    "ops_tools.md",
+    "post_tool_use_hooks.md",
+    "pre_tool_use_hooks.md",
+    "project_overview.md",
+    "prompt_suggestions.md",
+    "session_runners.md",
+    "session_state.md",
+    "slash_commands.md",
+    "stop_hooks.md",
+    "style_conventions.md",
+    "suggested_commands.md",
+    "task_completion.md",
+}
 
 # =============================================================================
 # PATTERN EXTRACTION
@@ -169,7 +210,9 @@ def persist_lessons(lessons: list[dict]):
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         new_content = f"\n### {timestamp}\n"
-        new_content += "".join(f"- [{lesson['type']}] {lesson['insight']}\n" for lesson in new_lessons)
+        new_content += "".join(
+            f"- [{lesson['type']}] {lesson['insight']}\n" for lesson in new_lessons
+        )
 
         with open(LESSONS_FILE, "a") as f:
             if "## Session Lessons" not in existing:
@@ -186,6 +229,61 @@ def persist_lessons(lessons: list[dict]):
 
 SESSION_ENV_DIR = Path(__file__).resolve().parent.parent / "session-env"
 SESSION_ENV_KEEP = 20  # Keep this many most recent session-env dirs
+
+
+def groom_serena_memories() -> dict[str, int]:
+    """Groom Serena memories: keep structural + last N session memories.
+
+    Returns dict with counts: {"kept": N, "pruned": M, "structural": K}
+    """
+    result = {"kept": 0, "pruned": 0, "structural": 0}
+
+    # Find .serena/memories in current project or walk up
+    cwd = Path.cwd()
+    serena_dir = None
+    for parent in [cwd, *cwd.parents]:
+        candidate = parent / ".serena" / "memories"
+        if candidate.is_dir():
+            serena_dir = candidate
+            break
+        if parent == Path.home():
+            break
+
+    if not serena_dir:
+        return result
+
+    # Separate structural from session memories
+    structural = []
+    sessions = []
+
+    for mem_file in serena_dir.glob("*.md"):
+        if mem_file.name in SERENA_STRUCTURAL_MEMORIES:
+            structural.append(mem_file)
+        elif mem_file.name.startswith("session_"):
+            sessions.append(mem_file)
+        else:
+            # Unknown memory - keep it (might be important)
+            structural.append(mem_file)
+
+    result["structural"] = len(structural)
+
+    # Sort sessions by mtime (newest first), prune excess
+    sessions.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+
+    kept = sessions[:SERENA_SESSION_MEMORY_KEEP]
+    to_prune = sessions[SERENA_SESSION_MEMORY_KEEP:]
+
+    result["kept"] = len(kept)
+    result["pruned"] = 0
+
+    for mem_file in to_prune:
+        try:
+            mem_file.unlink()
+            result["pruned"] += 1
+        except (OSError, PermissionError):
+            pass
+
+    return result
 
 
 def cleanup_scratch():
@@ -245,6 +343,44 @@ def cleanup_session_env() -> int:
             pass
 
     return removed
+
+
+# =============================================================================
+# THINKING MEMORY GROOMING (v3.15)
+# =============================================================================
+
+THINKING_MEMORY_MAX_RECORDS = 500  # Auto-prune when exceeding this
+THINKING_INDEX_SESSIONS = 5  # Index last N sessions per cleanup
+
+
+def groom_thinking_memory() -> dict[str, int]:
+    """Auto-index recent sessions and prune old thinking records.
+
+    Runs on every session end to keep thinking memory fresh and bounded.
+    Returns dict with counts: {"indexed": N, "pruned": M, "total": K}
+    """
+    result = {"indexed": 0, "pruned": 0, "total": 0}
+
+    if not THINKING_MEMORY_AVAILABLE:
+        return result
+
+    try:
+        # Index recent sessions (incremental - skips already indexed)
+        index_result = index_recent_sessions(max_sessions=THINKING_INDEX_SESSIONS)
+        result["indexed"] = index_result.get("indexed", 0)
+
+        # Get current stats
+        stats = get_thinking_stats()
+        result["total"] = stats.get("total", 0)
+
+        # Auto-prune if exceeding threshold
+        if result["total"] > THINKING_MEMORY_MAX_RECORDS:
+            result["pruned"] = prune_old_records(keep_count=THINKING_MEMORY_MAX_RECORDS)
+
+    except Exception as e:
+        log_debug("session_cleanup", f"thinking memory groom failed: {e}")
+
+    return result
 
 
 # =============================================================================
@@ -422,6 +558,12 @@ def main():
     # Clean up old session-env directories (keep last 20)
     removed_sessions = cleanup_session_env()
 
+    # Groom Serena memories (keep structural + last N session memories)
+    serena_groom = groom_serena_memories()
+
+    # Groom thinking memory (auto-index + prune)
+    thinking_groom = groom_thinking_memory()
+
     # Log session summary
     log_session(state, lessons)
 
@@ -437,6 +579,12 @@ def main():
         cleanup_parts.append(f"{len(cleaned_files)} scratch files")
     if removed_sessions:
         cleanup_parts.append(f"{removed_sessions} old sessions")
+    if serena_groom.get("pruned", 0) > 0:
+        cleanup_parts.append(f"{serena_groom['pruned']} stale Serena memories")
+    if thinking_groom.get("indexed", 0) > 0:
+        cleanup_parts.append(f"{thinking_groom['indexed']} thinking memories indexed")
+    if thinking_groom.get("pruned", 0) > 0:
+        cleanup_parts.append(f"{thinking_groom['pruned']} old thinking records pruned")
     if cleanup_parts:
         output["message"] = f"🧹 Cleaned {', '.join(cleanup_parts)}"
 
