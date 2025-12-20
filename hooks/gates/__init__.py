@@ -60,6 +60,13 @@ from ._pal import (
     check_pal_mandate_lock,
     clear_pal_mandate_lock,
 )
+from ._beads import (
+    check_parallel_nudge,
+    check_beads_parallel,
+    check_bead_enforcement,
+    check_parallel_bead_delegation,
+    check_recursion_guard,
+)
 
 __all__ = [
     "HOOKS",
@@ -107,4 +114,10 @@ __all__ = [
     "track_pal_tool_usage",
     "check_pal_mandate_lock",
     "clear_pal_mandate_lock",
+    # Beads/parallel gates
+    "check_parallel_nudge",
+    "check_beads_parallel",
+    "check_bead_enforcement",
+    "check_parallel_bead_delegation",
+    "check_recursion_guard",
 ]
