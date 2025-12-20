@@ -66,6 +66,31 @@ def clear_pal_mandate_lock() -> None:
         PAL_MANDATE_LOCK_PATH.unlink()
 
 
+def is_pal_mcp_available() -> bool:
+    """Check if PAL MCP is likely available.
+
+    Returns True if PAL MCP tools should be available, False otherwise.
+    Checks for OPENROUTER_API_KEY environment variable as primary indicator.
+    """
+    import os
+
+    # PAL MCP requires OpenRouter API key
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return True
+
+    # Also check for key in .env file
+    env_file = Path.home() / ".claude" / ".env"
+    if env_file.exists():
+        try:
+            content = env_file.read_text()
+            if "OPENROUTER_API_KEY=" in content:
+                return True
+        except OSError:
+            pass
+
+    return False
+
+
 # =============================================================================
 # PAL MANDATE ENFORCER (Priority 0) - Highest priority, runs first
 # =============================================================================
@@ -91,6 +116,17 @@ def check_pal_mandate_enforcer(data: dict, state: SessionState) -> HookResult:
     lock = check_pal_mandate_lock()
     if not lock:
         return HookResult.approve()
+
+    # Check if PAL MCP is actually available before enforcing
+    if not is_pal_mcp_available():
+        log_debug(
+            "pal_mandate_enforcer",
+            "PAL MCP not available (no OPENROUTER_API_KEY) - clearing mandate lock",
+        )
+        clear_pal_mandate_lock()
+        return HookResult.approve(
+            "⚠️ PAL mandate skipped - PAL MCP not available in this session"
+        )
 
     # SUDO bypass
     if data.get("_sudo_bypass"):
