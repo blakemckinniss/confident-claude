@@ -43,6 +43,10 @@ from _codemode_interfaces import (  # noqa: E402
     generate_interface,
     generate_namespace_code,
 )
+from _codemode_planner import (  # noqa: E402
+    ExecutionPlan,
+    ToolCallSpec,
+)
 
 # Execution log location
 EXECUTION_LOG = Path.home() / ".claude" / "tmp" / "codemode_execution.jsonl"
@@ -310,6 +314,249 @@ class CodeModeExecutor:
             "unique_tools": list(set(tool_calls)),
             "call_count": len(tool_calls),
         }
+
+
+@dataclass
+class PlanResult:
+    """Result from a single tool call in a plan."""
+
+    call_id: str
+    tool: str
+    success: bool
+    result: Any = None
+    error: str | None = None
+    duration_ms: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "call_id": self.call_id,
+            "tool": self.tool,
+            "success": self.success,
+            "result": self.result,
+            "error": self.error,
+            "duration_ms": self.duration_ms,
+        }
+
+
+@dataclass
+class PlanExecutionResult:
+    """Aggregated results from plan execution."""
+
+    run_id: str
+    success: bool
+    results: dict[str, PlanResult] = field(default_factory=dict)
+    failed_calls: list[str] = field(default_factory=list)
+    total_duration_ms: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "codemode_results": {
+                call_id: r.to_dict() for call_id, r in self.results.items()
+            },
+            "run_id": self.run_id,
+            "success": self.success,
+            "failed_calls": self.failed_calls,
+            "total_duration_ms": self.total_duration_ms,
+        }
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+class PlanExecutor:
+    """
+    Executes structured ExecutionPlan objects.
+
+    Unlike CodeModeExecutor (which runs Python code), PlanExecutor
+    directly executes ToolCallSpec objects with dependency resolution.
+
+    Usage:
+        plan = planner.create_tool_plan([...])
+        executor = PlanExecutor(tool_invoker=my_invoker)
+        result = executor.execute(plan)
+    """
+
+    def __init__(
+        self,
+        tool_invoker: Callable[[str, dict], dict] | None = None,
+        log_executions: bool = True,
+    ):
+        """
+        Initialize plan executor.
+
+        Args:
+            tool_invoker: Function to invoke MCP tools.
+                         Signature: (tool_name: str, args: dict) -> dict
+                         If None, runs in dry-run mode.
+            log_executions: Whether to log executions to JSONL.
+        """
+        self._invoker = tool_invoker
+        self._log_executions = log_executions
+
+    def execute(self, plan: ExecutionPlan) -> PlanExecutionResult:
+        """
+        Execute all tool calls in a plan.
+
+        Respects dependency ordering - calls with depends_on wait for
+        their dependencies to complete first.
+
+        Args:
+            plan: The ExecutionPlan to execute
+
+        Returns:
+            PlanExecutionResult with all tool results
+        """
+        import time
+
+        start_time = time.time()
+        results: dict[str, PlanResult] = {}
+        failed: list[str] = []
+
+        # Build dependency tracking
+        pending = {call.id: call for call in plan.calls}
+        completed_ids: set[str] = set()
+
+        # Execute in dependency order
+        while pending:
+            # Find calls whose dependencies are satisfied
+            ready = [
+                call
+                for call in pending.values()
+                if all(dep in completed_ids for dep in call.depends_on)
+            ]
+
+            if not ready:
+                # Circular or missing dependency - fail remaining
+                for call_id, call in pending.items():
+                    results[call_id] = PlanResult(
+                        call_id=call_id,
+                        tool=call.tool,
+                        success=False,
+                        error=f"Unresolved dependencies: {call.depends_on}",
+                    )
+                    failed.append(call_id)
+                break
+
+            # Execute ready calls
+            for call in ready:
+                result = self._execute_call(call)
+                results[call.id] = result
+
+                if result.success:
+                    completed_ids.add(call.id)
+                else:
+                    failed.append(call.id)
+
+                del pending[call.id]
+
+        total_ms = (time.time() - start_time) * 1000
+
+        exec_result = PlanExecutionResult(
+            run_id=plan.run_id,
+            success=len(failed) == 0,
+            results=results,
+            failed_calls=failed,
+            total_duration_ms=total_ms,
+        )
+
+        if self._log_executions:
+            self._log_plan_execution(plan, exec_result)
+
+        return exec_result
+
+    def _execute_call(self, call: ToolCallSpec) -> PlanResult:
+        """Execute a single tool call."""
+        import time
+
+        start = time.time()
+
+        if self._invoker is None:
+            # Dry-run mode
+            return PlanResult(
+                call_id=call.id,
+                tool=call.tool,
+                success=True,
+                result={"dry_run": True, "args": call.args},
+                duration_ms=0.0,
+            )
+
+        try:
+            result = self._invoker(call.tool, call.args)
+            duration = (time.time() - start) * 1000
+
+            # Check for error in result dict
+            if isinstance(result, dict) and "error" in result:
+                return PlanResult(
+                    call_id=call.id,
+                    tool=call.tool,
+                    success=False,
+                    error=str(result["error"]),
+                    duration_ms=duration,
+                )
+
+            return PlanResult(
+                call_id=call.id,
+                tool=call.tool,
+                success=True,
+                result=result,
+                duration_ms=duration,
+            )
+
+        except Exception as e:
+            duration = (time.time() - start) * 1000
+            return PlanResult(
+                call_id=call.id,
+                tool=call.tool,
+                success=False,
+                error=f"{type(e).__name__}: {e}",
+                duration_ms=duration,
+            )
+
+    def _log_plan_execution(
+        self, plan: ExecutionPlan, result: PlanExecutionResult
+    ) -> None:
+        """Log plan execution to JSONL file."""
+        try:
+            EXECUTION_LOG.parent.mkdir(parents=True, exist_ok=True)
+            log_entry = {
+                "type": "plan_execution",
+                "run_id": plan.run_id,
+                "call_count": len(plan.calls),
+                "success": result.success,
+                "failed_count": len(result.failed_calls),
+                "total_ms": result.total_duration_ms,
+            }
+            with EXECUTION_LOG.open("a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except OSError:
+            return  # Logging failure is non-fatal
+
+    def execute_single(self, tool: str, args: dict) -> PlanResult:
+        """
+        Execute a single tool call directly (no plan).
+
+        Convenience method for one-off calls.
+        """
+        call = ToolCallSpec(id="single-01", tool=tool, args=args)
+        return self._execute_call(call)
+
+
+def execute_plan(
+    plan: ExecutionPlan,
+    tool_invoker: Callable[[str, dict], dict] | None = None,
+) -> PlanExecutionResult:
+    """
+    Convenience function to execute a plan.
+
+    Args:
+        plan: The ExecutionPlan to execute
+        tool_invoker: Optional tool invoker. If None, runs dry-run.
+
+    Returns:
+        PlanExecutionResult with all outcomes
+    """
+    executor = PlanExecutor(tool_invoker=tool_invoker)
+    return executor.execute(plan)
 
 
 def create_executor_from_mcp_list(mcp_tools: list[dict]) -> CodeModeExecutor:
