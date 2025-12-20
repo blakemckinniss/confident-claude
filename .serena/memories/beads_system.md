@@ -46,11 +46,42 @@ bd doctor             # Health check
 bd prime              # Restore context after compaction
 ```
 
+## Full Auto-Management (v2.0)
+
+The beads system is now FULLY AUTOMATIC - zero manual `bd` commands needed:
+
+### Auto-Create from Prompts
+- **Hook**: `auto_create_bead_from_prompt` (priority 3) in `_prompt_suggestions.py`
+- Detects task-like keywords (implement, fix, add, create, etc.)
+- Auto-creates bead with title from prompt
+- Auto-claims it immediately
+- Cooldown prevents spam (5 turns)
+
+### Auto-Claim on Edit
+- **Hook**: `bead_enforcement` (priority 4) in `gates/_beads.py`
+- When Edit/Write starts with no in_progress bead:
+  - First tries to claim an existing open bead
+  - If none, auto-creates from file context
+- Graceful degradation if bd unavailable
+
+### Auto-Close on Completion
+- **Hook**: `auto_close_beads` (priority 77) in `stop_runner.py`
+- At session end, closes auto-created beads if:
+  - Files were edited successfully
+  - No unresolved errors remain
+- Tracks beads via `state.auto_created_beads`
+
+### Agent Lifecycle
+- **Subagent stop**: `release_agent_beads()` in `subagent_stop.py`
+- **Session cleanup**: `sync_and_cleanup_beads()` in `session_cleanup.py`
+- Orphan recovery for stale assignments (120+ min)
+
 ## Hook Integration
 
 ### Location
 - **Helper module**: `hooks/_beads.py`
-- **Enforcement**: `hooks/pre_tool_use_runner.py`
+- **Gates**: `hooks/gates/_beads.py`
+- **Lifecycle**: `hooks/subagent_stop.py`, `hooks/session_cleanup.py`
 
 ### Key Functions (`hooks/_beads.py`)
 
@@ -65,14 +96,35 @@ def get_independent_beads() -> list[dict]:
     """Get beads without unresolved dependencies."""
 
 def generate_parallel_task_calls(beads: list[dict]) -> str:
-    """Generate parallel Task tool calls for multiple beads."""
+    """Generate parallel Task tool calls with lifecycle instructions."""
+
+def claim_bead_for_agent(bead_id, agent_id) -> dict:
+    """Claim bead for agent lifecycle tracking."""
+
+def release_bead_for_agent(bead_id, agent_id) -> bool:
+    """Release bead from agent."""
+
+def get_stale_bead_assignments(timeout_minutes) -> list:
+    """Find orphaned agent assignments."""
 ```
+
+### Automatic Lifecycle Hooks
+
+| Hook | Event | Action |
+|------|-------|--------|
+| `subagent_stop.py` | SubagentStop | Auto-releases beads claimed by agent |
+| `session_cleanup.py` | SessionEnd | Syncs beads, recovers orphaned assignments |
+| `session_init.py` | SessionStart | Background beads sync |
+| `_prompt_suggestions.py` | UserPromptSubmit | Periodic background sync (10 min) |
+| `_hooks_tracking.py` | PostToolUse (git) | Auto-sync on commit/push |
 
 ### Enforcement Rules
 
 1. **Bead required for edits**: After grace period, cannot Edit/Write project files without `in_progress` bead
 2. **Parallel nudge**: When 2+ beads are open, nudges toward parallel Task spawns
-3. **Auto-sync**: `check_beads_auto_sync` in post_tool_use_runner syncs on git commits
+3. **Auto-sync**: `check_beads_auto_sync` syncs on git commits
+4. **Orphan recovery**: Session cleanup auto-recovers beads stale >2 hours
+5. **Agent release**: Subagent stop auto-releases claimed beads
 
 ## Session State Integration
 

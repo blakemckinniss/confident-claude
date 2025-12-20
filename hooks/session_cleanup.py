@@ -104,6 +104,9 @@ def _get_project_handoff_file() -> Path:
 # Files in .claude/tmp/ older than this get cleaned (in seconds)
 SCRATCH_CLEANUP_AGE = 86400  # 24 hours
 
+# Beads orphan timeout (minutes)
+BEADS_ORPHAN_TIMEOUT = 120  # 2 hours
+
 # Minimum edits to a file before generating a lesson
 LESSON_EDIT_THRESHOLD = 3
 
@@ -229,6 +232,47 @@ def persist_lessons(lessons: list[dict]):
 
 SESSION_ENV_DIR = Path(__file__).resolve().parent.parent / "session-env"
 SESSION_ENV_KEEP = 20  # Keep this many most recent session-env dirs
+
+
+def sync_and_cleanup_beads() -> dict[str, int]:
+    """Sync beads and cleanup orphaned agent assignments.
+
+    Returns dict with counts: {"synced": bool, "orphans_recovered": N}
+    """
+    result = {"synced": False, "orphans_recovered": 0}
+
+    try:
+        from agent_registry import get_stale_assignments, mark_abandoned
+
+        # Recover orphaned bead assignments (agents that crashed/timed out)
+        stale = get_stale_assignments(timeout_minutes=BEADS_ORPHAN_TIMEOUT)
+        for assignment in stale:
+            bead_id = assignment.get("bead_id")
+            if bead_id and mark_abandoned(bead_id):
+                result["orphans_recovered"] += 1
+
+    except ImportError:
+        log_debug("session_cleanup", "agent_registry not available for orphan check")
+    except Exception as e:
+        log_debug("session_cleanup", f"orphan cleanup failed: {e}")
+
+    # Run bd sync in background (non-blocking)
+    try:
+        import subprocess
+
+        bd_path = Path.home() / ".local" / "bin" / "bd"
+        if bd_path.exists():
+            subprocess.Popen(
+                [str(bd_path), "sync"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            result["synced"] = True
+    except Exception as e:
+        log_debug("session_cleanup", f"bd sync failed: {e}")
+
+    return result
 
 
 def groom_serena_memories() -> dict[str, int]:
@@ -564,6 +608,9 @@ def main():
     # Groom thinking memory (auto-index + prune)
     thinking_groom = groom_thinking_memory()
 
+    # Sync beads and cleanup orphaned agent assignments
+    beads_cleanup = sync_and_cleanup_beads()
+
     # Log session summary
     log_session(state, lessons)
 
@@ -585,6 +632,10 @@ def main():
         cleanup_parts.append(f"{thinking_groom['indexed']} thinking memories indexed")
     if thinking_groom.get("pruned", 0) > 0:
         cleanup_parts.append(f"{thinking_groom['pruned']} old thinking records pruned")
+    if beads_cleanup.get("orphans_recovered", 0) > 0:
+        cleanup_parts.append(
+            f"{beads_cleanup['orphans_recovered']} orphaned beads recovered"
+        )
     if cleanup_parts:
         output["message"] = f"🧹 Cleaned {', '.join(cleanup_parts)}"
 

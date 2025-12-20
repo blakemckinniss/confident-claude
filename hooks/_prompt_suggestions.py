@@ -166,6 +166,121 @@ def check_beads_periodic_sync(data: dict, state: SessionState) -> HookResult:
 
 
 # =============================================================================
+# AUTO-CREATE BEAD FROM PROMPT (priority 3) - Full auto-management
+# =============================================================================
+
+# Task-like keywords that suggest work needing tracking
+_TASK_KEYWORDS = [
+    r"\b(implement|add|create|build|fix|refactor|update|change|modify|remove|delete)\b",
+    r"\b(bug|issue|error|problem|feature|enhancement)\b",
+    r"\b(test|write|review|audit|check|verify|validate)\b",
+]
+
+
+@register_hook("auto_create_bead_from_prompt", priority=3)
+def auto_create_bead_from_prompt(data: dict, state: SessionState) -> HookResult:
+    """Auto-create a bead from substantive user prompts.
+
+    FULL AUTO-MANAGEMENT:
+    - Detects task-like prompts (implement, fix, add, etc.)
+    - Auto-creates bead with title from prompt
+    - Auto-claims it immediately
+    - No manual bd commands needed
+
+    SAFEGUARDS:
+    - Skip short prompts (< 10 chars)
+    - Skip question-only prompts
+    - Skip if already have in_progress bead
+    - Graceful degradation on bd failure
+    - Cooldown to prevent spam
+    """
+    import subprocess
+    import shutil
+
+    prompt = data.get("user_prompt", "")
+    if not prompt or len(prompt) < 10:
+        return HookResult.allow()
+
+    # Skip pure questions (ends with ? and no action words)
+    if prompt.strip().endswith("?") and not any(
+        re.search(p, prompt, re.IGNORECASE) for p in _TASK_KEYWORDS
+    ):
+        return HookResult.allow()
+
+    # Check if any task keywords present
+    has_task_keyword = any(re.search(p, prompt, re.IGNORECASE) for p in _TASK_KEYWORDS)
+    if not has_task_keyword:
+        return HookResult.allow()
+
+    # Check cooldown - don't create beads too frequently
+    cooldown_key = "auto_bead_create_turn"
+    if state.turn_count - state.nudge_history.get(cooldown_key, 0) < 5:
+        return HookResult.allow()
+
+    # Check if we already have an in_progress bead
+    try:
+        from _beads import get_in_progress_beads
+
+        if get_in_progress_beads(state):
+            return HookResult.allow()
+    except ImportError:
+        pass
+
+    # Check if bd exists
+    bd_path = shutil.which("bd") or str(Path.home() / ".local" / "bin" / "bd")
+    if not Path(bd_path).exists():
+        return HookResult.allow()
+
+    # Generate title from prompt (first 50 chars, cleaned)
+    title = prompt[:50].strip()
+    title = re.sub(r"[^\w\s-]", "", title)  # Remove special chars
+    title = " ".join(title.split())  # Normalize whitespace
+    if len(title) < 5:
+        return HookResult.allow()
+
+    try:
+        # Create bead
+        result = subprocess.run(
+            [bd_path, "create", f"--title={title}", "--type=task"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return HookResult.allow()
+
+        # Extract bead ID
+        match = re.search(r"(claude-\w+)", result.stdout)
+        if not match:
+            return HookResult.allow()
+
+        bead_id = match.group(1)
+
+        # Claim it
+        subprocess.run(
+            [bd_path, "update", bead_id, "--status=in_progress"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        # Track for auto-close
+        if not hasattr(state, "auto_created_beads"):
+            state.auto_created_beads = []
+        state.auto_created_beads.append(bead_id)
+
+        # Update cooldown
+        state.nudge_history[cooldown_key] = state.turn_count
+
+        return HookResult.allow(
+            f"📋 **Auto-created bead**: `{bead_id[:12]}` - {title[:30]}"
+        )
+
+    except (subprocess.TimeoutExpired, Exception):
+        return HookResult.allow()
+
+
+# =============================================================================
 # COMPLEXITY ASSESSMENT (priority 70) - Path B: BMAD-inspired
 # =============================================================================
 

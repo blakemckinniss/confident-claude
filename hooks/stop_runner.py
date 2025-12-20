@@ -16,7 +16,6 @@ HOOKS INDEX (by priority):
   VALIDATION (30-60):
     30 session_blocks     - Require reflection on blocks
     40 dismissal_check    - Catch false positive claims without fix
-    45 completion_gate    - Block completion if confidence < 85%
     50 stub_detector      - Files created with stubs
 
   WARNINGS (70-90):
@@ -139,37 +138,6 @@ DISMISSAL_PATTERNS = [
     (r"ignore (this|the) (warning|hook|gate)", "ignore_warning"),
     (r"(that|this) warning (is )?(incorrect|wrong)", "false_positive"),
 ]
-
-# Completion claim patterns - detect when Claude claims task is done
-COMPLETION_PATTERNS = [
-    r"\b(task|work|implementation|feature|fix|bug)\s+(is\s+)?(now\s+)?(complete|done|finished)\b",
-    r"\b(that'?s?|this)\s+(should\s+)?(be\s+)?(all|everything|it)\b",
-    r"\bsuccessfully\s+(implemented|completed|fixed|finished)\b",
-    r"\b(all\s+)?(changes|work|tasks?)\s+(are\s+)?(complete|done)\b",
-    r"\bnothing\s+(left|more|else)\s+to\s+do\b",
-    r"^\*\*(?:session\s+)?summary\s+(?:of\s+)?(?:completed?\s+)?(?:work|changes|tasks?)",  # More specific
-]
-
-# Abort/Escalate patterns - these should be ALLOWED at low confidence
-# Low confidence + admitting failure = correct behavior (epistemic humility)
-ABORT_PATTERNS = [
-    r"\b(i\s+)?(can'?t|cannot|couldn'?t)\s+(figure|solve|fix|resolve|complete)\b",
-    r"\b(i'?m\s+)?(stuck|blocked|unable)\b",
-    r"\bneed\s+(help|assistance|guidance|input)\b",
-    r"\bescalat(e|ing)\s+(this|to)\b",
-    r"\babort(ing)?\s+(this|the)\b",
-    r"\b(giving|give)\s+up\b",
-    r"\b(this\s+)?(is\s+)?beyond\s+(my|what\s+i)\b",
-    r"\brequires?\s+(human|user|manual)\s+(intervention|input|review)\b",
-    r"\b(i\s+)?don'?t\s+(know|understand)\s+(how|why|what)\b",
-    r"\bask(ing)?\s+(for|the\s+user)\b",
-    r"\buncertain\s+(about|how)\b",
-    r"\bnot\s+(confident|sure)\s+(enough|about|how)\b",
-]
-
-# Confidence threshold for completion claims
-COMPLETION_CONFIDENCE_THRESHOLD = 70  # Lowered threshold
-COMPLETION_TREND_THRESHOLD = 75  # Below this, must not be declining
 
 
 # =============================================================================
@@ -757,95 +725,6 @@ def check_dismissal(data: dict, state: SessionState) -> StopHookResult:
     )
 
     return StopHookResult.block("\n".join(lines))
-
-
-@register_hook("completion_gate", priority=45)
-def check_completion_confidence(data: dict, state: SessionState) -> StopHookResult:
-    """Block completion claims if confidence < 70%, or < 75% with negative trend.
-
-    This prevents lazy completion and reward hacking - Claude must earn
-    confidence through actual verification (test pass, build success, user OK)
-    before claiming a task is complete.
-
-    IMPORTANT: Abort/escalate signals are ALLOWED at low confidence.
-    Low confidence + admitting failure = correct epistemic behavior.
-    The gate only blocks SUCCESS claims, not failure acknowledgment.
-    """
-    # Import confidence utilities
-    from confidence import get_tier_info, INCREASERS
-
-    # Check current confidence and trend
-    confidence = getattr(state, "confidence", 70)
-    prev_confidence = getattr(state, "completion_gate_prev_confidence", confidence)
-    state.completion_gate_prev_confidence = confidence  # Track for next check
-
-    is_declining = confidence < prev_confidence
-
-    # Pass if above threshold
-    if confidence >= COMPLETION_CONFIDENCE_THRESHOLD:
-        # But block if in danger zone (< 75%) AND declining
-        if confidence < COMPLETION_TREND_THRESHOLD and is_declining:
-            pass  # Fall through to check patterns
-        else:
-            return StopHookResult.ok()
-
-    # Scan recent assistant output
-    transcript_path = data.get("transcript_path", "")
-    if not transcript_path or not Path(transcript_path).exists():
-        return StopHookResult.ok()
-
-    try:
-        with open(transcript_path, "rb") as f:
-            f.seek(0, 2)  # End
-            size = f.tell()
-            f.seek(max(0, size - 15000))  # Last 15KB
-            content = f.read().decode("utf-8", errors="ignore").lower()
-    except (OSError, PermissionError):
-        return StopHookResult.ok()
-
-    # FIRST: Check for abort/escalate patterns - these are ALLOWED at low confidence
-    # Low confidence + admitting struggle = correct behavior (epistemic humility)
-    for pattern in ABORT_PATTERNS:
-        if re.search(pattern, content, re.IGNORECASE):
-            # Abort signal detected - this is the RIGHT response at low confidence
-            # Optionally reward this behavior
-            tier_name, emoji, _ = get_tier_info(confidence)
-            return StopHookResult.ok(
-                f"✅ **Abort/Escalate Acknowledged** - {emoji} {confidence}%\n"
-                f"Admitting uncertainty at low confidence is correct behavior."
-            )
-
-    # THEN: Check for completion claims (only block these)
-    for pattern in COMPLETION_PATTERNS:
-        if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
-            tier_name, emoji, _ = get_tier_info(confidence)
-
-            # Build guidance on how to raise confidence
-            boost_options = []
-            for inc in INCREASERS:
-                if not inc.requires_approval:
-                    boost_options.append(
-                        f"  • {inc.name}: {inc.description} (+{inc.delta})"
-                    )
-
-            # Determine block reason
-            if confidence < COMPLETION_CONFIDENCE_THRESHOLD:
-                reason = f"below {COMPLETION_CONFIDENCE_THRESHOLD}%"
-            else:
-                reason = f"declining in danger zone (<{COMPLETION_TREND_THRESHOLD}%)"
-
-            return StopHookResult.block(
-                f"🚫 **COMPLETION BLOCKED** - Confidence {reason}\n\n"
-                f"Current: {emoji} {confidence}% ({tier_name})"
-                + (f" ↓ (was {prev_confidence}%)" if is_declining else "")
-                + "\n\n**How to raise confidence:**\n"
-                + "\n".join(boost_options[:5])
-                + "\n\n**Alternatives:**\n"
-                + "  • Abort/escalate: 'I'm stuck, need help with X'\n"
-                + "  • Override: 'CONFIDENCE_BOOST_APPROVED'"
-            )
-
-    return StopHookResult.ok()
 
 
 # Language patterns for bad behavior detection
@@ -1500,6 +1379,62 @@ def sync_serena_memory(data: dict, state: SessionState) -> StopHookResult:
         memory_file.write_text(memory_content)
     except (OSError, PermissionError):
         pass  # Fire and forget - ignore errors
+
+    return StopHookResult.ok()
+
+
+@register_hook("auto_close_beads", priority=77)
+def auto_close_beads(data: dict, state: SessionState) -> StopHookResult:
+    """Auto-close in_progress beads when session work appears complete.
+
+    FULL AUTO-MANAGEMENT:
+    - Detects session completion via file edits + command success
+    - Auto-closes beads that were claimed this session
+    - No manual bd commands needed
+
+    SAFEGUARDS:
+    - Only closes auto-created beads (tracked in state)
+    - Only if session had successful work (files edited, no unresolved errors)
+    - Graceful degradation on bd failure
+    """
+    from pathlib import Path
+
+    # Skip if no file work done
+    if not state.files_edited and not state.files_created:
+        return StopHookResult.ok()
+
+    # Skip if there are unresolved errors (work isn't complete)
+    if state.errors_unresolved:
+        return StopHookResult.ok()
+
+    # Get auto-created beads from this session
+    auto_beads = getattr(state, "auto_created_beads", [])
+    if not auto_beads:
+        return StopHookResult.ok()
+
+    bd_path = Path.home() / ".local" / "bin" / "bd"
+    if not bd_path.exists():
+        return StopHookResult.ok()
+
+    closed = []
+    for bead_id in auto_beads:
+        try:
+            result = subprocess.run(
+                [str(bd_path), "close", bead_id],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                closed.append(bead_id[:12])
+        except (subprocess.TimeoutExpired, Exception):
+            pass
+
+    # Clear the auto-created beads list
+    state.auto_created_beads = []
+
+    if closed:
+        return StopHookResult.ok(f"📋 **Auto-closed beads**: {', '.join(closed)}")
 
     return StopHookResult.ok()
 

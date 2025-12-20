@@ -189,18 +189,91 @@ def check_beads_parallel(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 
+def _auto_create_and_claim_bead(
+    file_path: str, state: SessionState
+) -> tuple[bool, str]:
+    """Auto-create a bead from file context and claim it.
+
+    Returns (success, message).
+    """
+    import subprocess
+    from pathlib import Path
+
+    bd_path = Path.home() / ".local" / "bin" / "bd"
+    if not bd_path.exists():
+        return False, "bd not found"
+
+    # Extract title from file path
+    path = Path(file_path)
+    filename = path.stem
+    parent = path.parent.name if path.parent.name not in (".", "") else ""
+
+    # Generate descriptive title
+    if parent:
+        title = f"Work on {parent}/{filename}"
+    else:
+        title = f"Work on {filename}"
+
+    # Limit title length
+    title = title[:60]
+
+    try:
+        # Create bead
+        result = subprocess.run(
+            [str(bd_path), "create", f"--title={title}", "--type=task"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return False, f"create failed: {result.stderr}"
+
+        # Extract bead ID from output (format: "Created: claude-xxxx")
+        import re as regex
+
+        match = regex.search(r"(claude-\w+)", result.stdout)
+        if not match:
+            return False, "could not parse bead ID"
+
+        bead_id = match.group(1)
+
+        # Claim the bead
+        result = subprocess.run(
+            [str(bd_path), "update", bead_id, "--status=in_progress"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return False, f"claim failed: {result.stderr}"
+
+        # Track the auto-created bead
+        if not hasattr(state, "auto_created_beads"):
+            state.auto_created_beads = []
+        state.auto_created_beads.append(bead_id)
+
+        return True, f"📋 **Auto-created bead**: `{bead_id}` - {title}"
+
+    except subprocess.TimeoutExpired:
+        return False, "bd command timed out"
+    except Exception as e:
+        return False, str(e)
+
+
 @register_hook("bead_enforcement", "Edit|Write", priority=4)
 def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     """
-    Enforce bead tracking for substantive work.
+    Auto-manage bead tracking for substantive work.
 
-    HARD BLOCKS Edit/Write on project files without an in_progress bead.
+    FULLY AUTOMATIC:
+    - If no in_progress bead, auto-creates one from file context
+    - Auto-claims the created bead
+    - No manual bd commands needed
 
     SAFEGUARDS:
-    - Grace period: First 2 turns of session get nudge, not block
-    - Trivial files: README, CHANGELOG, docs skip blocking
-    - Cascade protection: If bd binary fails, degrade to nudge
-    - Small edits: Single-line changes get nudge, not block
+    - Skip patterns: .claude/, .git/, tmp/, etc. don't trigger
+    - Trivial files: README, docs get tracked but don't block
+    - Cascade protection: If bd fails repeatedly, degrade gracefully
     - SUDO bypass always available
     """
     # Lazy import - only load _beads when this hook runs
@@ -210,14 +283,13 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     if data.get("_sudo_bypass"):
         return HookResult.approve()
 
-    tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
     if not file_path:
         return HookResult.approve()
 
-    # === SKIP PATTERNS (always allowed) ===
+    # === SKIP PATTERNS (always allowed, no tracking needed) ===
     skip_patterns = [
         r"\.claude/",
         r"\.git/",
@@ -231,71 +303,63 @@ def check_bead_enforcement(data: dict, state: SessionState) -> HookResult:
     if any(re.search(p, file_path) for p in skip_patterns):
         return HookResult.approve()
 
-    # === TRIVIAL FILE PATTERNS (nudge only, no block) ===
-    trivial_patterns = [
-        r"README",
-        r"CHANGELOG",
-        r"LICENSE",
-        r"\.md$",  # Markdown docs
-        r"\.txt$",  # Plain text
-        r"\.json$",  # Config files
-        r"\.ya?ml$",  # YAML config
-        r"\.toml$",  # TOML config
-    ]
-    is_trivial = any(re.search(p, file_path, re.IGNORECASE) for p in trivial_patterns)
-
-    # === SMALL EDIT CHECK (for Edit tool) ===
-    is_small_edit = False
-    if tool_name == "Edit":
-        old_string = tool_input.get("old_string", "")
-        new_string = tool_input.get("new_string", "")
-        # Small edit = less than 5 lines changed
-        old_lines = len(old_string.split("\n"))
-        new_lines = len(new_string.split("\n"))
-        is_small_edit = max(old_lines, new_lines) <= 5
-
-    # === GRACE PERIOD (first 2 turns) ===
-    is_grace_period = state.turn_count <= 2
-
     # === CHECK FOR IN_PROGRESS BEADS ===
     in_progress = get_in_progress_beads(state)
 
     if in_progress:
-        # Reset enforcement counter - user is tracking work properly
+        # Already tracking - all good
         if hasattr(state, "bead_enforcement_blocks"):
             state.bead_enforcement_blocks = 0
         return HookResult.approve()
 
-    # No active bead - determine enforcement level
-    # Track enforcement attempts for cascade detection
+    # No active bead - check if we have open beads to claim
     if not hasattr(state, "bead_enforcement_blocks"):
         state.bead_enforcement_blocks = 0
 
-    # === DEGRADED MODE (bd binary failed or cascade) ===
     open_beads = get_open_beads(state)
-    bd_failed = open_beads == [] and state.bead_enforcement_blocks >= 3
 
-    if bd_failed:
-        # bd might be broken - degrade to nudge
+    # === AUTO-CLAIM: If open beads exist, claim the first one ===
+    if open_beads:
+        import subprocess
+        from pathlib import Path
+
+        bd_path = Path.home() / ".local" / "bin" / "bd"
+        bead_id = open_beads[0].get("id", "")
+        bead_title = open_beads[0].get("title", "untitled")[:40]
+
+        if bd_path.exists() and bead_id:
+            try:
+                result = subprocess.run(
+                    [str(bd_path), "update", bead_id, "--status=in_progress"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    return HookResult.approve(
+                        f"📋 **Auto-claimed bead**: `{bead_id[:12]}` - {bead_title}"
+                    )
+            except Exception:
+                pass
+
+    # === AUTO-CREATE: No open beads, create one ===
+    # Check for cascade/degraded mode
+    if state.bead_enforcement_blocks >= 3:
         return HookResult.approve(
-            "⚠️ **BEAD TRACKING**: Consider `bd create` for tracking. "
-            "(Degraded mode - bd may be unavailable)"
+            "⚠️ **BEAD TRACKING**: Auto-management degraded (bd may be unavailable)"
         )
 
-    # === SOFT ENFORCEMENT (nudge only) ===
-    if is_grace_period or is_trivial or is_small_edit:
+    success, message = _auto_create_and_claim_bead(file_path, state)
+
+    if success:
+        state.bead_enforcement_blocks = 0
+        return HookResult.approve(message)
+    else:
+        state.bead_enforcement_blocks += 1
+        # Don't block - degrade gracefully
         return HookResult.approve(
-            "💡 **BEAD RECOMMENDED**: No in_progress bead. Consider:\n"
-            '1. `bd create --title="..." --type=task`\n'
-            "2. `bd update <id-from-output> --status=in_progress`"
+            f"⚠️ **BEAD AUTO-CREATE FAILED**: {message}. Continuing without tracking."
         )
-
-    # === HARD BLOCK ===
-    state.bead_enforcement_blocks = state.bead_enforcement_blocks + 1
-
-    return HookResult.deny(
-        '🚫 **BEAD REQUIRED**: Run `bd create --title="..."` then `bd update <id> --status=in_progress` (separate calls). SUDO to bypass.'
-    )
 
 
 # =============================================================================

@@ -20,6 +20,36 @@ from pathlib import Path
 from session_state import load_state
 from synapse_core import get_session_blocks, clear_session_blocks
 from _patterns import STUB_BYTE_PATTERNS, CODE_EXTENSIONS
+from _logging import log_debug
+
+
+def release_agent_beads(state) -> list[str]:
+    """Release any beads claimed by this agent session.
+
+    Returns list of released bead IDs.
+    """
+    released = []
+    try:
+        from agent_registry import get_active_assignments, release_bead
+
+        # Get assignments for this session
+        session_id = getattr(state, "session_id", None)
+        if not session_id:
+            return released
+
+        active = get_active_assignments()
+        for assignment in active:
+            if assignment.get("session_id") == session_id:
+                bead_id = assignment.get("bead_id")
+                if bead_id and release_bead(bead_id, session_id):
+                    released.append(bead_id)
+
+    except ImportError:
+        log_debug("subagent_stop", "agent_registry not available")
+    except Exception as e:
+        log_debug("subagent_stop", f"bead release failed: {e}")
+
+    return released
 
 
 def check_stubs_in_created_files(state) -> list[str]:
@@ -51,6 +81,11 @@ def main():
     state = load_state()
     messages = []
     must_reflect = False
+
+    # Release any beads claimed by this agent session
+    released_beads = release_agent_beads(state)
+    if released_beads:
+        messages.append(f"📋 Released beads: {', '.join(released_beads[:3])}")
 
     # Check for session blocks (subagent may have triggered some)
     blocks = get_session_blocks()

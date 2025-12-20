@@ -102,7 +102,15 @@ def get_independent_beads(state: "SessionState") -> list:
 
 
 def generate_parallel_task_calls(beads: list) -> str:
-    """Generate copy-pasteable parallel Task invocation structure."""
+    """Generate copy-pasteable parallel Task invocation structure.
+
+    Includes lifecycle instructions for proper bead tracking:
+    1. Claim bead at start (bd update --status=in_progress)
+    2. Complete the work
+    3. Close bead when done (bd close)
+
+    The subagent_stop hook will auto-release agent assignments on completion.
+    """
     if not beads:
         return ""
 
@@ -114,17 +122,19 @@ def generate_parallel_task_calls(beads: list) -> str:
         title = b.get("title", "untitled")[:50]
         bead_type = b.get("type", "task")
 
+        # Build comprehensive prompt with lifecycle
+        prompt_parts = [
+            f"Work on bead `{bead_id}`: {title}.",
+            f"FIRST: `bd update {bead_id} --status=in_progress` to claim.",
+            "THEN: Complete the task fully.",
+            f"FINALLY: `bd close {bead_id}` when done.",
+        ]
+
         lines.append(f"# Task {i}: {title}")
         lines.append("Task(")
         lines.append('    subagent_type="general-purpose",')
         lines.append(f'    description="Work on {bead_type}: {title[:30]}",')
-        lines.append(f'    prompt="Work on bead `{bead_id}`: {title}. ')
-        lines.append(
-            f"            First run `bd update {bead_id} --status=in_progress`, "
-        )
-        lines.append(
-            f'            then complete the work, then `bd close {bead_id}`.",'
-        )
+        lines.append(f'    prompt="{" ".join(prompt_parts)}",')
         lines.append(")")
         if i < len(beads):
             lines.append("")
