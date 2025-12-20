@@ -175,13 +175,11 @@ class QuestionAvoidanceReducer(ConfidenceReducer):
 
 @dataclass
 class InlineComplexReasoningReducer(ConfidenceReducer):
-    """Triggers when doing complex reasoning inline without PAL delegation.
+    """DISABLED: Penalizes normal communication patterns.
 
-    Long reasoning passages (500+ chars) in Claude's output consume precious
-    context window. This reasoning could be offloaded to PAL tools instead.
-
-    Exception: If PAL was used this turn, don't penalize - Claude may be
-    synthesizing PAL's response.
+    Words like "considering", "analyzing", "trade-offs", "options" are GOOD
+    communication. Penalizing Claude for explaining reasoning clearly is
+    backwards. Clear explanations to users shouldn't trigger penalties.
     """
 
     name: str = "inline_complex_reasoning"
@@ -190,43 +188,11 @@ class InlineComplexReasoningReducer(ConfidenceReducer):
     remedy: str = "use mcp__pal__thinkdeep or mcp__pal__chat to offload reasoning"
     cooldown_turns: int = 3
 
-    # Minimum chars to consider "complex reasoning"
-    threshold_chars: int = 500
-
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
-            return False
-
-        # Skip if PAL was used this turn (Claude synthesizing response)
-        if context.get("pal_used_this_turn", False):
-            return False
-
-        # Check assistant output length
-        assistant_output = context.get("assistant_output", "")
-        if len(assistant_output) < self.threshold_chars:
-            return False
-
-        # Check for reasoning indicators in output
-        reasoning_patterns = [
-            r"\blet me think\b",
-            r"\bconsidering\b",
-            r"\banalyzing\b",
-            r"\bevaluating\b",
-            r"\bweighing\b",
-            r"\btrade-?offs?\b",
-            r"\bpros? and cons?\b",
-            r"\boption[s]?\s*(?:1|2|a|b|:)",
-            r"\bapproach\s*(?:1|2|a|b|:)",
-        ]
-
-        import re
-
-        output_lower = assistant_output.lower()
-        has_reasoning = any(re.search(p, output_lower) for p in reasoning_patterns)
-
-        return has_reasoning
+        # DISABLED: Clear communication is good, not bad. See docstring.
+        return False
 
 
 @dataclass
