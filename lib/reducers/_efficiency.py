@@ -47,11 +47,45 @@ class SequentialWhenParallelReducer(ConfidenceReducer):
     remedy: str = "batch independent reads/operations"
     cooldown_turns: int = 3
 
+    # FIX: Keywords indicating exploratory/audit context where sequential reads are expected
+    EXPLORATORY_KEYWORDS = [
+        "audit",
+        "explore",
+        "understand",
+        "review",
+        "investigate",
+        "analyze",
+        "research",
+        "check",
+        "assess",
+        "examine",
+        "inspect",
+        "find",
+        "search",
+        "look",
+        "learn",
+        "study",
+        "read",
+    ]
+
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
         if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
+
+        # FIX: Exempt exploratory contexts where sequential reads are expected
+        # 1. No files edited yet = pure investigation phase
+        files_edited = getattr(state, "files_edited", [])
+        if not files_edited:
+            return False
+
+        # 2. Original goal contains exploratory keywords
+        original_goal = getattr(state, "original_goal", "") or ""
+        goal_lower = original_goal.lower()
+        if any(kw in goal_lower for kw in self.EXPLORATORY_KEYWORDS):
+            return False
+
         # Track consecutive single reads/searches (guard for mock states)
         return getattr(state, "consecutive_single_reads", 0) >= 3
 

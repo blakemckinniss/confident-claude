@@ -289,6 +289,13 @@ def tick_tool_debt(
         return 0  # Already ticked this turn
     state._tool_debt_last_tick = state.turn_count
 
+    # FIX: Skip penalty if ANY MCP tool was used this turn
+    # Using external tools is "good behavior" even if not in tracked families
+    # This prevents FP when using mcp__filesystem, mcp__crawl4ai, etc.
+    tool_name = context.get("tool_name", "")
+    if tool_name.startswith("mcp__"):
+        return 0  # Active MCP usage = no penalty
+
     debt = get_tool_debt(state)
     total_penalty = 0
 

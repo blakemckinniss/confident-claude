@@ -29,9 +29,34 @@ def set_goal(state: "SessionState", prompt: str):
     state.goal_set_turn = state.turn_count
 
     stop_words = {
-        "the", "a", "an", "is", "are", "to", "for", "in", "on", "with",
-        "and", "or", "but", "can", "you", "i", "me", "my", "this", "that",
-        "it", "be", "do", "have", "will", "would", "could", "should",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "to",
+        "for",
+        "in",
+        "on",
+        "with",
+        "and",
+        "or",
+        "but",
+        "can",
+        "you",
+        "i",
+        "me",
+        "my",
+        "this",
+        "that",
+        "it",
+        "be",
+        "do",
+        "have",
+        "will",
+        "would",
+        "could",
+        "should",
     }
     words = re.findall(r"\b[a-z]{3,}\b", prompt_lower)
     state.goal_keywords = [w for w in words if w not in stop_words][:10]
@@ -49,7 +74,10 @@ def check_goal_drift(state: "SessionState", current_activity: str) -> tuple[bool
     matches = sum(1 for kw in state.goal_keywords if kw in activity_lower)
     overlap_ratio = matches / len(state.goal_keywords) if state.goal_keywords else 0
 
-    if overlap_ratio < 0.2:
+    # FIX: Lowered threshold from 20% to 10%
+    # 20% was too strict - related subtasks often share <20% keywords
+    # but are still aligned with the original goal (e.g., audit → fix specific issue)
+    if overlap_ratio < 0.1:
         return (
             True,
             f'📍 GOAL ANCHOR: "{state.original_goal[:80]}..."\n🔀 CURRENT: {current_activity[:60]}\n⚠️ Low overlap ({overlap_ratio:.0%}) - verify alignment',

@@ -779,6 +779,26 @@ def _get_missing_evidence(state: SessionState) -> list[str]:
     return missing
 
 
+# Research/audit task patterns - these don't need build evidence
+RESEARCH_TASK_PATTERNS = [
+    r"\b(audit|analyze|review|investigate|research|explore|understand)\b",
+    r"\b(what|how|why|where|explain|describe|list|show)\b.*\?",
+    r"\b(check|verify|inspect|examine|assess|evaluate)\b",
+    r"\bfind\s+(all|the|any)\b",
+]
+
+
+def _is_research_task(goal: str) -> bool:
+    """Detect if task is research/analysis (no build artifact expected)."""
+    if not goal:
+        return False
+    goal_lower = goal.lower()
+    for pattern in RESEARCH_TASK_PATTERNS:
+        if re.search(pattern, goal_lower):
+            return True
+    return False
+
+
 @register_hook("ralph_evidence", priority=35)
 def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
     """
@@ -788,9 +808,18 @@ def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
     OR explicit blocker/deferral statement detected.
 
     Philosophy: Tasks should complete fully, not be abandoned mid-work.
+
+    FIX (2025-12-20): Skip build evidence requirement for research/audit tasks.
     """
     # Skip if ralph mode not active
     if not state.ralph_mode:
+        return StopHookResult.ok()
+
+    # Skip build evidence for research/audit tasks (FP fix)
+    contract = state.task_contract
+    goal = contract.get("goal", "") if contract else ""
+    if _is_research_task(goal) or _is_research_task(state.original_goal):
+        # Research tasks don't produce build artifacts - allow exit
         return StopHookResult.ok()
 
     # Check completion confidence threshold
@@ -843,7 +872,7 @@ def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
 **Goal:** {goal}
 
 **Missing Evidence:**
-{chr(10).join(f'  • {m}' for m in missing[:3])}
+{chr(10).join(f"  • {m}" for m in missing[:3])}
 
 **To Complete:**
   • Run tests/build to accumulate evidence
@@ -1696,7 +1725,9 @@ def auto_commit_session_end(data: dict, state: SessionState) -> StopHookResult:
         return StopHookResult.ok()
 
     # Format results
-    successes = [r for r in results if r.success and "no changes" not in r.message.lower()]
+    successes = [
+        r for r in results if r.success and "no changes" not in r.message.lower()
+    ]
     failures = [r for r in results if not r.success]
 
     if not successes and not failures:
@@ -1708,6 +1739,7 @@ def auto_commit_session_end(data: dict, state: SessionState) -> StopHookResult:
         lines.append("**Session commits:**")
         for r in successes:
             from pathlib import Path
+
             repo_name = Path(r.repo_root).name
             lines.append(f"  `{repo_name}`: {r.message}")
 
@@ -1715,6 +1747,7 @@ def auto_commit_session_end(data: dict, state: SessionState) -> StopHookResult:
         lines.append("**Commit failed:**")
         for r in failures:
             from pathlib import Path
+
             repo_name = Path(r.repo_root).name
             lines.append(f"  `{repo_name}`: {r.message}")
 

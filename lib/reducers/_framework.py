@@ -120,6 +120,9 @@ class GrepOverSerenaReducer(ConfidenceReducer):
     """Triggers when using Grep on code when serena is active.
 
     Serena's search_for_pattern and find_symbol are more semantic.
+
+    EXEMPT: Single-file searches - Grep on a known specific file is fine.
+    Only penalize broad directory searches where Serena would be better.
     """
 
     name: str = "grep_over_serena"
@@ -143,6 +146,23 @@ class GrepOverSerenaReducer(ConfidenceReducer):
 
         # Check if searching in code-heavy areas
         path = context.get("grep_path", "")
+
+        # FIX: Exempt single-file searches - Grep on a specific file is fine
+        # Only penalize broad directory searches where Serena adds value
+        file_extensions = (
+            ".py",
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".rs",
+            ".go",
+            ".java",
+            ".md",
+        )
+        if path.endswith(file_extensions):
+            return False  # Searching specific file, Grep is appropriate
+
         code_indicators = ("/src/", "/lib/", ".py", ".ts", ".js", "/hooks/", "/ops/")
         return any(ind in path for ind in code_indicators)
 
