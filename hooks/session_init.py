@@ -69,13 +69,28 @@ try:
 except ImportError:
     DEPENDENCY_CHECK_AVAILABLE = False
 
-# Import memory integration for session context (v3.13)
+# Import memory integration for session context (v3.13, upgraded v3.14)
 try:
     from _hooks_memory import get_session_context_suggestion
 
     MEMORY_INTEGRATION_AVAILABLE = True
 except ImportError:
     MEMORY_INTEGRATION_AVAILABLE = False
+
+# Import auto-injection for claude-mem (v3.14)
+try:
+    from _integration import get_session_memory_context
+
+    MEMORY_AUTO_INJECT = True
+except ImportError:
+    MEMORY_AUTO_INJECT = False
+
+# Import schema cache for code-mode (v3.15)
+try:
+    from _codemode_interfaces import load_cached_schemas
+    SCHEMA_CACHE_AVAILABLE = True
+except ImportError:
+    SCHEMA_CACHE_AVAILABLE = False
 
 # Scope's punch list file
 PUNCH_LIST_FILE = MEMORY_DIR / "punch_list.json"
@@ -207,6 +222,38 @@ def collect_health_result(proc) -> str | None:
 # =============================================================================
 # MEMORY PRE-WARMING
 # =============================================================================
+
+
+def ensure_schema_cache():
+    """Ensure code-mode schema cache is populated.
+
+    Auto-populates from manifest if cache is expired or empty.
+    This enables code-mode multi-tool orchestration without manual setup.
+    """
+    if not SCHEMA_CACHE_AVAILABLE:
+        return
+
+    try:
+        # Check if cache is valid
+        schemas = load_cached_schemas()
+        if schemas:
+            return  # Cache is valid
+
+        # Cache is expired/empty - populate from manifest
+        # Import here to avoid circular imports and only when needed
+        import subprocess
+        subprocess.run(
+            [
+                str(Path.home() / ".claude" / "hooks" / "py"),
+                str(Path.home() / ".claude" / "ops" / "schema_cache.py"),
+                "--populate",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except Exception as e:
+        log_debug("session_init", f"schema cache population failed: {e}")
 
 
 def prewarm_memory_cache():
@@ -701,11 +748,21 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
 
     parts.extend(_build_lessons_context(state, project_context))
 
-    # Add memory context suggestion for fresh sessions without handoff (v3.13)
-    if MEMORY_INTEGRATION_AVAILABLE and not handoff:
-        project_name = None
-        if project_context and project_context.project_type != "ephemeral":
-            project_name = project_context.project_name
+    # Add memory context for fresh sessions (v3.14 - auto-inject, not just suggest)
+    project_name = None
+    if project_context and project_context.project_type != "ephemeral":
+        project_name = project_context.project_name
+
+    # Try auto-injection first (v3.14) - fetches actual observations
+    if MEMORY_AUTO_INJECT:
+        memory_context = get_session_memory_context(project_name)
+        if memory_context:
+            parts.append(memory_context)
+        elif MEMORY_INTEGRATION_AVAILABLE and not handoff:
+            # Fall back to suggestion if no observations but API is available
+            parts.append(get_session_context_suggestion(project_name))
+    elif MEMORY_INTEGRATION_AVAILABLE and not handoff:
+        # Legacy: just suggest if auto-inject not available
         parts.append(get_session_context_suggestion(project_name))
 
     return "\n".join(parts) if parts else ""
@@ -835,6 +892,9 @@ def initialize_session(project_context=None) -> dict:
 
     # Save updated state
     save_state(state)
+
+    # Ensure code-mode schema cache is populated (v3.15)
+    ensure_schema_cache()
 
     # Pre-warm memory cache (synapse map, lessons index)
     prewarm_memory_cache()
@@ -973,51 +1033,88 @@ def main():
     elif health_warning:
         output["message"] = f"🖥️ **SYSTEM**: {health_warning}"
 
-    # === SERENA AUTO-ACTIVATION + MEMORY STATUS (v3.12) ===
-    # If .serena/ exists in cwd, inject activation + memory staleness info
+    # === SERENA AUTO-ACTIVATION + MEMORY SURFACING (v3.13) ===
+    # If .serena/ exists in cwd, inject activation + surface key memories
     serena_dir = Path.cwd() / ".serena"
     if serena_dir.is_dir():
-        # Check memory staleness
-        memory_status = ""
         memories_dir = serena_dir / "memories"
-        metadata_file = serena_dir / "memory_metadata.json"
+        memory_insights = []
+        stale_count = 0
+
         if memories_dir.is_dir():
             try:
                 import json as _json
                 from datetime import datetime
 
-                memories = list(memories_dir.glob("*.md"))
-                stale_count = 0
+                # Priority memories to surface at session start (most useful for context)
+                PRIORITY_MEMORIES = [
+                    "project_overview.md",
+                    "codebase_structure.md",
+                    "style_conventions.md",
+                ]
 
-                # Quick staleness check: files older than 7 days without validation
+                # Surface key insights from priority memories
+                for mem_name in PRIORITY_MEMORIES:
+                    mem_file = memories_dir / mem_name
+                    if mem_file.exists():
+                        try:
+                            content = mem_file.read_text()
+                            # Extract first meaningful section (skip header)
+                            lines = content.strip().split("\n")
+                            insight_lines = []
+                            in_content = False
+                            for line in lines[:15]:  # Limit to first 15 lines
+                                if line.startswith("## ") or line.startswith("- "):
+                                    in_content = True
+                                if in_content and line.strip():
+                                    insight_lines.append(line)
+                                if len(insight_lines) >= 3:
+                                    break
+                            if insight_lines:
+                                memory_insights.append(
+                                    f"📎 **{mem_name.replace('.md', '')}**: {insight_lines[0][:80]}"
+                                )
+                        except Exception:
+                            pass
+
+                # Quick staleness check
+                memories = list(memories_dir.glob("*.md"))
+                metadata_file = serena_dir / "memory_metadata.json"
                 metadata = {}
                 if metadata_file.exists():
                     metadata = _json.loads(metadata_file.read_text())
 
                 now = datetime.now()
                 for mem in memories:
+                    if mem.name.startswith("session_"):
+                        continue  # Skip session memories for staleness check
                     meta = metadata.get(mem.name, {})
                     mtime = datetime.fromtimestamp(mem.stat().st_mtime)
                     age_days = (now - mtime).days
 
-                    # Stale if >7 days old and not validated recently
                     last_validated = meta.get("last_validated")
-                    if age_days > 7 and not last_validated:
+                    if age_days > 14 and not last_validated:
                         stale_count += 1
                     elif last_validated:
                         validated_date = datetime.fromisoformat(last_validated)
-                        if (now - validated_date).days > 7:
+                        if (now - validated_date).days > 14:
                             stale_count += 1
-
-                if stale_count > 0:
-                    memory_status = f"\n⚠️ **{stale_count} stale memories** — run `/serena-mem status` for details"
             except Exception:
-                pass  # Silent fail on staleness check
+                pass  # Silent fail on memory processing
+
+        # Build Serena instruction with memory insights
+        memory_status = ""
+        if stale_count > 0:
+            memory_status = f"\n⚠️ **{stale_count} stale memories** — run `/serena-mem status` for details"
+
+        memory_context = ""
+        if memory_insights:
+            memory_context = "\n" + "\n".join(memory_insights[:3])
 
         serena_instruction = (
             "\n\n🔮 **SERENA PROJECT DETECTED**\n"
             "MANDATORY: Call `mcp__serena__activate_project` with current directory "
-            f"NOW before any other action.{memory_status}"
+            f"NOW before any other action.{memory_status}{memory_context}"
         )
         if output.get("message"):
             output["message"] += serena_instruction
