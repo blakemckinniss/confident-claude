@@ -43,7 +43,7 @@ The confidence system is a **mechanical behavioral regulation system** that prev
 
 **Default starting confidence**: 75 (WORKING tier)
 
-## Reducer Categories (59 total)
+## Reducer Categories (72 total)
 
 | Category | Count | Examples |
 |----------|-------|----------|
@@ -61,7 +61,7 @@ The confidence system is a **mechanical behavioral regulation system** that prev
 
 See `confidence_reducers` memory for full list.
 
-## Increaser Categories (51 total)
+## Increaser Categories (59 total)
 
 | Category | Count | Examples |
 |----------|-------|----------|

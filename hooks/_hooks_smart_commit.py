@@ -1,9 +1,20 @@
-"""Smart auto-commit hooks.
+"""Smart auto-commit hooks v2.
 
-Triggers auto-commit at natural completion points:
-- bd close: Commits with bead title as message
-- Session end: Suggests commit (via stop_runner)
-- Periodic: Suggests after significant work
+Fully automatic commits at natural break points. No suggestions, no prompts.
+Either it auto-commits or it does nothing.
+
+SINGLE HOOK DESIGN:
+- One unified hook handles ALL commit triggers
+- Clear feedback after commit (so Claude knows state)
+- Checks git status as source of truth (not internal tracking)
+- No competing hooks, no confusion
+
+Triggers:
+- bd close: Auto-commit with bead title as message
+- test pass: Auto-commit after successful pytest/jest/cargo test
+- build success: Auto-commit after successful npm build/cargo build
+
+Session end commits are handled by stop_runner.py, not here.
 
 Priority 95 = runs late, after state tracking is done.
 """
@@ -13,10 +24,11 @@ from __future__ import annotations
 import os
 import re
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 # Add lib to path for imports
-sys.path.insert(0, str(__file__).replace("/hooks/_hooks_smart_commit.py", "/lib"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 from _hook_registry import register_hook
 from _hook_result import HookResult
@@ -31,8 +43,38 @@ if TYPE_CHECKING:
 # Environment variable to disable smart commit entirely
 DISABLE_ENV = "CLAUDE_SMART_COMMIT_DISABLE"
 
-# Minimum turns between auto-commits
-AUTO_COMMIT_COOLDOWN = 3
+# Test command patterns
+TEST_PATTERNS = [
+    r"\bpytest\b",
+    r"\bnpm\s+test\b",
+    r"\bjest\b",
+    r"\bcargo\s+test\b",
+    r"\bgo\s+test\b",
+    r"\brspec\b",
+    r"\bphpunit\b",
+]
+
+# Build command patterns
+BUILD_PATTERNS = [
+    r"\bnpm\s+run\s+build\b",
+    r"\bnpm\s+build\b",
+    r"\bcargo\s+build\b",
+    r"\bgo\s+build\b",
+    r"\btsc\b",
+    r"\bvite\s+build\b",
+    r"\bwebpack\b",
+]
+
+# Success indicators (command succeeded)
+SUCCESS_INDICATORS = [
+    r"passed",
+    r"succeeded",
+    r"success",
+    r"\bOK\b",
+    r"0 errors?",
+    r"✓",
+    r"all \d+ tests? passed",
+]
 
 
 def _is_enabled() -> bool:
@@ -40,33 +82,25 @@ def _is_enabled() -> bool:
     return os.environ.get(DISABLE_ENV, "0") != "1"
 
 
-def _get_cwd() -> str:
-    """Get current working directory."""
-    return os.getcwd()
-
-
 # =============================================================================
-# Lazy import to avoid circular deps
+# Lazy import smart commit module
 # =============================================================================
 
 _smart_commit = None
 
 
-def _get_smart_commit():
+def _get_sc():
     """Lazy import of smart commit module."""
     global _smart_commit
     if _smart_commit is None:
         try:
             from lib import _smart_commit as sc
-
             _smart_commit = sc
         except ImportError:
-            # Fallback: try direct import
             import importlib.util
-
             spec = importlib.util.spec_from_file_location(
                 "_smart_commit",
-                os.path.expanduser("~/.claude/lib/_smart_commit.py"),
+                Path(__file__).parent.parent / "lib" / "_smart_commit.py",
             )
             if spec and spec.loader:
                 _smart_commit = importlib.util.module_from_spec(spec)
@@ -75,139 +109,176 @@ def _get_smart_commit():
 
 
 # =============================================================================
-# bd close detection and auto-commit
+# Trigger Detection
 # =============================================================================
 
 
-def _extract_bead_title_from_output(output: str) -> str:
-    """Extract bead title from bd close output."""
-    # bd close output format: Closed bead: <id> - <title>
-    # or just: Closed: <title>
-    match = re.search(r"[Cc]losed[^:]*:\s*(?:\S+\s*-\s*)?(.+?)(?:\n|$)", output)
+def _detect_trigger(command: str, stdout: str, stderr: str, exit_code: int) -> str | None:
+    """Detect what trigger (if any) this command represents.
+
+    Returns: "bead_close", "test_pass", "build_success", or None
+    """
+    cmd_lower = command.lower()
+
+    # bd close detection
+    if re.search(r"\bbd\s+close\b", cmd_lower):
+        if exit_code == 0:
+            return "bead_close"
+        return None
+
+    # Test pass detection
+    for pattern in TEST_PATTERNS:
+        if re.search(pattern, cmd_lower, re.IGNORECASE):
+            if exit_code == 0:
+                # Extra verification for test success
+                output = (stdout + stderr).lower()
+                if any(re.search(p, output, re.I) for p in SUCCESS_INDICATORS):
+                    return "test_pass"
+                # If exit code is 0, assume success even without indicators
+                return "test_pass"
+            return None
+
+    # Build success detection
+    for pattern in BUILD_PATTERNS:
+        if re.search(pattern, cmd_lower, re.IGNORECASE):
+            if exit_code == 0:
+                return "build_success"
+            return None
+
+    return None
+
+
+def _extract_bead_title(command: str, stdout: str) -> str | None:
+    """Extract bead title from bd close command/output."""
+    # Try to get from output first
+    # Format: "Closed bead: <id> - <title>" or "Closed: <title>"
+    match = re.search(r"[Cc]losed[^:]*:\s*(?:\S+\s*-\s*)?(.+?)(?:\n|$)", stdout)
     if match:
         return match.group(1).strip()
-    return ""
+
+    # Fallback: try to extract bead ID from command
+    id_match = re.search(r"bd\s+close\s+(\S+)", command)
+    if id_match:
+        return f"Complete: {id_match.group(1)}"
+
+    return "Complete bead"
 
 
-@register_hook("smart_commit_bead_close", "Bash", priority=95)
-def check_smart_commit_on_bead_close(
+# =============================================================================
+# Unified Commit Hook
+# =============================================================================
+
+
+@register_hook("smart_commit_auto", "Bash", priority=95)
+def auto_commit_on_trigger(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Auto-commit when a bead is closed.
+    """Unified auto-commit hook for all triggers.
 
-    Triggers on successful `bd close` command.
-    Uses bead title as commit message.
+    Handles:
+    - bd close: Commit with bead title
+    - test pass: Commit after successful test
+    - build success: Commit after successful build
+
+    This is the ONLY commit hook. All commit logic goes through here.
+    Clear, simple, no confusion.
     """
     if not _is_enabled():
         return HookResult.ok()
 
+    # Get command and response
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
-
-    # Check if this is a bd close command
-    if not re.search(r"\bbd\s+close\b", command, re.IGNORECASE):
+    if not command:
         return HookResult.ok()
 
-    # Check if command succeeded
     tool_response = data.get("tool_response", {})
     if isinstance(tool_response, dict):
         if tool_response.get("interrupted"):
             return HookResult.ok()
         stdout = tool_response.get("stdout", "")
         stderr = tool_response.get("stderr", "")
-        # If there's an error, don't commit
-        if stderr and "error" in stderr.lower():
-            return HookResult.ok()
+        exit_code = tool_response.get("exit_code", 0)
     else:
         stdout = str(tool_response) if tool_response else ""
+        stderr = ""
+        exit_code = 0
 
-    # Extract bead title from output
-    bead_title = _extract_bead_title_from_output(stdout)
-    if not bead_title:
-        # Fallback: try to extract from command args
-        title_match = re.search(r"bd\s+close\s+(\S+)", command)
-        if title_match:
-            bead_title = f"Complete: {title_match.group(1)}"
-        else:
-            bead_title = "Complete bead"
-
-    # Check cooldown
-    last_commit_turn = runner_state.get("last_auto_commit_turn", 0)
-    if state.turn_count - last_commit_turn < AUTO_COMMIT_COOLDOWN:
+    # Detect trigger
+    trigger = _detect_trigger(command, stdout, stderr, exit_code)
+    if not trigger:
         return HookResult.ok()
 
-    # Try to get smart commit module
-    sc = _get_smart_commit()
+    # Get smart commit module
+    sc = _get_sc()
     if not sc:
         return HookResult.ok()
 
-    cwd = _get_cwd()
-
-    # Track the bead close
-    sc.track_bead_close(bead_title)
-
-    # Check if we should commit
-    decision = sc.should_commit(state, cwd, trigger="bead_close")
-
-    if not decision.should_commit:
+    # Get all repos to potentially commit
+    repos = sc.get_all_active_repos()
+    if not repos:
         return HookResult.ok()
 
-    if decision.auto:
-        # Auto-commit
-        success, result_msg = sc.do_commit(cwd, decision.message, state)
-        runner_state["last_auto_commit_turn"] = state.turn_count
+    # Get bead title if this is a bead close
+    bead_title = None
+    if trigger == "bead_close":
+        bead_title = _extract_bead_title(command, stdout)
+        sc.track_bead_close(bead_title, state.turn_count)
 
-        if success:
-            # Extract short hash from result
-            hash_match = re.search(r"Committed:\s*([a-f0-9]+)", result_msg)
-            short_hash = hash_match.group(1) if hash_match else ""
-            return HookResult.ok(
-                f"📦 **Auto-committed:** `{short_hash}` {bead_title[:50]}"
-            )
-        else:
-            return HookResult.ok(f"⚠️ Auto-commit failed: {result_msg[:100]}")
+    # Commit each repo that has changes
+    results = []
+    for repo_root in repos:
+        # Check if should commit (handles cooldown, no-changes, etc.)
+        should, reason = sc.should_auto_commit(repo_root, trigger, state.turn_count)
+        if not should:
+            continue
 
-    # Suggest commit (not auto)
-    return HookResult.ok(
-        f"💡 **Commit suggested:** {decision.reason}\n"
-        f"   Run `/commit` or `git add -A && git commit -m \"{decision.message[:50]}...\"`"
-    )
+        # Do the commit
+        result = sc.do_commit(repo_root, trigger, state.turn_count, bead_title)
+        results.append(result)
 
-
-# =============================================================================
-# Track file changes for periodic suggestions
-# =============================================================================
-
-
-@register_hook("smart_commit_track_edit", "Edit|Write", priority=96)
-def check_smart_commit_track_edit(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """Track file edits for commit suggestions."""
-    if not _is_enabled():
+    # No commits happened
+    if not results:
         return HookResult.ok()
 
-    tool_input = data.get("tool_input", {})
-    file_path = tool_input.get("file_path", "")
+    # Format results for Claude to see
+    successes = [r for r in results if r.success and "no changes" not in r.message.lower()]
+    failures = [r for r in results if not r.success]
 
-    if file_path:
-        sc = _get_smart_commit()
-        if sc:
-            sc.track_file_change(file_path)
+    if not successes and not failures:
+        return HookResult.ok()
 
-    return HookResult.ok()
+    # Build clear feedback message
+    lines = []
+    if successes:
+        lines.append(f"**Auto-committed ({trigger}):**")
+        for r in successes:
+            repo_name = Path(r.repo_root).name
+            lines.append(f"  `{repo_name}`: {r.message}")
+
+    if failures:
+        lines.append("**Commit failed:**")
+        for r in failures:
+            repo_name = Path(r.repo_root).name
+            lines.append(f"  `{repo_name}`: {r.message}")
+
+    return HookResult.ok("\n".join(lines))
 
 
 # =============================================================================
-# Track commits to reset state
+# Track manual git commits (so we know state)
 # =============================================================================
 
 
-@register_hook("smart_commit_track_commit", "Bash", priority=96)
-def check_smart_commit_track_commit(
+@register_hook("smart_commit_track_manual", "Bash", priority=96)
+def track_manual_commits(
     data: dict, state: SessionState, runner_state: dict
 ) -> HookResult:
-    """Track git commits to reset smart commit state."""
+    """Track manual git commits so our state stays accurate.
+
+    This doesn't do any committing - just updates our tracking when
+    Claude or user runs git commit manually.
+    """
     if not _is_enabled():
         return HookResult.ok()
 
@@ -226,56 +297,18 @@ def check_smart_commit_track_commit(
     else:
         stdout = str(tool_response) if tool_response else ""
 
-    # Extract commit hash
+    # Extract commit hash to verify it actually committed
     hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]{7,})\]", stdout)
-    commit_hash = hash_match.group(1) if hash_match else ""
-
-    if commit_hash:
-        sc = _get_smart_commit()
-        if sc:
-            sc.track_commit(state.turn_count, commit_hash)
-            runner_state["last_auto_commit_turn"] = state.turn_count
-
-    return HookResult.ok()
-
-
-# =============================================================================
-# Periodic check for commit suggestions
-# =============================================================================
-
-
-@register_hook("smart_commit_periodic", None, priority=97)
-def check_smart_commit_periodic(
-    data: dict, state: SessionState, runner_state: dict
-) -> HookResult:
-    """Periodic check for commit suggestions.
-
-    Runs on all tools, but only fires suggestions occasionally.
-    """
-    if not _is_enabled():
+    if not hash_match:
         return HookResult.ok()
 
-    # Only check every 5 turns to avoid noise
-    if state.turn_count % 5 != 0:
-        return HookResult.ok()
-
-    # Check cooldown
-    last_suggestion_turn = runner_state.get("last_commit_suggestion_turn", 0)
-    if state.turn_count - last_suggestion_turn < 10:
-        return HookResult.ok()
-
-    sc = _get_smart_commit()
-    if not sc:
-        return HookResult.ok()
-
-    cwd = _get_cwd()
-    decision = sc.should_commit(state, cwd, trigger="periodic")
-
-    if decision.should_commit and not decision.auto:
-        runner_state["last_commit_suggestion_turn"] = state.turn_count
-        return HookResult.ok(
-            f"💡 **Commit suggested:** {decision.reason}\n"
-            f"   Run `/commit` to save your progress"
-        )
+    # Track the commit
+    sc = _get_sc()
+    if sc:
+        # Find which repo this was in
+        cwd = os.getcwd()
+        repo_root = sc.get_repo_root(cwd)
+        if repo_root:
+            sc.track_commit(repo_root, state.turn_count)
 
     return HookResult.ok()

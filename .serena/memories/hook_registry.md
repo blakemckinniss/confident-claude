@@ -12,7 +12,7 @@ Hooks are registered via decorator and stored in the `HOOKS` list. The runner ex
 | `post_tool_use_runner.py` | 1 | Confidence tracking (bulk logic inline) |
 | `user_prompt_submit_runner.py` | 1 | Context injection via _prompt_* modules |
 | `stop_runner.py` | 16 | Completion gate, cleanup |
-| **Total** | **65** | |
+| **Total** | **42 files** | (see runners for registered hook counts) |
 
 ## File Structure
 

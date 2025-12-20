@@ -31,6 +31,8 @@ from _cooldown import _resolve_state_path
 def _get_scratch_state_file() -> Path:
     """Get project-isolated scratch enforcer state file."""
     return _resolve_state_path("scratch_enforcer_state.json")
+
+
 REPETITION_WINDOW = get_magic_number("repetition_window_seconds", 300)
 
 REPETITIVE_PATTERNS = {
@@ -297,6 +299,8 @@ def check_velocity(data: dict, state: SessionState, runner_state: dict) -> HookR
 def _get_info_gain_state_file() -> Path:
     """Get project-isolated info gain state file."""
     return _resolve_state_path("info_gain_state.json")
+
+
 READS_BEFORE_WARN = get_magic_number("reads_before_warn", 5)
 READS_BEFORE_CRYSTALLIZE = get_magic_number("reads_before_crystallize", 8)
 

@@ -152,7 +152,7 @@ def run_test_suite(project_root: Path, quiet: bool = False, performance_threshol
         if not health.get("syntax_valid") or not health.get("imports_valid"):
             continue
 
-        hook_path = Path(metadata["path"])
+        hook_path = project_root / metadata["path"]
         event_type = metadata.get("event_type") or "UserPromptSubmit"
 
         exec_result = test_hook_execution(hook_path, event_type)

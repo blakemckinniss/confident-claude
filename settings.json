@@ -26,6 +26,9 @@
       "mcp__*"
     ]
   },
+  "enabledMcpjsonServers": [
+    "beads"
+  ],
   "hooks": {
     "PostToolUse": [
       {
@@ -132,7 +135,6 @@
     "type": "command",
     "command": "$HOME/.claude/hooks/py $HOME/.claude/hooks/statusline.py"
   },
-  "enabledMcpjsonServers": ["beads"],
   "enabledPlugins": {
     "claude-mem@thedotmack": true,
     "repomix-mcp@repomix": true,
@@ -140,6 +142,11 @@
     "repomix-explorer@repomix": true,
     "frontend-design@claude-code-plugins": true,
     "code-review@claude-code-plugins": true,
-    "commit-commands@claude-code-plugins": true
+    "commit-commands@claude-code-plugins": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "ralph-wiggum@claude-plugins-official": true
   }
 }

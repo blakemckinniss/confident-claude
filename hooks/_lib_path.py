@@ -4,6 +4,7 @@
 This module is imported for side effects only (modifies sys.path).
 No main guard needed - it's a library module, not a script.
 """
+
 import sys
 from pathlib import Path
 

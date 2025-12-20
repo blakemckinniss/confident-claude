@@ -5,10 +5,10 @@
       {
         "scope": "project",
         "projectPath": "/home/jinx",
-        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.2.3",
-        "version": "7.2.3",
+        "installPath": "/home/jinx/.claude/plugins/cache/thedotmack/claude-mem/7.3.2",
+        "version": "7.3.2",
         "installedAt": "2025-12-15T16:06:34.988Z",
-        "lastUpdated": "2025-12-15T18:59:36.879Z",
+        "lastUpdated": "2025-12-19T13:30:00.000Z",
         "gitCommitSha": "8b34bbc77fcf6db9dc9e851c324fe4d5f60f71a9",
         "isLocal": true
       }
@@ -79,6 +79,61 @@
         "installedAt": "2025-12-15T20:37:36.894Z",
         "lastUpdated": "2025-12-15T20:37:36.894Z",
         "gitCommitSha": "52d35ae74e822c7b60440263cd0cf8e056373a88",
+        "isLocal": true
+      }
+    ],
+    "pyright-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2025-12-19T23:13:13.960Z",
+        "lastUpdated": "2025-12-19T23:13:13.960Z",
+        "gitCommitSha": "b8b3db6da492a7703f0a01349276d66bf9606f8b",
+        "isLocal": true
+      }
+    ],
+    "typescript-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2025-12-20T05:19:24.056Z",
+        "lastUpdated": "2025-12-20T05:19:24.056Z",
+        "gitCommitSha": "4fb588d6911ab5024e044bd0709d03deaf437a73",
+        "isLocal": true
+      }
+    ],
+    "context7@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-plugins-official/context7/6d3752c000e2",
+        "version": "6d3752c000e2",
+        "installedAt": "2025-12-20T05:19:46.796Z",
+        "lastUpdated": "2025-12-20T05:21:18.428Z",
+        "gitCommitSha": "4fb588d6911ab5024e044bd0709d03deaf437a73",
+        "isLocal": true
+      }
+    ],
+    "frontend-design@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-plugins-official/frontend-design/6d3752c000e2",
+        "version": "6d3752c000e2",
+        "installedAt": "2025-12-20T05:21:18.025Z",
+        "lastUpdated": "2025-12-20T05:21:18.436Z",
+        "gitCommitSha": "4fb588d6911ab5024e044bd0709d03deaf437a73",
+        "isLocal": true
+      }
+    ],
+    "ralph-wiggum@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/jinx/.claude/plugins/cache/claude-plugins-official/ralph-wiggum/6d3752c000e2",
+        "version": "6d3752c000e2",
+        "installedAt": "2025-12-20T16:43:55.109Z",
+        "lastUpdated": "2025-12-20T16:44:25.692Z",
+        "gitCommitSha": "8951f0a648c18f67db78426f3948273ce42c4768",
         "isLocal": true
       }
     ]

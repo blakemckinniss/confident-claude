@@ -641,6 +641,33 @@ LESSONS_FILE = MEMORY_DIR / "__lessons.md"
 DECISIONS_FILE = MEMORY_DIR / "__decisions.md"
 PUNCH_LIST_FILE = MEMORY_DIR / "punch_list.json"
 
+# Import claude-mem auto-injection (v3.14)
+try:
+    from _integration import get_debug_memory_context, is_claudemem_available
+
+    CLAUDEMEM_AUTO_INJECT = True
+except ImportError:
+    CLAUDEMEM_AUTO_INJECT = False
+
+# Debug indicators that trigger claude-mem lookup
+DEBUG_INDICATORS = frozenset(
+    [
+        "fix",
+        "bug",
+        "error",
+        "broken",
+        "not working",
+        "doesn't work",
+        "failed",
+        "issue",
+        "problem",
+        "debug",
+        "wrong",
+        "crash",
+        "exception",
+    ]
+)
+
 
 def find_relevant_lessons(keywords: list[str], max_results: int = 3) -> list[str]:
     """Find lessons matching keywords (uses cached file read)."""
@@ -714,11 +741,25 @@ def _get_spark_associations(prompt: str) -> list[str]:
         return []
 
 
+def _is_debug_prompt(prompt: str) -> bool:
+    """Check if prompt indicates debugging/problem-solving."""
+    prompt_lower = prompt.lower()
+    return any(indicator in prompt_lower for indicator in DEBUG_INDICATORS)
+
+
 def _build_memory_parts(
-    spark_assocs: list, lessons: list, scope: dict | None
+    spark_assocs: list,
+    lessons: list,
+    scope: dict | None,
+    claudemem_context: str | None = None,
 ) -> list[str]:
     """Build memory injection output parts."""
     parts = []
+
+    # Claude-mem observations first (most relevant for debugging)
+    if claudemem_context:
+        parts.append(claudemem_context)
+
     if spark_assocs:
         lines = "\n".join(f"   * {a[:100]}" for a in spark_assocs[:3])
         parts.append(f"SUBCONSCIOUS RECALL:\n{lines}")
@@ -735,9 +776,13 @@ def _build_memory_parts(
 
 @register_hook("memory_injector", priority=40)
 def check_memory_injector(data: dict, state: SessionState) -> HookResult:
-    """Auto-surface relevant memories."""
+    """Auto-surface relevant memories including claude-mem observations."""
     prompt = data.get("prompt", "")
     if not prompt or len(prompt) < 10:
+        return HookResult.allow()
+
+    # Skip trivial prompts
+    if _TRIVIAL_PROMPT_PATTERN.match(prompt):
         return HookResult.allow()
 
     spark_assocs = _get_spark_associations(prompt)
@@ -745,7 +790,15 @@ def check_memory_injector(data: dict, state: SessionState) -> HookResult:
     lessons = find_relevant_lessons(keywords) if keywords else []
     scope = get_active_scope()
 
-    parts = _build_memory_parts(spark_assocs, lessons, scope)
+    # Auto-inject claude-mem observations for debug prompts (v3.14)
+    claudemem_context = None
+    if CLAUDEMEM_AUTO_INJECT and _is_debug_prompt(prompt):
+        try:
+            claudemem_context = get_debug_memory_context(keywords)
+        except Exception as e:
+            log_debug("memory_injector", f"claudemem fetch failed: {e}")
+
+    parts = _build_memory_parts(spark_assocs, lessons, scope, claudemem_context)
     return HookResult.allow("\n\n".join(parts)) if parts else HookResult.allow()
 
 

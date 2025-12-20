@@ -1,26 +1,32 @@
-"""Smart auto-commit system.
+"""Smart auto-commit system v2.
 
-Commits at natural completion points without spamming.
+Fully automatic commits at natural break points. No prompts, no suggestions.
 
-Triggers:
-- bd close: Natural completion point → auto-commit with bead title
-- Session ending: Suggest commit if uncommitted changes
-- Significant work: 5+ files edited AND tests pass → suggest
-- Time threshold: 15+ turns since commit → suggest
+Triggers (all auto-commit):
+- bd close: Commit with bead title as message
+- test_pass: Commit after successful test run
+- build_success: Commit after successful build
+- session_end: Commit ALL repos before stopping (hard requirement)
+
+Repo Handling:
+- Framework (.claude/) and project repos commit separately
+- Detects repo root by walking up from CWD
+- Generates appropriate commit messages per repo type
 
 Anti-triggers:
-- Recent commit (< 3 turns): Cooldown
-- Tests failing: Don't commit broken state
-- Only scratch/tmp files: Not real work
-- No file changes: Nothing to commit
+- Recent commit (< 2 turns): Cooldown to prevent spam
+- No changes: Nothing to commit
+- Only untracked scratch files: Not real work
 """
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -30,71 +36,30 @@ if TYPE_CHECKING:
 # Configuration
 # =============================================================================
 
-# Minimum turns between commits to avoid spam
-COMMIT_COOLDOWN_TURNS = 3
-
-# Minimum files edited to trigger suggestion (not auto-commit)
-MIN_FILES_FOR_SUGGESTION = 5
-
-# Maximum turns without commit before suggesting
-MAX_TURNS_WITHOUT_COMMIT = 15
+# Minimum turns between commits to same repo
+COMMIT_COOLDOWN_TURNS = 2
 
 # Paths that don't count as "real work"
 SCRATCH_PATTERNS = [
-    r"\.claude/tmp/",
-    r"\.claude/projects/",
     r"/tmp/",
     r"\.pyc$",
     r"__pycache__",
     r"\.git/",
+    r"node_modules/",
+    r"\.venv/",
+    r"\.cache/",
 ]
 
-# Paths that indicate test files
-TEST_PATTERNS = [
-    r"test[s]?/",
-    r"_test\.py$",
-    r"\.test\.[jt]sx?$",
-    r"\.spec\.[jt]sx?$",
+# Framework-specific scratch (don't commit these even in .claude/)
+FRAMEWORK_SCRATCH = [
+    r"\.claude/tmp/",
+    r"\.claude/projects/",  # Per-project state, not framework code
+    r"stats-cache\.json$",
+    r"thinking_index\.jsonl$",
 ]
 
-
 # =============================================================================
-# State tracking
-# =============================================================================
-
-
-@dataclass
-class CommitState:
-    """Tracks commit-related state within a session."""
-
-    last_commit_turn: int = 0
-    last_commit_time: float = 0.0
-    last_commit_hash: str = ""
-    files_since_commit: list = field(default_factory=list)
-    tests_passed_since_commit: bool = False
-    last_bead_closed: str = ""  # Title of last closed bead
-
-
-_commit_state = CommitState()
-
-
-def get_commit_state() -> CommitState:
-    """Get current commit state."""
-    return _commit_state
-
-
-def reset_commit_state() -> None:
-    """Reset commit state (e.g., after a commit)."""
-    global _commit_state
-    _commit_state = CommitState(
-        last_commit_turn=_commit_state.last_commit_turn,
-        last_commit_time=_commit_state.last_commit_time,
-        last_commit_hash=_commit_state.last_commit_hash,
-    )
-
-
-# =============================================================================
-# Git utilities
+# Repo Detection
 # =============================================================================
 
 
@@ -108,22 +73,58 @@ def _run_git(args: list[str], cwd: str) -> tuple[int, str, str]:
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout, result.stderr
+        return result.returncode, result.stdout.strip(), result.stderr.strip()
     except Exception as e:
         return 1, "", str(e)
 
 
-def is_git_repo(cwd: str) -> bool:
-    """Check if directory is in a git repo."""
-    code, _, _ = _run_git(["rev-parse", "--git-dir"], cwd)
-    return code == 0
+def get_repo_root(path: str) -> str | None:
+    """Find git repo root by walking up from path."""
+    code, stdout, _ = _run_git(["rev-parse", "--show-toplevel"], path)
+    if code == 0 and stdout:
+        return stdout
+    return None
 
 
-def get_uncommitted_changes(cwd: str) -> dict:
-    """Get summary of uncommitted changes."""
-    changes = {"modified": [], "added": [], "deleted": [], "renamed": []}
+def is_framework_repo(repo_root: str) -> bool:
+    """Check if repo is the .claude framework repo."""
+    return repo_root.rstrip("/").endswith(".claude")
 
-    code, stdout, _ = _run_git(["status", "--porcelain"], cwd)
+
+def get_all_active_repos() -> list[str]:
+    """Get all repos that might have uncommitted changes.
+
+    Checks:
+    1. Current working directory's repo
+    2. ~/.claude (framework repo)
+    """
+    repos = set()
+
+    # Current directory's repo
+    cwd_repo = get_repo_root(os.getcwd())
+    if cwd_repo:
+        repos.add(cwd_repo)
+
+    # Framework repo
+    framework_path = os.path.expanduser("~/.claude")
+    if os.path.isdir(framework_path):
+        framework_repo = get_repo_root(framework_path)
+        if framework_repo:
+            repos.add(framework_repo)
+
+    return list(repos)
+
+
+# =============================================================================
+# Change Detection
+# =============================================================================
+
+
+def get_uncommitted_changes(repo_root: str) -> dict:
+    """Get summary of uncommitted changes in repo."""
+    changes = {"modified": [], "added": [], "deleted": [], "renamed": [], "untracked": []}
+
+    code, stdout, _ = _run_git(["status", "--porcelain"], repo_root)
     if code != 0 or not stdout:
         return changes
 
@@ -133,7 +134,9 @@ def get_uncommitted_changes(cwd: str) -> dict:
         status = line[:2]
         filepath = line[3:].split(" -> ")[-1]
 
-        if status in ("??", "A ", " A", "AM"):
+        if status == "??":
+            changes["untracked"].append(filepath)
+        elif status in ("A ", " A", "AM"):
             changes["added"].append(filepath)
         elif status in (" D", "D ", "AD"):
             changes["deleted"].append(filepath)
@@ -145,123 +148,142 @@ def get_uncommitted_changes(cwd: str) -> dict:
     return changes
 
 
-def get_last_commit_info(cwd: str) -> tuple[str, str, float]:
-    """Get hash, message, and timestamp of last commit."""
-    code, stdout, _ = _run_git(
-        ["log", "-1", "--format=%H|%s|%ct"],
-        cwd,
-    )
-    if code != 0 or not stdout:
-        return "", "", 0.0
-
-    parts = stdout.strip().split("|")
-    if len(parts) >= 3:
-        return parts[0], parts[1], float(parts[2])
-    return "", "", 0.0
-
-
-def has_tests_passing(cwd: str) -> bool | None:
-    """Check if tests are currently passing.
-
-    Returns:
-        True: Tests pass
-        False: Tests fail
-        None: Can't determine (no test command found or not run)
-    """
-    # Check for common test result markers in recent output
-    # This is heuristic - we track test_pass/test_fail signals in session state
-    return None  # Defer to session state
-
-
-# =============================================================================
-# Heuristics
-# =============================================================================
-
-
-def _is_scratch_file(filepath: str) -> bool:
-    """Check if file is a scratch/temp file that doesn't need committing."""
+def _is_scratch_file(filepath: str, repo_root: str) -> bool:
+    """Check if file is scratch that shouldn't be committed."""
+    # General scratch patterns
     for pattern in SCRATCH_PATTERNS:
         if re.search(pattern, filepath):
             return True
+
+    # Framework-specific scratch
+    if is_framework_repo(repo_root):
+        for pattern in FRAMEWORK_SCRATCH:
+            if re.search(pattern, filepath):
+                return True
+
     return False
 
 
-def _filter_real_changes(changes: dict) -> dict:
+def filter_real_changes(changes: dict, repo_root: str) -> dict:
     """Filter out scratch files from changes."""
     return {
-        key: [f for f in files if not _is_scratch_file(f)]
+        key: [f for f in files if not _is_scratch_file(f, repo_root)]
         for key, files in changes.items()
     }
 
 
-def _count_real_changes(changes: dict) -> int:
+def count_real_changes(changes: dict, repo_root: str) -> int:
     """Count number of real (non-scratch) changed files."""
-    real = _filter_real_changes(changes)
+    real = filter_real_changes(changes, repo_root)
     return sum(len(files) for files in real.values())
 
 
-def _categorize_changes(files: list[str]) -> dict[str, list[str]]:
-    """Categorize files by type for commit message generation."""
-    categories = {
-        "hooks": [],
-        "lib": [],
-        "ops": [],
-        "commands": [],
-        "rules": [],
-        "config": [],
-        "tests": [],
-        "other": [],
-    }
+def has_uncommitted_changes(repo_root: str) -> bool:
+    """Quick check if repo has any uncommitted changes."""
+    changes = get_uncommitted_changes(repo_root)
+    return count_real_changes(changes, repo_root) > 0
 
-    for f in files:
-        if "/hooks/" in f or f.startswith("hooks/"):
-            categories["hooks"].append(f)
-        elif "/lib/" in f or f.startswith("lib/"):
-            categories["lib"].append(f)
-        elif "/ops/" in f or f.startswith("ops/"):
-            categories["ops"].append(f)
-        elif "/commands/" in f or f.startswith("commands/"):
-            categories["commands"].append(f)
-        elif "/rules/" in f or f.startswith("rules/"):
-            categories["rules"].append(f)
-        elif any(re.search(p, f) for p in TEST_PATTERNS):
-            categories["tests"].append(f)
-        elif "config" in f.lower() or f.endswith(".json") or f.endswith(".yaml"):
-            categories["config"].append(f)
-        else:
-            categories["other"].append(f)
+
+# =============================================================================
+# Commit Message Generation
+# =============================================================================
+
+
+def _categorize_files(files: list[str], repo_root: str) -> dict[str, list[str]]:
+    """Categorize files by type for commit message generation."""
+    is_framework = is_framework_repo(repo_root)
+
+    if is_framework:
+        categories = {
+            "hooks": [],
+            "lib": [],
+            "ops": [],
+            "commands": [],
+            "rules": [],
+            "config": [],
+            "memory": [],
+            "serena": [],
+            "other": [],
+        }
+
+        for f in files:
+            if "/hooks/" in f or f.startswith("hooks/"):
+                categories["hooks"].append(f)
+            elif "/lib/" in f or f.startswith("lib/"):
+                categories["lib"].append(f)
+            elif "/ops/" in f or f.startswith("ops/"):
+                categories["ops"].append(f)
+            elif "/commands/" in f or f.startswith("commands/"):
+                categories["commands"].append(f)
+            elif "/rules/" in f or f.startswith("rules/"):
+                categories["rules"].append(f)
+            elif ".serena/" in f:
+                categories["serena"].append(f)
+            elif "/memory/" in f or f.startswith("memory/"):
+                categories["memory"].append(f)
+            elif "config" in f.lower() or f.endswith(".json") or f.endswith(".yaml"):
+                categories["config"].append(f)
+            else:
+                categories["other"].append(f)
+    else:
+        # Project repo - simpler categorization
+        categories = {
+            "src": [],
+            "tests": [],
+            "config": [],
+            "docs": [],
+            "other": [],
+        }
+
+        for f in files:
+            if re.search(r"test[s]?/|_test\.|\.test\.|\.spec\.", f):
+                categories["tests"].append(f)
+            elif f.startswith("src/") or "/src/" in f:
+                categories["src"].append(f)
+            elif re.search(r"\.md$|docs?/|README", f, re.I):
+                categories["docs"].append(f)
+            elif re.search(r"config|\.json$|\.yaml$|\.yml$|\.toml$", f):
+                categories["config"].append(f)
+            else:
+                categories["other"].append(f)
 
     return {k: v for k, v in categories.items() if v}
 
 
-def generate_commit_message(changes: dict, bead_title: str | None = None) -> str:
-    """Generate a semantic commit message from changes.
+def generate_commit_message(
+    changes: dict,
+    repo_root: str,
+    trigger: str,
+    bead_title: str | None = None,
+) -> str:
+    """Generate a semantic commit message.
 
     Args:
-        changes: Dict with modified/added/deleted/renamed lists
-        bead_title: Optional bead title to use as basis for message
+        changes: Dict with modified/added/deleted/renamed/untracked lists
+        repo_root: Path to repo root
+        trigger: What triggered the commit (bead_close, test_pass, build_success, session_end)
+        bead_title: Optional bead title for bead_close commits
     """
     all_files = (
-        changes["modified"] + changes["added"] + changes["deleted"] + changes["renamed"]
+        changes["modified"] + changes["added"] + changes["deleted"] +
+        changes["renamed"] + changes.get("untracked", [])
     )
-    real_files = [f for f in all_files if not _is_scratch_file(f)]
+    real_files = [f for f in all_files if not _is_scratch_file(f, repo_root)]
 
     if not real_files:
         return ""
 
-    # If we have a bead title, use it as the basis
-    if bead_title:
-        # Clean up bead title for commit message
+    # Bead close - use bead title as basis
+    if trigger == "bead_close" and bead_title:
         msg = bead_title.strip()
         # Ensure it has a prefix
         if not re.match(r"^(feat|fix|refactor|chore|docs|test|style)(\(.+\))?:", msg, re.I):
-            # Infer prefix from bead title
             lower = msg.lower()
             if any(w in lower for w in ["fix", "bug", "error", "issue"]):
                 prefix = "fix"
-            elif any(w in lower for w in ["add", "new", "implement", "feature"]):
+            elif any(w in lower for w in ["add", "new", "implement", "feature", "create"]):
                 prefix = "feat"
-            elif any(w in lower for w in ["refactor", "clean", "improve"]):
+            elif any(w in lower for w in ["refactor", "clean", "improve", "update"]):
                 prefix = "refactor"
             elif any(w in lower for w in ["doc", "readme", "comment"]):
                 prefix = "docs"
@@ -273,247 +295,273 @@ def generate_commit_message(changes: dict, bead_title: str | None = None) -> str
         return msg
 
     # Generate from file categories
-    categories = _categorize_changes(real_files)
+    categories = _categorize_files(real_files, repo_root)
+    is_framework = is_framework_repo(repo_root)
 
-    # Build summary parts
+    # Build summary
     parts = []
-    if "hooks" in categories:
-        parts.append(f"hooks ({len(categories['hooks'])} files)")
-    if "lib" in categories:
-        parts.append(f"lib ({len(categories['lib'])} files)")
-    if "ops" in categories:
-        parts.append(f"ops ({len(categories['ops'])} files)")
-    if "commands" in categories:
-        parts.append(f"commands ({len(categories['commands'])} files)")
-    if "rules" in categories:
-        parts.append(f"rules ({len(categories['rules'])} files)")
-    if "config" in categories:
-        parts.append(f"config ({len(categories['config'])} files)")
-    if "tests" in categories:
-        parts.append(f"tests ({len(categories['tests'])} files)")
-    if "other" in categories:
-        parts.append(f"other ({len(categories['other'])} files)")
+    for name, files in categories.items():
+        if files and name != "other":
+            parts.append(f"{name} ({len(files)})")
+    if categories.get("other"):
+        parts.append(f"{len(categories['other'])} other")
 
-    summary = ", ".join(parts)
+    summary = ", ".join(parts) if parts else f"{len(real_files)} files"
 
-    # Determine prefix
-    if categories.get("tests") and len(categories) == 1:
-        prefix = "test"
-    elif categories.get("config") and len(categories) == 1:
+    # Determine prefix based on trigger and changes
+    if trigger == "test_pass":
+        prefix = "test" if categories.get("tests") else "chore"
+        trigger_note = "after tests pass"
+    elif trigger == "build_success":
         prefix = "chore"
+        trigger_note = "after build"
+    elif trigger == "session_end":
+        prefix = "chore"
+        trigger_note = "session checkpoint"
     else:
         prefix = "chore"
+        trigger_note = "auto"
 
-    # Stats line
+    # Stats
     stats = []
     if changes["modified"]:
-        stats.append(f"{len(changes['modified'])} modified")
-    if changes["added"]:
-        stats.append(f"{len(changes['added'])} added")
+        stats.append(f"{len(changes['modified'])}M")
+    if changes["added"] or changes.get("untracked"):
+        added_count = len(changes["added"]) + len(changes.get("untracked", []))
+        stats.append(f"{added_count}A")
     if changes["deleted"]:
-        stats.append(f"{len(changes['deleted'])} deleted")
+        stats.append(f"{len(changes['deleted'])}D")
 
-    stats_line = ", ".join(stats) if stats else ""
+    stats_str = " ".join(stats) if stats else ""
 
-    return f"{prefix}: Update {summary}\n\nFiles: {stats_line}"
+    # Framework vs project message style
+    if is_framework:
+        return f"{prefix}: Update {summary} [{trigger_note}]\n\n{stats_str}"
+    else:
+        return f"{prefix}: {summary} [{trigger_note}]\n\n{stats_str}"
 
 
 # =============================================================================
-# Core decision logic
+# Commit State Tracking
 # =============================================================================
 
 
 @dataclass
-class CommitDecision:
-    """Result of should_commit evaluation."""
+class CommitState:
+    """Tracks commit-related state within a session."""
 
-    should_commit: bool
-    auto: bool  # True = auto-commit, False = suggest only
-    reason: str
-    message: str  # Suggested commit message
+    # Per-repo tracking: repo_root -> last_commit_turn
+    repo_last_commit: dict = field(default_factory=dict)
+
+    # Last bead closed (for message generation)
+    last_bead_closed: str = ""
+    last_bead_closed_turn: int = 0
 
 
-def should_commit(
-    state: SessionState,
-    cwd: str,
-    trigger: str = "periodic",
-) -> CommitDecision:
-    """Evaluate whether a commit should happen.
+_commit_state = CommitState()
+
+
+def get_commit_state() -> CommitState:
+    """Get current commit state."""
+    return _commit_state
+
+
+def reset_commit_state() -> None:
+    """Reset commit state for new session."""
+    global _commit_state
+    _commit_state = CommitState()
+
+
+def track_bead_close(bead_title: str, turn: int) -> None:
+    """Track that a bead was closed."""
+    state = get_commit_state()
+    state.last_bead_closed = bead_title
+    state.last_bead_closed_turn = turn
+
+
+def track_commit(repo_root: str, turn: int) -> None:
+    """Track that a commit happened."""
+    state = get_commit_state()
+    state.repo_last_commit[repo_root] = turn
+
+
+def is_in_cooldown(repo_root: str, current_turn: int) -> bool:
+    """Check if repo is in commit cooldown."""
+    state = get_commit_state()
+    last_turn = state.repo_last_commit.get(repo_root, 0)
+    return (current_turn - last_turn) < COMMIT_COOLDOWN_TURNS
+
+
+# =============================================================================
+# Core Commit Logic
+# =============================================================================
+
+
+@dataclass
+class CommitResult:
+    """Result of a commit attempt."""
+
+    success: bool
+    message: str  # Success: "hash: message" / Failure: error message
+    repo_root: str
+    files_committed: int = 0
+
+
+def do_commit(
+    repo_root: str,
+    trigger: str,
+    turn: int,
+    bead_title: str | None = None,
+) -> CommitResult:
+    """Execute a commit on the specified repo.
 
     Args:
-        state: Current session state
-        cwd: Working directory
-        trigger: What triggered this check:
-            - "bead_close": A bead was closed
-            - "session_end": Session is ending
-            - "periodic": Regular periodic check
+        repo_root: Path to repo root
+        trigger: What triggered the commit
+        turn: Current turn count
+        bead_title: Optional bead title for message generation
 
     Returns:
-        CommitDecision with recommendation
+        CommitResult with success status and message
     """
-    commit_state = get_commit_state()
+    # Get changes
+    changes = get_uncommitted_changes(repo_root)
+    real_count = count_real_changes(changes, repo_root)
 
-    # Not a git repo - can't commit
-    if not is_git_repo(cwd):
-        return CommitDecision(
-            should_commit=False,
-            auto=False,
-            reason="not a git repo",
-            message="",
-        )
-
-    # Get current changes
-    changes = get_uncommitted_changes(cwd)
-    real_count = _count_real_changes(changes)
-
-    # No changes - nothing to commit
     if real_count == 0:
-        return CommitDecision(
-            should_commit=False,
-            auto=False,
-            reason="no uncommitted changes",
-            message="",
+        return CommitResult(
+            success=True,
+            message="no changes to commit",
+            repo_root=repo_root,
         )
 
-    # Cooldown check (unless session_end which bypasses)
-    turns_since_commit = state.turn_count - commit_state.last_commit_turn
-    if trigger != "session_end" and turns_since_commit < COMMIT_COOLDOWN_TURNS:
-        return CommitDecision(
-            should_commit=False,
-            auto=False,
-            reason=f"cooldown ({turns_since_commit}/{COMMIT_COOLDOWN_TURNS} turns)",
-            message="",
+    # Generate message
+    message = generate_commit_message(changes, repo_root, trigger, bead_title)
+    if not message:
+        return CommitResult(
+            success=False,
+            message="failed to generate commit message",
+            repo_root=repo_root,
         )
 
-    # Check test status from session state
-    tests_failing = bool(state.errors_unresolved) and any(
-        "test" in str(e).lower() for e in state.errors_unresolved
-    )
-    if tests_failing and trigger != "session_end":
-        return CommitDecision(
-            should_commit=False,
-            auto=False,
-            reason="tests failing - don't commit broken state",
-            message="",
-        )
-
-    # Generate commit message
-    bead_title = commit_state.last_bead_closed if trigger == "bead_close" else None
-    message = generate_commit_message(changes, bead_title)
-
-    # === TRIGGER EVALUATION ===
-
-    # Bead close = auto-commit
-    if trigger == "bead_close" and commit_state.last_bead_closed:
-        return CommitDecision(
-            should_commit=True,
-            auto=True,
-            reason=f"bead closed: {commit_state.last_bead_closed}",
-            message=message,
-        )
-
-    # Session end = suggest (not auto)
-    if trigger == "session_end":
-        return CommitDecision(
-            should_commit=True,
-            auto=False,
-            reason="session ending with uncommitted changes",
-            message=message,
-        )
-
-    # Significant work threshold
-    if real_count >= MIN_FILES_FOR_SUGGESTION:
-        # Prefer to have tests passed
-        if state.tests_run:
-            return CommitDecision(
-                should_commit=True,
-                auto=False,
-                reason=f"{real_count} files changed + tests run",
-                message=message,
-            )
-
-    # Time threshold
-    if turns_since_commit >= MAX_TURNS_WITHOUT_COMMIT:
-        return CommitDecision(
-            should_commit=True,
-            auto=False,
-            reason=f"{turns_since_commit} turns since last commit",
-            message=message,
-        )
-
-    # Default: no commit needed
-    return CommitDecision(
-        should_commit=False,
-        auto=False,
-        reason="no trigger conditions met",
-        message="",
-    )
-
-
-def do_commit(cwd: str, message: str, state: SessionState) -> tuple[bool, str]:
-    """Execute the commit.
-
-    Args:
-        cwd: Working directory
-        message: Commit message
-        state: Session state to update
-
-    Returns:
-        (success, result_message)
-    """
-    commit_state = get_commit_state()
-
-    # Stage all changes
-    code, _, stderr = _run_git(["add", "-A"], cwd)
+    # Stage all changes (including untracked)
+    code, _, stderr = _run_git(["add", "-A"], repo_root)
     if code != 0:
-        return False, f"git add failed: {stderr}"
+        return CommitResult(
+            success=False,
+            message=f"git add failed: {stderr}",
+            repo_root=repo_root,
+        )
 
     # Commit
-    code, stdout, stderr = _run_git(["commit", "-m", message], cwd)
+    code, stdout, stderr = _run_git(["commit", "-m", message], repo_root)
     if code != 0:
-        return False, f"git commit failed: {stderr}"
+        # Check if it's just "nothing to commit"
+        if "nothing to commit" in stderr or "nothing to commit" in stdout:
+            return CommitResult(
+                success=True,
+                message="nothing to commit",
+                repo_root=repo_root,
+            )
+        return CommitResult(
+            success=False,
+            message=f"git commit failed: {stderr}",
+            repo_root=repo_root,
+        )
 
-    # Extract commit hash from output
+    # Extract commit hash
     hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]{7,})\]", stdout)
-    commit_hash = hash_match.group(1) if hash_match else ""
+    commit_hash = hash_match.group(1) if hash_match else "unknown"
 
-    # Update state
-    commit_state.last_commit_turn = state.turn_count
-    commit_state.last_commit_time = time.time()
-    commit_state.last_commit_hash = commit_hash
-    reset_commit_state()
+    # Track the commit
+    track_commit(repo_root, turn)
 
-    return True, f"Committed: {commit_hash[:7]} {message.split(chr(10))[0]}"
+    # First line of message for display
+    msg_first_line = message.split("\n")[0][:50]
+
+    return CommitResult(
+        success=True,
+        message=f"{commit_hash}: {msg_first_line}",
+        repo_root=repo_root,
+        files_committed=real_count,
+    )
+
+
+def commit_all_repos(trigger: str, turn: int) -> list[CommitResult]:
+    """Commit all repos with uncommitted changes.
+
+    Used at session end to ensure nothing is left uncommitted.
+    """
+    results = []
+
+    for repo_root in get_all_active_repos():
+        if has_uncommitted_changes(repo_root):
+            # Skip cooldown for session_end - must commit everything
+            if trigger != "session_end" and is_in_cooldown(repo_root, turn):
+                continue
+
+            result = do_commit(repo_root, trigger, turn)
+            results.append(result)
+
+    return results
+
+
+def should_auto_commit(
+    repo_root: str,
+    trigger: str,
+    turn: int,
+) -> tuple[bool, str]:
+    """Decide if auto-commit should happen.
+
+    Returns:
+        (should_commit, reason)
+    """
+    # No changes = no commit
+    if not has_uncommitted_changes(repo_root):
+        return False, "no changes"
+
+    # Cooldown check (except session_end which must commit)
+    if trigger != "session_end" and is_in_cooldown(repo_root, turn):
+        return False, "cooldown"
+
+    return True, f"trigger: {trigger}"
 
 
 # =============================================================================
-# Hook integration helpers
+# Helper for displaying results
 # =============================================================================
 
 
-def track_bead_close(bead_title: str) -> None:
-    """Track that a bead was closed (called from post_tool_use hook)."""
-    commit_state = get_commit_state()
-    commit_state.last_bead_closed = bead_title
+def format_commit_result(result: CommitResult) -> str:
+    """Format a commit result for display."""
+    repo_name = Path(result.repo_root).name
+
+    if not result.success:
+        return f"  {repo_name}: {result.message}"
+
+    if "no changes" in result.message or "nothing to commit" in result.message:
+        return f"  {repo_name}: (no changes)"
+
+    return f"  {repo_name}: {result.message} ({result.files_committed} files)"
 
 
-def track_file_change(filepath: str) -> None:
-    """Track that a file was changed (called from post_tool_use hook)."""
-    commit_state = get_commit_state()
-    if filepath not in commit_state.files_since_commit:
-        commit_state.files_since_commit.append(filepath)
+def format_commit_results(results: list[CommitResult]) -> str:
+    """Format multiple commit results for display."""
+    if not results:
+        return "No repos with uncommitted changes"
 
+    lines = []
+    successes = [r for r in results if r.success and "no changes" not in r.message]
+    failures = [r for r in results if not r.success]
 
-def track_test_pass() -> None:
-    """Track that tests passed (called from post_tool_use hook)."""
-    commit_state = get_commit_state()
-    commit_state.tests_passed_since_commit = True
+    if successes:
+        lines.append("Committed:")
+        for r in successes:
+            lines.append(format_commit_result(r))
 
+    if failures:
+        lines.append("Failed:")
+        for r in failures:
+            lines.append(format_commit_result(r))
 
-def track_commit(turn: int, commit_hash: str = "") -> None:
-    """Track that a commit happened (called from post_tool_use hook)."""
-    commit_state = get_commit_state()
-    commit_state.last_commit_turn = turn
-    commit_state.last_commit_time = time.time()
-    commit_state.last_commit_hash = commit_hash
-    reset_commit_state()
+    return "\n".join(lines)

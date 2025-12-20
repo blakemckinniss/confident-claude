@@ -33,6 +33,7 @@ from ._common import register_hook, HookResult, SessionState
 try:
     from _hooks_state import log_debug
 except ImportError:
+
     def log_debug(component: str, message: str) -> None:
         pass
 
@@ -524,8 +525,14 @@ def check_security_claim_gate(data: dict, state: SessionState) -> HookResult:
         return HookResult.approve()
 
     SECURITY_PATTERNS = [
-        "auth", "login", "password", "credential",
-        "token", "secret", "jwt", "oauth",
+        "auth",
+        "login",
+        "password",
+        "credential",
+        "token",
+        "secret",
+        "jwt",
+        "oauth",
     ]
     path_lower = file_path.lower()
     is_security_file = any(p in path_lower for p in SECURITY_PATTERNS)
@@ -614,8 +621,15 @@ def check_research_gate(data: dict, state: SessionState) -> HookResult:
     researched = state.libraries_researched or []
 
     STABLE = {
-        "os", "sys", "json", "re", "pathlib", "typing",
-        "requests", "pytest", "pydantic",
+        "os",
+        "sys",
+        "json",
+        "re",
+        "pathlib",
+        "typing",
+        "requests",
+        "pytest",
+        "pydantic",
     }
 
     unresearched = []

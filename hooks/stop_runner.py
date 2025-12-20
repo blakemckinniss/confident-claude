@@ -1666,16 +1666,13 @@ def check_session_debt(data: dict, state: SessionState) -> StopHookResult:
     )
 
 
-@register_hook("session_commit_reminder", priority=90)
-def check_session_commit(data: dict, state: SessionState) -> StopHookResult:
-    """Remind about uncommitted changes at session end.
+@register_hook("session_auto_commit", priority=88)
+def auto_commit_session_end(data: dict, state: SessionState) -> StopHookResult:
+    """Auto-commit ALL repos at session end.
 
-    Non-blocking - just surfaces the suggestion.
+    This is a HARD requirement - nothing should be left uncommitted.
+    Commits both framework (.claude/) and project repos.
     """
-    # Skip if no file work done
-    if not state.files_edited and not state.files_created:
-        return StopHookResult.ok()
-
     # Try to import smart commit module
     try:
         import importlib.util
@@ -1691,26 +1688,37 @@ def check_session_commit(data: dict, state: SessionState) -> StopHookResult:
     except Exception:
         return StopHookResult.ok()
 
-    cwd = os.getcwd()
-    if not sc.is_git_repo(cwd):
+    # Commit all repos
+    results = sc.commit_all_repos("session_end", state.turn_count)
+
+    # No repos committed
+    if not results:
         return StopHookResult.ok()
 
-    decision = sc.should_commit(state, cwd, trigger="session_end")
+    # Format results
+    successes = [r for r in results if r.success and "no changes" not in r.message.lower()]
+    failures = [r for r in results if not r.success]
 
-    if decision.should_commit:
-        # Format a helpful message
-        changes = sc.get_uncommitted_changes(cwd)
-        real_count = sc._count_real_changes(changes)
-        if real_count == 0:
-            return StopHookResult.ok()
+    if not successes and not failures:
+        return StopHookResult.ok()
 
-        msg_preview = decision.message.split("\n")[0][:50]
-        return StopHookResult.warn(
-            f"📦 **Uncommitted changes:** {real_count} files\n"
-            f'   Suggested: `git add -A && git commit -m "{msg_preview}..."`'
-        )
+    # Build feedback message
+    lines = []
+    if successes:
+        lines.append("**Session commits:**")
+        for r in successes:
+            from pathlib import Path
+            repo_name = Path(r.repo_root).name
+            lines.append(f"  `{repo_name}`: {r.message}")
 
-    return StopHookResult.ok()
+    if failures:
+        lines.append("**Commit failed:**")
+        for r in failures:
+            from pathlib import Path
+            repo_name = Path(r.repo_root).name
+            lines.append(f"  `{repo_name}`: {r.message}")
+
+    return StopHookResult.ok("\n".join(lines))
 
 
 # =============================================================================

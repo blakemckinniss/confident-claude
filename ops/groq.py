@@ -24,12 +24,15 @@ Usage:
   # Custom temperature/max_tokens
   groq.py --temperature 0.9 --max-tokens 8192 "Generate creative code"
 
-Models:
+Models (DIRECT GROQ API ONLY - do NOT use with PAL MCP):
   - moonshotai/kimi-k2-instruct-0905 (default, 262k context, 16k completion)
   - llama-3.3-70b-versatile (131k context, 32k completion)
   - qwen/qwen3-32b (131k context, 41k completion)
   - openai/gpt-oss-120b (131k context, 65k completion)
   - groq/compound (tools, 131k context)
+
+NOTE: These models work ONLY with this script (direct Groq API).
+      For PAL MCP tools, use OpenRouter models: gpt-5.2, google/gemini-3-flash-preview, etc.
 
 Tools:
   - web_search: Real-time web search

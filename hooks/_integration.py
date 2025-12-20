@@ -343,3 +343,150 @@ def clear_cache() -> None:
     """Clear integration cache (call at start of new hook invocation)."""
     global _INTEGRATION_CACHE
     _INTEGRATION_CACHE = {}
+
+
+# =============================================================================
+# CLAUDE-MEM AUTO-INJECTION (v3.14)
+# Direct REST API integration for automatic memory context injection
+# =============================================================================
+
+CLAUDEMEM_API_BASE = "http://127.0.0.1:37777"
+MEMORY_FETCH_TIMEOUT = 1.5  # seconds - keep hooks fast
+
+
+def fetch_recent_observations(limit: int = 5, project: str | None = None) -> list[dict]:
+    """Fetch recent observations from claude-mem API.
+
+    Returns list of observation dicts with id, type, title, narrative.
+    Returns empty list on failure (non-blocking).
+    """
+    if not is_claudemem_available():
+        return []
+
+    try:
+        import json
+        import urllib.request
+        import urllib.parse
+
+        params = {"limit": str(limit)}
+        if project:
+            params["project"] = project
+
+        url = f"{CLAUDEMEM_API_BASE}/api/observations?{urllib.parse.urlencode(params)}"
+        req = urllib.request.Request(url, method="GET")
+
+        with urllib.request.urlopen(req, timeout=MEMORY_FETCH_TIMEOUT) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("items", [])
+    except Exception as e:
+        log_debug("_integration", f"fetch_recent_observations failed: {e}")
+
+    return []
+
+
+def fetch_observations_by_type(
+    obs_type: str, limit: int = 5, project: str | None = None
+) -> list[dict]:
+    """Fetch observations filtered by type (bugfix, decision, feature, etc).
+
+    Returns list of observation dicts. Returns empty list on failure.
+    """
+    if not is_claudemem_available():
+        return []
+
+    try:
+        import json
+        import urllib.request
+        import urllib.parse
+
+        params = {"limit": str(limit), "type": obs_type}
+        if project:
+            params["project"] = project
+
+        url = f"{CLAUDEMEM_API_BASE}/api/observations?{urllib.parse.urlencode(params)}"
+        req = urllib.request.Request(url, method="GET")
+
+        with urllib.request.urlopen(req, timeout=MEMORY_FETCH_TIMEOUT) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("items", [])
+    except Exception as e:
+        log_debug("_integration", f"fetch_observations_by_type failed: {e}")
+
+    return []
+
+
+def format_observations_context(
+    observations: list[dict], max_items: int = 3, max_chars: int = 500
+) -> str:
+    """Format observations into injectable context string.
+
+    Produces compact format suitable for hook context injection.
+    """
+    if not observations:
+        return ""
+
+    lines = ["📎 **Recent Memory Context**:"]
+    for obs in observations[:max_items]:
+        obs_type = obs.get("type", "observation")
+        title = obs.get("title", "")[:80]
+        obs_id = obs.get("id", "?")
+
+        # Type emoji mapping
+        type_emoji = {
+            "bugfix": "🔴",
+            "feature": "🟣",
+            "decision": "⚖️",
+            "discovery": "🔵",
+            "change": "✅",
+        }.get(obs_type, "📝")
+
+        lines.append(f"   {type_emoji} #{obs_id}: {title}")
+
+        # Include brief narrative for decisions and bugfixes (most useful)
+        if obs_type in ("decision", "bugfix"):
+            narrative = obs.get("narrative", "")
+            if narrative:
+                lines.append(f"      └─ {narrative[:120]}...")
+
+    result = "\n".join(lines)
+    return result[:max_chars] if len(result) > max_chars else result
+
+
+def get_session_memory_context(project: str | None = None) -> str:
+    """Get formatted recent memory context for session start injection.
+
+    Automatically fetches and formats recent observations.
+    Returns empty string if unavailable or nothing relevant.
+    """
+    observations = fetch_recent_observations(limit=5, project=project)
+    if not observations:
+        return ""
+
+    # Filter to most useful types for session context
+    useful = [
+        o
+        for o in observations
+        if o.get("type") in ("decision", "bugfix", "discovery", "feature")
+    ]
+
+    if not useful:
+        # Fall back to any recent if no useful types
+        useful = observations[:3]
+
+    return format_observations_context(useful, max_items=3)
+
+
+def get_debug_memory_context(keywords: list[str] | None = None) -> str:
+    """Get memory context relevant for debugging scenarios.
+
+    Fetches recent bugfixes and decisions that might be relevant.
+    """
+    # Get recent bugfixes (most likely to be relevant for debugging)
+    bugfixes = fetch_observations_by_type("bugfix", limit=3)
+
+    if not bugfixes:
+        return ""
+
+    return format_observations_context(bugfixes, max_items=3)

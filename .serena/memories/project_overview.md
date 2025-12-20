@@ -3,10 +3,10 @@
 ## Purpose
 Claude Code hooks and ops infrastructure - a comprehensive workflow automation system for Claude Code CLI. This is a **global WSL2 system assistant framework** providing:
 
-- **65 registered hooks** across 4 main runners (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
+- **42 hook files** across 4 main runners (pre_tool_use, post_tool_use, user_prompt_submit, stop) (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
 - **35 hook files** (runners, standalone, and helper modules)
-- **51 ops tools** for code quality, debugging, and workflow automation
-- **75 slash commands** for common development tasks
+- **51 ops tools** (verified) for code quality, debugging, and workflow automation
+- **78 slash commands** for common development tasks
 - **Dynamic confidence system** that mechanically regulates Claude's behavior
 - **Beads task tracking** (`bd` CLI) for persistent cross-session task management
 - **Mastermind multi-model orchestration** for intelligent task routing

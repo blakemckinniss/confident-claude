@@ -1,0 +1,143 @@
+{
+  "timestamp": {
+    "total": 10,
+    "passing": 6,
+    "warnings": 4,
+    "failing": 0,
+    "failed_hooks": [],
+    "warned_hooks": [
+      {
+        "filename": "subagent_stop.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      },
+      {
+        "filename": "dependency_check.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      },
+      {
+        "filename": "session_cleanup.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      },
+      {
+        "filename": "pre_compact.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      }
+    ]
+  },
+  "total_hooks": 10,
+  "health_summary": {
+    "total": 10,
+    "passing": 6,
+    "warnings": 4,
+    "failing": 0,
+    "failed_hooks": [],
+    "warned_hooks": [
+      {
+        "filename": "subagent_stop.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      },
+      {
+        "filename": "dependency_check.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      },
+      {
+        "filename": "session_cleanup.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      },
+      {
+        "filename": "pre_compact.py",
+        "issues": [
+          "Missing proper return statement"
+        ]
+      }
+    ]
+  },
+  "execution_results": {
+    "subagent_stop.py": {
+      "success": true,
+      "duration_ms": 169,
+      "error": null,
+      "stdout": "{\"stopReason\": \"\\u26a0\\ufe0f Subagent left stubs:\\n  \\u2022 `_prompt_ralph.py`: ...\"}\n",
+      "stderr": ""
+    },
+    "dependency_check.py": {
+      "success": true,
+      "duration_ms": 25,
+      "error": null,
+      "stdout": "\ud83d\udfe1 Optional: Plugin pyright-lsp@claude-plugins-official v1.0.0\n\ud83d\udfe1 Optional: Plugin typescript-lsp@claude-plugins-official v1.0.0\n",
+      "stderr": ""
+    },
+    "session_cleanup.py": {
+      "success": true,
+      "duration_ms": 278,
+      "error": null,
+      "stdout": "{\"message\": \"\\ud83e\\uddf9 Cleaned 1 old sessions, 1 stale Serena memories, 2 thinking memories indexed\"}\n",
+      "stderr": ""
+    },
+    "post_tool_use_runner.py": {
+      "success": true,
+      "duration_ms": 221,
+      "error": null,
+      "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PostToolUse\", \"additionalContext\": \"\\ud83d\\udcc9 **Confidence Reduced**\\nConfidence: \\ud83d\\udfe276% \\u2192 \\ud83d\\udfe276% (0 tool_debt: -2)\\n\\nCurrent: \\ud83d\\udfe2 76% - Production with gates\\n\\ud83d\\udca1 **False positive?** Options:\\n   \\u2022 Claude: Run `~/.claude/ops/fp.py <reducer> [reason]`\\n   \\u2022 User: Say `FP: <reducer>` or `dispute <reducer>`\\n   Recent reducers: tool_debt\"}}\n",
+      "stderr": "[post-runner] Hook smart_commit_periodic error: 'NoneType' object has no attribute '__dict__'\n"
+    },
+    "pre_tool_use_runner.py": {
+      "success": true,
+      "duration_ms": 209,
+      "error": null,
+      "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\"}}\n",
+      "stderr": "[runner] Hook pal_mandate_enforcer error: No module named '_log'\n[runner] Slow: 121.5ms\n"
+    },
+    "stop_runner.py": {
+      "success": true,
+      "duration_ms": 184,
+      "error": null,
+      "stdout": "{\"stopReason\": \"\\u26a0\\ufe0f **ABANDONED WORK** - Files with stubs:\\n  \\u2022 `_prompt_ralph.py`: ...\"}\n",
+      "stderr": "[stop-runner] Hook session_close_protocol error: 'dict' object has no attribute 'lower'\n[stop-runner] Hook bad_language_detector error: cannot import name 'set_confidence' from 'confidence' (/home/jinx/.claude/lib/confidence.py)\n[stop-runner] Hook good_language_detector error: cannot import name 'set_confidence' from 'confidence' (/home/jinx/.claude/lib/confidence.py)\n[stop-runner] Hook verification_theater_detector error: cannot import name 'set_confidence' from 'confidence' (/home/jinx/.claude/lib/confidence.py)\n[stop-runner] Hook session_debt_penalty error: cannot import name 'set_confidence' from 'confidence' (/home/jinx/.claude/lib/confidence.py)\n"
+    },
+    "statusline.py": {
+      "success": true,
+      "duration_ms": 162,
+      "error": null,
+      "stdout": "\u001b[90mClaude\u001b[0m \u001b[90m|\u001b[0m CTX:\u001b[32m\ud83d\udcb0$200K\u001b[0m \u001b[90m|\u001b[0m CPU:\u001b[32m3.8\u001b[0m \u001b[90m|\u001b[0m RAM:\u001b[33m75%\u001b[0m \u001b[90m|\u001b[0m DSK:\u001b[32m451G\u001b[0m \u001b[90m|\u001b[0m GPU:\u001b[33m23.1/32G\u001b[0m \u001b[90m|\u001b[0m \u001b[32mN:12\u001b[0m \u001b[33mP:29\u001b[0m \u001b[90m|\u001b[0m \u001b[35mvite comfy\u001b[0m \u001b[90m|\u001b[0m \u001b[32mNET\u001b[0m\n\u001b[90m\u001b[0m \u001b[90m|\u001b[0m \u001b[90m48m\u001b[0m \u001b[90m|\u001b[0m \u001b[36mconfident-claude\u001b[0m \u001b[90m|\u001b[0m \ud83d\udfe2 76% \u001b[90m|\u001b[0m \u001b[33m\ud83d\udccb 3\u001b[0m \u001b[90m|\u001b[0m \u001b[35m\ud83d\udd2e\u001b[0m \u001b[90m|\u001b[0m \u001b[32mmain\u001b[0m[\u001b[33m~24\u001b[0m \u001b[31m?37\u001b[0m]\n",
+      "stderr": ""
+    },
+    "session_init.py": {
+      "success": true,
+      "duration_ms": 265,
+      "error": null,
+      "stdout": "{\"message\": \"\\ud83d\\udd04 **PROJECT SWITCH**\\n\\ud83d\\udcc1 Now in: confident-claude\\nPrevious context saved.\\n\\n\\ud83d\\udce6 **DEPENDENCIES**:\\n\\ud83d\\udfe1 Optional: Plugin pyright-lsp@claude-plugins-official v1.0.0\\n\\ud83d\\udfe1 Optional: Plugin typescript-lsp@claude-plugins-official v1.0.0\\n\\n\\ud83d\\udd2e **SERENA PROJECT DETECTED**\\nMANDATORY: Call `mcp__serena__activate_project` with current directory NOW before any other action.\\n\\ud83d\\udcce **project_overview**: ## Purpose\\n\\ud83d\\udcce **codebase_structure**: ## Directory Layout\\n\\ud83d\\udcce **style_conventions**: ## Python Style\"}\n",
+      "stderr": ""
+    },
+    "user_prompt_submit_runner.py": {
+      "success": true,
+      "duration_ms": 298,
+      "error": null,
+      "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"UserPromptSubmit\", \"additionalContext\": \"\\u26a0\\ufe0f SYSTEM ASSISTANT MODE: Full access to /home/blake & /mnt/c/. Ask if unsure. Read before edit. Verify before claiming. Use ~/projects/ for project work, ~/ai/ for AI projects/services, ~/.claude/tmp/ for scratch. For python scripts use /home/blake/.claude/.venv/bin/python as interpreter. Always confirm file paths exist before referencing. For task tracking use `bd` (beads) NOT TodoWrite. \\u26a0\\ufe0f\\n## Task Checklist - Order of Operations\\n\\n**Before starting:**\\n- [ ] Clarify first? Should I ask user any clarifying questions before proceeding?\\n- [ ] Check context? Memories (`spark`), git commits, or prior decisions relevant?\\n- [ ] Research needed? WebSearch/WebFetch for current docs/patterns?\\n- [ ] Existing functionality? Check with Grep/Glob first\\n- [ ] Use an agent? Task(Explore), Task(Plan), or other subagent faster/better?\\n- [ ] Ops scripts? Any ~/.claude/ops/ tools applicable (audit, void, xray, etc.)?\\n- [ ] Slash commands? Check project .claude/commands/ for relevant commands\\n- [ ] Anti-patterns? Will this introduce complexity or violate patterns?\\n- [ ] Track with beads? Use `bd create` or `bd update` to track?\\n- [ ] Parallelize? Script or multiple agents to complete faster?\\n- [ ] Background? Can anything run in background while proceeding with other parts?\\n- [ ] Speed vs quality? Fastest path maintaining code quality?\\n\\n**After completing:**\\n- [ ] Validate? Verify change works (build, lint, typecheck)?\\n- [ ] Tests needed? Create or update tests?\\n- [ ] Tech debt? Clean up related issues noticed?\\n- [ ] Next steps: MUST suggest potential follow-up actions to user\\n\\n\\ud83d\\udd2e **SERENA AVAILABLE**: `.serena/` detected \\u2014 activate with `mcp__serena__activate_project(\\\".claude\\\")`\\n\\ud83d\\udccb **BEADS ISOLATED**: Project `claude-framework` has local task tracking\\n\\ud83d\\udcc2 **FILESYSTEM MCP**: Prefer `mcp__filesystem__read_file`, `mcp__filesystem__write_file`, `mcp__filesystem__edit_file` for file operations (better error handling, atomic writes)\\n\\n\\ud83d\\udcc1 SYSTEM: Git: branch: main | changes: 23 modified, 38 untracked, 1 staged | Dirs: lib, .claude, tests, projects\"}}\n",
+      "stderr": ""
+    },
+    "pre_compact.py": {
+      "success": false,
+      "duration_ms": 0,
+      "error": "Timeout after 500ms",
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  "slow_hooks": [],
+  "performance_threshold_ms": 500
+}

@@ -471,7 +471,7 @@ When a reducer fires incorrectly, this is a **bug in framework DNA**. Do NOT dis
 
 **Correct Flow:**
 1. Identify why the reducer fired incorrectly
-2. Fix the detection logic in `_confidence_reducers.py` or hook
+2. Fix the detection logic in `lib/reducers/` (see package structure) or hook
 3. Test that the fix works
 4. ONLY THEN resume original work
 
@@ -568,7 +568,9 @@ Say **SUDO** to bypass confidence gates. Use sparingly - it's logged.
 
 | File | Purpose |
 |------|---------|
-| `~/.claude/lib/confidence.py` | Core engine, reducers, increasers |
+| `~/.claude/lib/confidence.py` | Core engine facade |
+| `~/.claude/lib/reducers/` | Modular reducers package (72 classes) |
+| `~/.claude/lib/_confidence_increasers.py` | Increaser classes (59 classes) |
 | `~/.claude/ops/fp.py` | Record false positives |
 | `~/.claude/hooks/post_tool_use_runner.py` | Applies reducers/increasers |
 | `~/.claude/hooks/user_prompt_submit_runner.py` | Dispute detection, tool gates |
