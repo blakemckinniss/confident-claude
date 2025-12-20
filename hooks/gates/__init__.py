@@ -77,6 +77,7 @@ from ._meta import (
     check_exploration_cache,
     check_sunk_cost,
     check_thinking_coach,
+    check_thinking_suggester,
 )
 
 __all__ = [
@@ -138,4 +139,5 @@ __all__ = [
     "check_exploration_cache",
     "check_sunk_cost",
     "check_thinking_coach",
+    "check_thinking_suggester",
 ]

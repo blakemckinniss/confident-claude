@@ -342,3 +342,22 @@ def check_thinking_coach(data: dict, state: SessionState) -> HookResult:
                 f"⚠️ THINKING COACH: Detected `{flaw_type}` pattern. Verify before proceeding."
             )
     return HookResult.approve()
+
+
+# =============================================================================
+# THINKING SUGGESTER (Priority 91) - Inject tool suggestions based on thinking
+# =============================================================================
+
+
+@register_hook("thinking_suggester", None, priority=91)
+def check_thinking_suggester(data: dict, state: SessionState) -> HookResult:
+    """
+    Analyze thinking blocks to surface relevant tools and capabilities.
+
+    Complements thinking_coach by providing proactive suggestions
+    rather than just warnings about flaws.
+    """
+    from _thinking_suggester import check_thinking_suggestions
+
+    # Delegate to the dedicated module
+    return check_thinking_suggestions(data, state, {})
