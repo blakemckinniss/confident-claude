@@ -39,15 +39,15 @@
 | `bead_enforcement` | pre | Medium | Medium | Good for tracking, can feel rigid |
 | `tool_debt` | post | Medium | Low | Fires too often on legitimate tool use |
 
-### Low Value / High Friction (Disable Candidates)
+### Low Value / High Friction (Disabled)
 
-| Hook | Runner | Friction | Value | Recommendation |
-|------|--------|----------|-------|----------------|
-| `modularization_nudge` | pre | High | Low | **DISABLE** - noise |
-| `curiosity_injection` | pre | High | Low | **DISABLE** - metacognitive theater |
-| `ops_audit_reminder` | prompt | High | Low | **DISABLE** - periodic noise |
+| Hook | Runner | Friction | Value | Status |
+|------|--------|----------|-------|--------|
+| `modularization_nudge` | pre | High | Low | ✅ DISABLED 2025-12-20 |
+| `curiosity_injection` | pre | High | Low | ✅ DISABLED 2025-12-20 |
+| `ops_audit_reminder` | prompt | High | Low | ✅ DISABLED 2025-12-20 |
+| `crawl4ai_promo` | post | Medium | Low | ✅ DISABLED 2025-12-20 |
 | `expert_probe` | prompt | Medium | Low | Consider disable |
-| `crawl4ai_promo` | post | Medium | Low | Duplicate of `crawl4ai_preference` |
 
 ---
 
@@ -140,12 +140,13 @@ export CLAUDE_HOOK_DISABLE_CRAWL4AI_PROMO=1
 | Date | Hooks | FPs Logged | Friction Events | Notes |
 |------|-------|------------|-----------------|-------|
 | 2025-12-20 | 164 | 4 | 4 | Initial audit |
+| 2025-12-20 | 164 | 6 | 0 | Fixed 6 FPs, disabled 4 low-value hooks |
 
 ---
 
 ## Next Session Actions
 
-1. Test disabling recommended hooks via env vars
-2. Track any productivity difference
-3. Log new friction events to this file
-4. If FP patterns persist, fix the hook logic
+1. Monitor for new friction patterns post-cleanup
+2. Consider disabling `expert_probe` if still noisy
+3. Track "God Files" refactoring (stop_runner.py, _prompt_suggestions.py)
+4. Log new friction events to this file

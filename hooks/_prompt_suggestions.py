@@ -1884,7 +1884,14 @@ def check_ops_awareness(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("ops_audit_reminder", priority=86)
 def check_ops_audit_reminder(data: dict, state: SessionState) -> HookResult:
-    """Periodic reminder about ops tool usage and unused tools."""
+    """Periodic reminder about ops tool usage and unused tools.
+
+    DISABLED (2025-12-20): Identified as periodic noise.
+    3-hour reminders about unused tools don't drive adoption - they annoy.
+    See ~/.claude/memory/__hook_health.md for audit details.
+    """
+    return HookResult.allow()  # DISABLED
+
     from _cooldown import check_and_reset_cooldown
 
     # Only run every 3 hours

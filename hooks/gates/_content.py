@@ -684,7 +684,14 @@ def check_import_gate(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("modularization_nudge", "Edit|Write", priority=95)
 def check_modularization(data: dict, state: SessionState) -> HookResult:
-    """Remind to modularize before creating code."""
+    """Remind to modularize before creating code.
+
+    DISABLED (2025-12-20): Identified as high-friction, low-value noise.
+    Periodic reminders don't improve behavior - they just add context bloat.
+    See ~/.claude/memory/__hook_health.md for audit details.
+    """
+    return HookResult.approve()  # DISABLED
+
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
@@ -714,7 +721,14 @@ def check_modularization(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("curiosity_injection", "Edit|Write", priority=96)
 def inject_curiosity_prompt(data: dict, state: SessionState) -> HookResult:
-    """Inject metacognitive prompts to expand associative thinking."""
+    """Inject metacognitive prompts to expand associative thinking.
+
+    DISABLED (2025-12-20): Identified as metacognitive theater.
+    These prompts don't improve thinking - they waste context on fluff.
+    See ~/.claude/memory/__hook_health.md for audit details.
+    """
+    return HookResult.approve()  # DISABLED
+
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 

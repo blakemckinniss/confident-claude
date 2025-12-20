@@ -668,7 +668,14 @@ def check_large_file(data: dict, state: SessionState, runner_state: dict) -> Hoo
 
 @register_hook("crawl4ai_promo", "WebFetch", priority=48)
 def promote_crawl4ai(data: dict, state: SessionState, runner_state: dict) -> HookResult:
-    """Promote crawl4ai MCP when WebFetch is used - crawl4ai is superior for web content."""
+    """Promote crawl4ai MCP when WebFetch is used - crawl4ai is superior for web content.
+
+    DISABLED (2025-12-20): Duplicate of webfetch_over_crawl reducer.
+    Reducer already applies -1 penalty; this promo just adds noise.
+    See ~/.claude/memory/__hook_health.md for audit details.
+    """
+    return HookResult.none()  # DISABLED
+
     tool_input = data.get("tool_input", {})
     url = tool_input.get("url", "")
 
