@@ -19,8 +19,28 @@ Usage:
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+
+# Add lib to path for codemode imports
+_LIB_DIR = Path(__file__).parent.parent / "lib"
+if str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
+
+# Lazy import codemode modules (may not exist during initial setup)
+_codemode_available = False
+try:
+    from _codemode_interfaces import (
+        generate_interface,
+        generate_interface_summary,
+        load_cached_schemas,
+    )
+
+    _codemode_available = True
+except ImportError:
+    pass
 
 
 @dataclass
@@ -1252,6 +1272,20 @@ _RE_TOOL_MENTIONS = re.compile(
 )
 
 
+def _get_codemode_tool_summary() -> str:
+    """Get available tools summary from cached schemas."""
+    if not _codemode_available:
+        return ""
+
+    schemas = load_cached_schemas()
+    if not schemas:
+        return "\n\n📋 **Schema Discovery Needed**: Run tool discovery to cache available MCP tools."
+
+    interfaces = [generate_interface(name, schema) for name, schema in schemas.items()]
+    summary = generate_interface_summary(interfaces)
+    return f"\n\n{summary}"
+
+
 def check_codemode_mandate(
     prompt: str,
     mastermind_classification: str | None = None,
@@ -1267,9 +1301,8 @@ def check_codemode_mandate(
     - Data transformation pipelines
     - Complex automation sequences
 
-    Code-mode lets Claude write code that chains tool calls instead of
-    sequential API round-trips. The code has access to all MCP tools
-    as namespaced functions.
+    Code-mode uses the plan protocol: generate structured execution plans
+    that Claude interprets and executes via real MCP tool calls.
 
     Args:
         prompt: User's prompt text
@@ -1318,17 +1351,21 @@ def check_codemode_mandate(
         signals += 1
         reasons.append(f"{tool_count_estimate}+ tools estimated")
 
+    # Get available tools summary if schemas are cached
+    tools_summary = _get_codemode_tool_summary() if _codemode_available else ""
+
     # Decision thresholds
     if signals >= 3:
-        # Strong recommendation
+        # Strong recommendation with plan protocol
         return Mandate(
             tool="codemode_executor",
             directive=(
                 "⚡ **USE CODE-MODE**: Multi-tool orchestration detected. "
-                f"Signals: {', '.join(reasons)}. "
-                "Write Python code that chains tool calls instead of sequential invocations. "
-                "Code-mode provides 67-88% efficiency improvement for multi-tool tasks. "
-                "Available tools: All MCP tools as `namespace.tool_name()` functions."
+                f"Signals: {', '.join(reasons)}.\n\n"
+                "**Plan Protocol**: Write Python code using MCP tools as `namespace.tool_name()`. "
+                "Execute tools in sequence, use results to drive next steps. "
+                "Code-mode provides 67-88% efficiency improvement for multi-tool tasks."
+                f"{tools_summary}"
             ),
             priority=P_HIGH,
             reason=f"Code-mode signals: {', '.join(reasons)}",
@@ -1340,9 +1377,10 @@ def check_codemode_mandate(
             tool="codemode_executor",
             directive=(
                 "💡 **CONSIDER CODE-MODE**: Multi-step task detected. "
-                f"Signals: {', '.join(reasons)}. "
-                "For complex tool chaining, consider writing code instead of sequential calls. "
-                "Code-mode reduces API round-trips significantly."
+                f"Signals: {', '.join(reasons)}.\n\n"
+                "For complex tool chaining, write code that orchestrates MCP tools. "
+                "Tools available as `namespace.tool_name()` functions."
+                f"{tools_summary}"
             ),
             priority=P_PROACTIVE,
             reason=f"Code-mode signals: {', '.join(reasons)}",
