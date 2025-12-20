@@ -709,6 +709,150 @@ def check_session_blocks(data: dict, state: SessionState) -> StopHookResult:
     return StopHookResult.block("\n".join(lines))
 
 
+# =============================================================================
+# RALPH-WIGGUM COMPLETION EVIDENCE GATE (v4.23)
+# =============================================================================
+
+BLOCKER_PATTERNS = [
+    r"\bi(?:'m| am) (?:stuck|blocked)\b",
+    r"\bcan(?:'t|not) (?:figure|proceed|continue)\b",
+    r"\bneed (?:help|guidance|input)\b",
+    r"\bescalat(?:e|ing)\b",
+    r"\buncertain\b",
+    r"\bi don(?:'t|'t) know\b",
+]
+
+DEFERRAL_PATTERNS = [
+    r"\bgood enough\b",
+    r"\bthat(?:'s|s) fine\b",
+    r"\bship it\b",
+    r"\bwe can stop\b",
+    r"\blet(?:'s|s) stop\b",
+    r"\b(?:done|complete) for now\b",
+]
+
+
+def _has_blocker_or_deferral(transcript_path: str) -> tuple[bool, str]:
+    """Check if response contains blocker statement or user deferral."""
+    import re
+
+    try:
+        content = _read_tail_content(transcript_path, 4000)
+    except Exception:
+        return False, ""
+
+    # Check for blocker patterns
+    for pattern in BLOCKER_PATTERNS:
+        if re.search(pattern, content, re.IGNORECASE):
+            return True, "blocker"
+
+    # Check for deferral patterns
+    for pattern in DEFERRAL_PATTERNS:
+        if re.search(pattern, content, re.IGNORECASE):
+            return True, "deferral"
+
+    return False, ""
+
+
+def _get_missing_evidence(state: SessionState) -> list[str]:
+    """Determine what evidence is still needed for completion."""
+    missing = []
+    contract = state.task_contract
+
+    if not contract:
+        return ["No task contract defined"]
+
+    evidence_types = {e.get("type") for e in state.completion_evidence}
+    required = contract.get("evidence_required", ["test_pass"])
+
+    for req in required:
+        if req not in evidence_types:
+            if req == "test_pass":
+                missing.append("Run tests (pytest, npm test, etc.)")
+            elif req == "build_success":
+                missing.append("Run build (npm build, cargo build, etc.)")
+            elif req == "lint_pass":
+                missing.append("Run linter (ruff check, eslint, etc.)")
+            else:
+                missing.append(f"Evidence: {req}")
+
+    return missing
+
+
+@register_hook("ralph_evidence", priority=35)
+def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
+    """
+    Ralph-Wiggum completion evidence gate.
+
+    Blocks session exit unless completion_confidence >= threshold
+    OR explicit blocker/deferral statement detected.
+
+    Philosophy: Tasks should complete fully, not be abandoned mid-work.
+    """
+    # Skip if ralph mode not active
+    if not state.ralph_mode:
+        return StopHookResult.ok()
+
+    # Check completion confidence threshold
+    threshold = 80  # Default threshold
+    if state.completion_confidence >= threshold:
+        return StopHookResult.ok()
+
+    # Check for explicit blocker or deferral
+    transcript_path = data.get("transcript_path", "")
+    has_escape, escape_type = _has_blocker_or_deferral(transcript_path)
+
+    if has_escape:
+        if escape_type == "deferral":
+            # User said "good enough" - allow exit with note
+            return StopHookResult.warn(
+                f"Task deferred at {state.completion_confidence}% completion. "
+                "Remaining work not verified."
+            )
+        else:
+            # Blocker acknowledged - allow exit
+            return StopHookResult.ok()
+
+    # Strictness modes
+    if state.ralph_strictness == "loose":
+        # Advisory only - show what's incomplete but allow exit
+        missing = _get_missing_evidence(state)
+        return StopHookResult.warn(
+            f"Task {state.completion_confidence}% complete. "
+            f"Incomplete: {', '.join(missing[:2])}"
+        )
+
+    if state.ralph_strictness == "normal":
+        # Nag budget - allow after N reminders
+        if state.ralph_nag_budget <= 0:
+            return StopHookResult.warn(
+                f"Allowing exit after {2 - state.ralph_nag_budget} reminders. "
+                f"Completion: {state.completion_confidence}%"
+            )
+        # Decrement budget (will be saved by hook runner)
+        # Note: state mutation here - budget tracked in session state
+
+    # STRICT MODE: Block until evidence threshold met
+    missing = _get_missing_evidence(state)
+    contract = state.task_contract
+    goal = contract.get("goal", "Unknown goal")[:60]
+
+    block_msg = f"""
+🔄 **Task Incomplete** (completion: {state.completion_confidence}%)
+
+**Goal:** {goal}
+
+**Missing Evidence:**
+{chr(10).join(f'  • {m}' for m in missing[:3])}
+
+**To Complete:**
+  • Run tests/build to accumulate evidence
+  • Or state blocker: "I'm stuck on X"
+  • Or confirm done: "This is good enough"
+"""
+    return StopHookResult.block(block_msg.strip())
+
+
 @register_hook("dismissal_check", priority=40)
 def check_dismissal(data: dict, state: SessionState) -> StopHookResult:
     """Catch false positive claims without fix."""

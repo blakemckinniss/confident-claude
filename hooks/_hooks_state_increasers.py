@@ -243,6 +243,67 @@ def _build_objective_signals(
                 context["lint_passed"] = True
 
 
+def _update_ralph_completion_confidence(
+    state: SessionState, context: dict
+) -> list[str]:
+    """
+    Update completion_confidence for ralph-wiggum integration (v4.23).
+
+    Accumulates evidence from test_pass, build_success, lint_pass signals.
+    Returns list of messages about completion progress.
+    """
+    if not state.ralph_mode:
+        return []
+
+    messages = []
+    old_completion = state.completion_confidence
+    delta = 0
+    evidence_added = []
+
+    # Check for objective signals and add evidence
+    if context.get("tests_passed"):
+        delta += 25
+        evidence_added.append({
+            "type": "test_pass",
+            "turn": state.turn_count,
+            "details": "Tests passed",
+        })
+
+    if context.get("build_succeeded"):
+        delta += 20
+        evidence_added.append({
+            "type": "build_success",
+            "turn": state.turn_count,
+            "details": "Build succeeded",
+        })
+
+    if context.get("lint_passed"):
+        delta += 10
+        evidence_added.append({
+            "type": "lint_pass",
+            "turn": state.turn_count,
+            "details": "Lint passed",
+        })
+
+    # Apply delta
+    if delta > 0:
+        new_completion = min(100, old_completion + delta)
+        state.completion_confidence = new_completion
+        state.completion_evidence.extend(evidence_added)
+
+        evidence_names = [e["type"] for e in evidence_added]
+        messages.append(
+            f"🎯 Completion: {old_completion}% → {new_completion}% "
+            f"(+{delta} from {', '.join(evidence_names)})"
+        )
+
+        # Check if threshold reached
+        if new_completion >= 80 and old_completion < 80:
+            messages.append("✅ Completion threshold (80%) reached - exit allowed")
+
+    return messages
+
+
 # =============================================================================
 # TEST ENFORCEMENT TRACKING
 # =============================================================================
@@ -480,6 +541,9 @@ def check_confidence_increaser(
     )
     _build_completion_signals(tool_name, tool_input, state, context)
 
+    # Update ralph-wiggum completion confidence from evidence
+    ralph_messages = _update_ralph_completion_confidence(state, context)
+
     # Apply increasers
     triggered = apply_increasers(state, context)
 
@@ -524,6 +588,9 @@ def check_confidence_increaser(
                 f"Reason: {desc}\n"
                 f"Reply **CONFIDENCE_BOOST_APPROVED** to apply."
             )
+
+    # Add ralph-wiggum completion messages
+    messages.extend(ralph_messages)
 
     if messages:
         return HookResult.with_context("\n\n".join(messages))

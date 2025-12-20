@@ -304,3 +304,36 @@ class SessionState:
 
     # Whether context warning was shown this session (one-shot soft warning)
     context_guard_warned: bool = False
+
+    # ==========================================================================
+    # RALPH-WIGGUM INTEGRATION (v4.23) - Task completion enforcement
+    # https://ghuntley.com/ralph/ - Persistent iteration until genuine completion
+    # ==========================================================================
+
+    # Separate completion confidence from general confidence
+    # Accumulates from test_pass, build_success, bead_close
+    # Must reach threshold (default 80%) to allow session exit
+    completion_confidence: int = 0  # 0-100%
+
+    # Task contract extracted from user prompt
+    # Format: {goal: str, criteria: list, evidence_required: list, created_turn: int}
+    task_contract: dict = field(default_factory=dict)
+
+    # Evidence accumulated during session
+    # Format: [{type: str, turn: int, details: str}]
+    completion_evidence: list = field(default_factory=list)
+
+    # Ralph activation mode
+    # "": not active (trivial tasks)
+    # "auto": auto-detected non-trivial task
+    # "explicit": user ran /ralph-loop
+    ralph_mode: str = ""
+
+    # Strictness level for stop-blocking
+    # "strict": block unless evidence >= threshold OR explicit blocker
+    # "normal": soft reminder with nag budget, then allow
+    # "loose": show what's incomplete but always allow exit
+    ralph_strictness: str = "strict"
+
+    # Nag budget for non-strict modes (decrements on each reminder)
+    ralph_nag_budget: int = 2
