@@ -27,9 +27,27 @@ LIB_DIR = Path(__file__).parent.parent.parent / "lib"
 if str(LIB_DIR) not in sys.path:
     sys.path.insert(0, str(LIB_DIR))
 
-from bd_client import run_bd  # noqa: E402
+from bd_client import run_bd, _get_current_project_label  # noqa: E402
 
 server = Server("beads")
+
+
+def _add_project_filter(args: list[str]) -> list[str]:
+    """Add project label filter to bd command args."""
+    label = _get_current_project_label()
+    if label:
+        args.extend(["--label", label])
+    return args
+
+
+def _label_bead_with_project(bead_id: str) -> None:
+    """Add project label to a bead after creation."""
+    label = _get_current_project_label()
+    if label:
+        try:
+            run_bd("label", "add", bead_id, label, json_output=False)
+        except RuntimeError:
+            pass  # Non-fatal: bead exists but labeling failed
 
 
 @server.list_tools()
@@ -178,7 +196,12 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "description": "Dependency type",
-                        "enum": ["blocks", "related", "parent-child", "discovered-from"],
+                        "enum": [
+                            "blocks",
+                            "related",
+                            "parent-child",
+                            "discovered-from",
+                        ],
                         "default": "blocks",
                     },
                 },
@@ -218,6 +241,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 args.extend(["--limit", str(limit)])
             if assignee := arguments.get("assignee"):
                 args.extend(["--assignee", assignee])
+            # Add project filter for isolation
+            _add_project_filter(args)
             result = run_bd(*args)
 
         elif name == "create_bead":
@@ -229,6 +254,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             if priority := arguments.get("priority"):
                 args.extend(["--priority", priority])
             result = run_bd(*args)
+            # Auto-label with project for isolation
+            if isinstance(result, dict) and result.get("id"):
+                _label_bead_with_project(result["id"])
 
         elif name == "update_bead":
             args = ["update", arguments["id"]]
@@ -249,6 +277,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 args.extend(["--limit", str(limit)])
             if assignee := arguments.get("assignee"):
                 args.extend(["--assignee", assignee])
+            # Add project filter for isolation
+            _add_project_filter(args)
             result = run_bd(*args)
 
         elif name == "show_bead":
@@ -261,15 +291,21 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = run_bd(*args)
 
         elif name == "dep_remove":
-            result = run_bd("dep", "remove", arguments["issue_id"], arguments["depends_on_id"])
+            result = run_bd(
+                "dep", "remove", arguments["issue_id"], arguments["depends_on_id"]
+            )
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
-        return [TextContent(
-            type="text",
-            text=json.dumps(result, indent=2) if isinstance(result, (dict, list)) else str(result)
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+                if isinstance(result, (dict, list))
+                else str(result),
+            )
+        ]
 
     except Exception as e:
         return [TextContent(type="text", text=f"Error: {e}")]
@@ -278,9 +314,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 async def main():
     """Run the MCP server."""
     async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+        await server.run(
+            read_stream, write_stream, server.create_initialization_options()
+        )
 
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())
