@@ -380,6 +380,8 @@ class PlanExecutor:
         self,
         tool_invoker: Callable[[str, dict], dict] | None = None,
         log_executions: bool = True,
+        parallel: bool = True,
+        max_workers: int = 4,
     ):
         """
         Initialize plan executor.
@@ -389,16 +391,21 @@ class PlanExecutor:
                          Signature: (tool_name: str, args: dict) -> dict
                          If None, runs in dry-run mode.
             log_executions: Whether to log executions to JSONL.
+            parallel: Execute independent calls concurrently.
+            max_workers: Max concurrent executions (default 4).
         """
         self._invoker = tool_invoker
         self._log_executions = log_executions
+        self._parallel = parallel
+        self._max_workers = max_workers
 
     def execute(self, plan: ExecutionPlan) -> PlanExecutionResult:
         """
         Execute all tool calls in a plan.
 
         Respects dependency ordering - calls with depends_on wait for
-        their dependencies to complete first.
+        their dependencies to complete first. Independent calls run
+        in parallel when parallel=True.
 
         Args:
             plan: The ExecutionPlan to execute
@@ -407,6 +414,7 @@ class PlanExecutor:
             PlanExecutionResult with all tool results
         """
         import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         start_time = time.time()
         results: dict[str, PlanResult] = {}
@@ -437,17 +445,36 @@ class PlanExecutor:
                     failed.append(call_id)
                 break
 
-            # Execute ready calls
-            for call in ready:
-                result = self._execute_call(call)
-                results[call.id] = result
+            # Execute ready calls (parallel if enabled and multiple ready)
+            if self._parallel and len(ready) > 1:
+                # Parallel execution for independent calls
+                with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
+                    future_to_call = {
+                        pool.submit(self._execute_call, call): call for call in ready
+                    }
+                    for future in as_completed(future_to_call):
+                        call = future_to_call[future]
+                        result = future.result()
+                        results[call.id] = result
 
-                if result.success:
-                    completed_ids.add(call.id)
-                else:
-                    failed.append(call.id)
+                        if result.success:
+                            completed_ids.add(call.id)
+                        else:
+                            failed.append(call.id)
 
-                del pending[call.id]
+                        del pending[call.id]
+            else:
+                # Sequential execution
+                for call in ready:
+                    result = self._execute_call(call)
+                    results[call.id] = result
+
+                    if result.success:
+                        completed_ids.add(call.id)
+                    else:
+                        failed.append(call.id)
+
+                    del pending[call.id]
 
         total_ms = (time.time() - start_time) * 1000
 
