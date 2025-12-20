@@ -641,6 +641,7 @@ class MagicNumbersReducer(ConfidenceReducer):
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
         import ast
+        import re
 
         if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
             return False
@@ -654,8 +655,22 @@ class MagicNumbersReducer(ConfidenceReducer):
         if not new_content or not file_path.endswith(".py"):
             return False
 
+        # Pattern for SCREAMING_SNAKE_CASE constant names
+        constant_pattern = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
         try:
             tree = ast.parse(new_content)
+            
+            # First, collect all constant definition targets
+            constant_assignments = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and constant_pattern.match(target.id):
+                            # This is a constant definition - mark its value location
+                            if hasattr(node.value, 'lineno'):
+                                constant_assignments.add((node.value.lineno, node.value.col_offset))
+            
             for node in ast.walk(tree):
                 # Look for numeric literals
                 if isinstance(node, ast.Constant) and isinstance(
@@ -669,6 +684,9 @@ class MagicNumbersReducer(ConfidenceReducer):
                     if isinstance(val, int) and abs(val) <= 100:
                         continue
                     if isinstance(val, float) and abs(val) <= 100:
+                        continue
+                    # Skip if this is a constant definition (SCREAMING_SNAKE_CASE = value)
+                    if (node.lineno, node.col_offset) in constant_assignments:
                         continue
                     # Found a magic number
                     return True

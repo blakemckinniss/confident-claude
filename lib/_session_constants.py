@@ -18,7 +18,9 @@ CLAUDE_DIR = LIB_DIR.parent  # .claude
 MEMORY_DIR = CLAUDE_DIR / "memory"
 STATE_FILE = MEMORY_DIR / "session_state_v3.json"  # Legacy global (fallback only)
 OPS_DIR = LIB_DIR.parent / "ops"  # .claude/ops
-OPS_USAGE_FILE = MEMORY_DIR / "tool_usage.json"  # Legacy global (use get_ops_usage_file())
+OPS_USAGE_FILE = (
+    MEMORY_DIR / "tool_usage.json"
+)  # Legacy global (use get_ops_usage_file())
 STATE_LOCK_FILE = MEMORY_DIR / "session_state.lock"  # Legacy global lock
 
 
@@ -29,6 +31,7 @@ def get_ops_usage_file() -> Path:
     """
     state_file = get_project_state_file()
     return state_file.parent / "tool_usage.json"
+
 
 # =============================================================================
 # PROJECT-AWARE STATE PATHS (v3.13)
@@ -53,7 +56,7 @@ def _compute_cwd_hash() -> str:
 
 def _get_current_session_id() -> str:
     """Get current session ID from environment or generate one.
-    
+
     Priority:
     1. CLAUDE_SESSION_ID (explicit session ID)
     2. CLAUDE_CODE_SSE_PORT (stable per Claude Code session)
@@ -66,12 +69,12 @@ def _get_current_session_id() -> str:
     session_id = os.environ.get("CLAUDE_SESSION_ID", "")[:16]
     if session_id:
         return session_id
-    
+
     # Use SSE port as stable session identifier (unique per Claude Code session)
     sse_port = os.environ.get("CLAUDE_CODE_SSE_PORT", "")
     if sse_port:
         return f"sse_{sse_port}"
-    
+
     # Fallback: timestamp-based (not ideal - creates new session each invocation)
     return f"ses_{int(time.time())}"
 
@@ -251,3 +254,23 @@ STDLIB_PATTERNS = [
     r"^(os|sys|json|re|time|datetime|pathlib|subprocess|typing|collections|itertools)$",
     r"^(math|random|string|io|functools|operator|contextlib|abc|dataclasses)$",
 ]
+
+# =============================================================================
+# TIME CONSTANTS (avoid magic numbers for time calculations)
+# =============================================================================
+
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600
+SECONDS_PER_DAY = 86400
+SECONDS_PER_WEEK = 604800
+
+# Millisecond conversions
+MS_PER_SECOND = 1000
+
+# =============================================================================
+# SIZE CONSTANTS
+# =============================================================================
+
+# Buffer/truncation sizes
+DEFAULT_CONTENT_PREVIEW_CHARS = 1000
+DEFAULT_BUDGET_DISPLAY_THRESHOLD = 1000  # Display as "$XK" above this
