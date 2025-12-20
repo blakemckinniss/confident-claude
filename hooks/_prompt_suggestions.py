@@ -30,6 +30,7 @@ from _prompt_registry import register_hook
 from _hook_result import HookResult
 from session_state import SessionState
 from context_builder import extract_keywords
+from _hooks_memory import get_memory_prompt_hint
 
 # Path constants
 SCRIPT_DIR = Path(__file__).parent
@@ -418,6 +419,21 @@ def _collect_proactive_suggestions(state: SessionState) -> list[str]:
             )
 
     return suggestions
+
+
+# =============================================================================
+# MEMORY PROMPT HINT (priority 73)
+# =============================================================================
+
+
+@register_hook("memory_prompt_hint", priority=73)
+def check_memory_prompt_hint(data: dict, state: SessionState) -> HookResult:
+    """Suggest memory search for debugging prompts."""
+    prompt = data.get("prompt", "")
+    hint = get_memory_prompt_hint(prompt)
+    if hint:
+        return HookResult.allow(hint)
+    return HookResult.allow()
 
 
 @register_hook("proactive_nudge", priority=75)

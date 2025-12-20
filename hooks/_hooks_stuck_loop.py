@@ -47,12 +47,17 @@ RESEARCH_TOOLS = {
     "mcp__pal__thinkdeep",
     "mcp__pal__debug",
     "mcp__pal__apilookup",
+    # claude-mem memory search - counts as research since it surfaces past solutions
+    "mcp__mem-search__search",
+    "mcp__plugin_claude-mem_mem-search__search",
 }
+
 
 # State file for stuck loop tracking (project-isolated via _cooldown)
 def _get_stuck_loop_state_file() -> Path:
     """Get project-isolated stuck loop state file."""
     return _resolve_state_path("stuck_loop_state.json")
+
 
 # Patterns indicating debugging activity
 # IMPORTANT: These must be SPECIFIC to avoid false positives
@@ -503,10 +508,11 @@ def enforce_circuit_breaker(
     return HookResult.with_context(
         f"🛑 **CIRCUIT BREAKER ACTIVE**: Cannot edit `{file_name}` until research done\n"
         f"⚡ Required actions:\n"
-        f"   1. `WebSearch` or `mcp__crawl4ai__ddg_search` for solutions\n"
-        f"   2. `mcp__pal__debug` or `mcp__pal__chat` for external perspective\n"
-        f"   3. `mcp__pal__apilookup` if it's an API/library issue\n"
-        f"💡 Research resets the breaker and provides fresh approach"
+        f"   1. `mcp__mem-search__search` for past solutions to similar issues\n"
+        f"   2. `WebSearch` or `mcp__crawl4ai__ddg_search` for online solutions\n"
+        f"   3. `mcp__pal__debug` or `mcp__pal__chat` for external perspective\n"
+        f"   4. `mcp__pal__apilookup` if it's an API/library issue\n"
+        f"💡 Memory search is fastest - check if this was solved before!"
     )
 
 

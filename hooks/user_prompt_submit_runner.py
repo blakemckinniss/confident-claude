@@ -33,6 +33,7 @@ HOOKS INDEX (by priority):
    70  complexity_assessment - BMAD-style task complexity detection
    71  advisor_context     - Persona-flavored advisory (security, architecture, etc.)
    72  self_heal_diagnostic - Diagnostic commands when self-heal active
+   73  memory_prompt_hint  - Suggest claude-mem search for debug prompts
    75  proactive_nudge     - Actionable suggestions from state
    80  ops_nudge           - Tool suggestions (comprehensive)
    81  agent_suggestion    - Suggest Task agents based on prompt patterns
