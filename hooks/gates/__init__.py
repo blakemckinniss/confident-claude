@@ -10,6 +10,9 @@ Modules:
   _content.py    - Content quality gates (dangerous patterns, stubs, docs, etc.)
   _confidence.py - Confidence system gates (Entity Model self-regulation)
   _bash.py       - Bash command validation and guidance gates
+  _pal.py        - PAL mandate enforcement gates
+  _beads.py      - Beads/parallel execution gates
+  _meta.py       - Meta/recovery gates (self-heal, caching, thinking coach)
 """
 
 from ._common import HOOKS, register_hook, HookResult
@@ -67,6 +70,14 @@ from ._beads import (
     check_parallel_bead_delegation,
     check_recursion_guard,
 )
+from ._meta import (
+    check_fp_fix_enforcer,
+    check_self_heal_enforcer,
+    check_read_cache,
+    check_exploration_cache,
+    check_sunk_cost,
+    check_thinking_coach,
+)
 
 __all__ = [
     "HOOKS",
@@ -120,4 +131,11 @@ __all__ = [
     "check_bead_enforcement",
     "check_parallel_bead_delegation",
     "check_recursion_guard",
+    # Meta/recovery gates
+    "check_fp_fix_enforcer",
+    "check_self_heal_enforcer",
+    "check_read_cache",
+    "check_exploration_cache",
+    "check_sunk_cost",
+    "check_thinking_coach",
 ]
