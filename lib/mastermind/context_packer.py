@@ -9,6 +9,7 @@ Includes: repo structure, git diff, beads, test status, serena context, memories
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 from dataclasses import dataclass
@@ -886,7 +887,8 @@ def get_pal_continuation_hint(
             return f"📎 PAL continuations available: {', '.join(available)}"
 
         return ""
-    except Exception:
+    except Exception as e:
+        logging.debug("context_packer: PAL continuation lookup failed: %s", e)
         return ""
 
 
