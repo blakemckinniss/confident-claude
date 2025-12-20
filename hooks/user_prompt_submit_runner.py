@@ -78,6 +78,7 @@ import _prompt_ralph  # noqa: F401 - Ralph-wiggum task detection (priority 15)
 import _prompt_context  # noqa: F401 - Context hooks (priority 15-70)
 import _prompt_thinking  # noqa: F401 - Thinking memory injection (priority 42)
 import _prompt_suggestions  # noqa: F401 - Suggestion hooks (priority 72-95)
+import _prompt_routing  # noqa: F401 - Routing hooks (priority 80-82)
 
 
 # =============================================================================
