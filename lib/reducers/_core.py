@@ -12,77 +12,6 @@ if TYPE_CHECKING:
     from session_state import SessionState
 
 
-def _extract_semantic_keywords(activity: str) -> set[str]:
-    """Extract semantic keywords from file paths and commands.
-
-    Converts '/home/user/.claude/lib/confidence.py' → {'confidence', 'lib', 'claude'}
-    Converts 'git commit -m "fix bug"' → {'git', 'commit', 'fix', 'bug'}
-    """
-    # Common stop words to filter out
-    stop_words = {
-        "the",
-        "a",
-        "an",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "being",
-        "have",
-        "has",
-        "had",
-        "do",
-        "does",
-        "did",
-        "will",
-        "would",
-        "could",
-        "should",
-        "may",
-        "might",
-        "must",
-        "shall",
-        "can",
-        "need",
-        "dare",
-        # Path components that are semantically meaningful - keep for matching
-        # Removed: "src", "lib", "test", "tests" - these indicate code structure
-        "home",
-        "user",
-        "users",
-        "tmp",
-        "var",
-        "etc",
-        "usr",
-        "bin",
-        # File extensions - not semantically meaningful
-        "py",
-        "js",
-        "ts",
-        "tsx",
-        "jsx",
-        "md",
-        "json",
-        "yaml",
-        "yml",
-        "txt",
-        "css",
-        "html",
-        "xml",
-    }
-
-    # Extract words from the activity string
-    # Split on path separators, spaces, underscores, hyphens, dots
-    words = re.findall(r"[a-zA-Z]{3,}", activity.lower())
-
-    # Filter out stop words and very short words
-    keywords = {w for w in words if w not in stop_words and len(w) >= 3}
-
-    return keywords
-
-
 @dataclass
 class ToolFailureReducer(ConfidenceReducer):
     """Triggers on Bash/command failures."""
@@ -186,99 +115,6 @@ class UserCorrectionReducer(ConfidenceReducer):
         for pattern in self.patterns:
             if re.search(pattern, prompt):
                 return True
-        return False
-
-
-def _extract_semantic_keywords(activity: str) -> set[str]:
-    """Extract semantic keywords from file paths and commands.
-
-    Converts '/home/user/.claude/lib/confidence.py' → {'confidence', 'lib', 'claude'}
-    Converts 'git commit -m "fix bug"' → {'git', 'commit', 'fix', 'bug'}
-    """
-    # Common stop words to filter out
-    stop_words = {
-        "the",
-        "a",
-        "an",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "being",
-        "have",
-        "has",
-        "had",
-        "do",
-        "does",
-        "did",
-        "will",
-        "would",
-        "could",
-        "should",
-        "may",
-        "might",
-        "must",
-        "shall",
-        "can",
-        "need",
-        "dare",
-        # Path components that are semantically meaningful - keep for matching
-        # Removed: "src", "lib", "test", "tests" - these indicate code structure
-        "home",
-        "user",
-        "users",
-        "tmp",
-        "var",
-        "etc",
-        "usr",
-        "bin",
-        # File extensions - not semantically meaningful
-        "py",
-        "js",
-        "ts",
-        "tsx",
-        "jsx",
-        "md",
-        "json",
-        "yaml",
-        "yml",
-        "txt",
-        "css",
-        "html",
-        "xml",
-    }
-
-    # Extract words from the activity string
-    # Split on path separators, spaces, underscores, hyphens, dots
-    words = re.findall(r"[a-zA-Z]{3,}", activity.lower())
-
-    # Filter out stop words and very short words
-    keywords = {w for w in words if w not in stop_words and len(w) >= 3}
-
-    return keywords
-
-
-@dataclass
-class GoalDriftReducer(ConfidenceReducer):
-    """DISABLED: Keyword overlap is too crude for detecting actual goal drift.
-
-    The semantic keyword extraction doesn't understand that "sweep for net-negative
-    reducers" naturally involves reading reducer files - which have different keywords.
-    Related work looks like drift. Net negative.
-    """
-
-    name: str = "goal_drift"
-    delta: int = -8
-    description: str = "Activity diverged from original goal"
-    remedy: str = "refocus on original goal, or ask to change scope"
-    cooldown_turns: int = 8
-
-    def should_trigger(
-        self, context: dict, state: "SessionState", last_trigger_turn: int
-    ) -> bool:
-        # DISABLED: Keyword overlap is too crude. See docstring.
         return False
 
 
@@ -457,7 +293,6 @@ __all__ = [
     "CascadeBlockReducer",
     "SunkCostReducer",
     "UserCorrectionReducer",
-    "GoalDriftReducer",
     "EditOscillationReducer",
     "ContradictionReducer",
     "FollowUpQuestionReducer",

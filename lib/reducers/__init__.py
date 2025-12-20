@@ -30,7 +30,6 @@ from ._core import (
     CascadeBlockReducer,
     SunkCostReducer,
     UserCorrectionReducer,
-    GoalDriftReducer,
     EditOscillationReducer,
     ContradictionReducer,
     FollowUpQuestionReducer,
@@ -49,7 +48,6 @@ from ._behavioral import (
     SpottedIgnoredReducer,
     DebtBashReducer,
     LargeDiffReducer,
-    HookBlockReducer,
 )
 
 # Efficiency reducers (token/process waste)
@@ -102,7 +100,6 @@ from ._language import (
     HedgingLanguageReducer,
     PhantomProgressReducer,
     QuestionAvoidanceReducer,
-    InlineComplexReasoningReducer,
     DebugLoopNoPalReducer,
 )
 
@@ -112,8 +109,6 @@ from ._framework import (
     WebSearchBasicReducer,
     TodoWriteBypassReducer,
     RawSymbolHuntReducer,
-    GrepOverSerenaReducer,
-    FileReeditReducer,
     ComplexBashChainReducer,
     BashDataTransformReducer,
 )
@@ -139,7 +134,6 @@ REDUCERS: list[ConfidenceReducer] = [
     CascadeBlockReducer(),
     SunkCostReducer(),
     UserCorrectionReducer(),
-    GoalDriftReducer(),
     EditOscillationReducer(),
     ContradictionReducer(),
     FollowUpQuestionReducer(),
@@ -155,7 +149,6 @@ REDUCERS: list[ConfidenceReducer] = [
     SpottedIgnoredReducer(),
     DebtBashReducer(),
     LargeDiffReducer(),
-    HookBlockReducer(),
     SequentialRepetitionReducer(),
     SequentialWhenParallelReducer(),
     # Verification theater reducers
@@ -192,8 +185,6 @@ REDUCERS: list[ConfidenceReducer] = [
     WebSearchBasicReducer(),
     TodoWriteBypassReducer(),
     RawSymbolHuntReducer(),
-    GrepOverSerenaReducer(),
-    FileReeditReducer(),
     SequentialFileOpsReducer(),
     # Stuck loop reducers (v4.9)
     StuckLoopReducer(),
@@ -214,7 +205,6 @@ REDUCERS: list[ConfidenceReducer] = [
     PhantomProgressReducer(),
     QuestionAvoidanceReducer(),
     # PAL maximization reducers (v4.19)
-    InlineComplexReasoningReducer(),
     DebugLoopNoPalReducer(),
     # Test enforcement reducers (v4.20)
     TestsExistNotRunReducer(),
@@ -236,7 +226,6 @@ __all__ = [
     "CascadeBlockReducer",
     "SunkCostReducer",
     "UserCorrectionReducer",
-    "GoalDriftReducer",
     "EditOscillationReducer",
     "ContradictionReducer",
     "FollowUpQuestionReducer",
@@ -252,7 +241,6 @@ __all__ = [
     "SpottedIgnoredReducer",
     "DebtBashReducer",
     "LargeDiffReducer",
-    "HookBlockReducer",
     # Efficiency
     "SequentialRepetitionReducer",
     "SequentialWhenParallelReducer",
@@ -293,15 +281,12 @@ __all__ = [
     "HedgingLanguageReducer",
     "PhantomProgressReducer",
     "QuestionAvoidanceReducer",
-    "InlineComplexReasoningReducer",
     "DebugLoopNoPalReducer",
     # Framework
     "WebFetchOverCrawlReducer",
     "WebSearchBasicReducer",
     "TodoWriteBypassReducer",
     "RawSymbolHuntReducer",
-    "GrepOverSerenaReducer",
-    "FileReeditReducer",
     "ComplexBashChainReducer",
     "BashDataTransformReducer",
     # Stuck

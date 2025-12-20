@@ -116,52 +116,6 @@ class RawSymbolHuntReducer(ConfidenceReducer):
 
 
 @dataclass
-class GrepOverSerenaReducer(ConfidenceReducer):
-    """DISABLED: Grep is often the right tool even when Serena is active.
-
-    Serena is better for symbol-based queries, but Grep excels at:
-    - Quick pattern matching across many files
-    - Non-code patterns (config, comments, strings)
-    - When you know what you're looking for
-    Net negative - creates friction on legitimate tool use.
-    """
-
-    name: str = "grep_over_serena"
-    delta: int = -1
-    description: str = "Grep on code (serena has semantic search)"
-    remedy: str = "use serena search_for_pattern instead"
-    cooldown_turns: int = 2
-
-    def should_trigger(
-        self, context: dict, state: "SessionState", last_trigger_turn: int
-    ) -> bool:
-        # DISABLED: Grep is often the right choice. See docstring.
-        return False
-
-
-@dataclass
-class FileReeditReducer(ConfidenceReducer):
-    """DISABLED: "Get it right the first time" is unrealistic and counterproductive.
-
-    Iterative editing is normal, healthy development. This reducer punished
-    legitimate refinement. edit_oscillation already catches actual thrashing.
-    Net negative - creates anxiety about normal editing.
-    """
-
-    name: str = "file_reedit"
-    delta: int = -2
-    description: str = "Re-editing file (get it right first time)"
-    remedy: str = "get it right the first time"
-    cooldown_turns: int = 2
-
-    def should_trigger(
-        self, context: dict, state: "SessionState", last_trigger_turn: int
-    ) -> bool:
-        # DISABLED: Iteration is healthy. See docstring.
-        return False
-
-
-@dataclass
 class ComplexBashChainReducer(ConfidenceReducer):
     """Triggers on complex bash chains that should be scripts.
 
@@ -267,8 +221,6 @@ __all__ = [
     "WebSearchBasicReducer",
     "TodoWriteBypassReducer",
     "RawSymbolHuntReducer",
-    "GrepOverSerenaReducer",
-    "FileReeditReducer",
     "ComplexBashChainReducer",
     "BashDataTransformReducer",
 ]

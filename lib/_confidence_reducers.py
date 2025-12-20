@@ -35,7 +35,6 @@ from reducers import (
     CascadeBlockReducer,
     SunkCostReducer,
     UserCorrectionReducer,
-    GoalDriftReducer,
     EditOscillationReducer,
     ContradictionReducer,
     FollowUpQuestionReducer,
@@ -51,7 +50,6 @@ from reducers import (
     SpottedIgnoredReducer,
     DebtBashReducer,
     LargeDiffReducer,
-    HookBlockReducer,
     # Efficiency
     SequentialRepetitionReducer,
     SequentialWhenParallelReducer,
@@ -92,15 +90,12 @@ from reducers import (
     HedgingLanguageReducer,
     PhantomProgressReducer,
     QuestionAvoidanceReducer,
-    InlineComplexReasoningReducer,
     DebugLoopNoPalReducer,
     # Framework
     WebFetchOverCrawlReducer,
     WebSearchBasicReducer,
     TodoWriteBypassReducer,
     RawSymbolHuntReducer,
-    GrepOverSerenaReducer,
-    FileReeditReducer,
     ComplexBashChainReducer,
     BashDataTransformReducer,
     # Stuck
@@ -112,9 +107,6 @@ from reducers import (
     MastermindApproachDriftReducer,
 )
 
-# Also export the helper function used by GoalDriftReducer
-from reducers._core import _extract_semantic_keywords
-
 __all__ = [
     # Base
     "ConfidenceReducer",
@@ -123,14 +115,11 @@ __all__ = [
     "IMPACT_AMBIENT",
     # Aggregate list
     "REDUCERS",
-    # Helper
-    "_extract_semantic_keywords",
     # Core
     "ToolFailureReducer",
     "CascadeBlockReducer",
     "SunkCostReducer",
     "UserCorrectionReducer",
-    "GoalDriftReducer",
     "EditOscillationReducer",
     "ContradictionReducer",
     "FollowUpQuestionReducer",
@@ -146,7 +135,6 @@ __all__ = [
     "SpottedIgnoredReducer",
     "DebtBashReducer",
     "LargeDiffReducer",
-    "HookBlockReducer",
     # Efficiency
     "SequentialRepetitionReducer",
     "SequentialWhenParallelReducer",
@@ -187,15 +175,12 @@ __all__ = [
     "HedgingLanguageReducer",
     "PhantomProgressReducer",
     "QuestionAvoidanceReducer",
-    "InlineComplexReasoningReducer",
     "DebugLoopNoPalReducer",
     # Framework
     "WebFetchOverCrawlReducer",
     "WebSearchBasicReducer",
     "TodoWriteBypassReducer",
     "RawSymbolHuntReducer",
-    "GrepOverSerenaReducer",
-    "FileReeditReducer",
     "ComplexBashChainReducer",
     "BashDataTransformReducer",
     # Stuck

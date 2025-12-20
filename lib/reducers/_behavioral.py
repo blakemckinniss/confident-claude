@@ -472,27 +472,6 @@ class LargeDiffReducer(ConfidenceReducer):
         return context.get("large_diff", False)
 
 
-@dataclass
-class HookBlockReducer(ConfidenceReducer):
-    """DISABLED: Double-jeopardy - being blocked IS the corrective signal.
-
-    The hook block itself provides feedback. Adding a confidence penalty
-    on top punishes twice for the same thing = net negative.
-    """
-
-    name: str = "hook_block"
-    delta: int = -5
-    description: str = "Hook blocked action (soft/hard)"
-    remedy: str = "fix what the hook flagged"
-    cooldown_turns: int = 1
-
-    def should_trigger(
-        self, context: dict, state: "SessionState", last_trigger_turn: int
-    ) -> bool:
-        # DISABLED: Being blocked is already the signal. No double-jeopardy.
-        return False
-
-
 __all__ = [
     "BackupFileReducer",
     "VersionFileReducer",
@@ -505,5 +484,4 @@ __all__ = [
     "SpottedIgnoredReducer",
     "DebtBashReducer",
     "LargeDiffReducer",
-    "HookBlockReducer",
 ]

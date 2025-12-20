@@ -174,28 +174,6 @@ class QuestionAvoidanceReducer(ConfidenceReducer):
 
 
 @dataclass
-class InlineComplexReasoningReducer(ConfidenceReducer):
-    """DISABLED: Penalizes normal communication patterns.
-
-    Words like "considering", "analyzing", "trade-offs", "options" are GOOD
-    communication. Penalizing Claude for explaining reasoning clearly is
-    backwards. Clear explanations to users shouldn't trigger penalties.
-    """
-
-    name: str = "inline_complex_reasoning"
-    delta: int = -3
-    description: str = "Complex reasoning without PAL delegation"
-    remedy: str = "use mcp__pal__thinkdeep or mcp__pal__chat to offload reasoning"
-    cooldown_turns: int = 3
-
-    def should_trigger(
-        self, context: dict, state: "SessionState", last_trigger_turn: int
-    ) -> bool:
-        # DISABLED: Clear communication is good, not bad. See docstring.
-        return False
-
-
-@dataclass
 class DebugLoopNoPalReducer(ConfidenceReducer):
     """Triggers when debugging iteratively without using PAL debug.
 
@@ -238,6 +216,5 @@ __all__ = [
     "HedgingLanguageReducer",
     "PhantomProgressReducer",
     "QuestionAvoidanceReducer",
-    "InlineComplexReasoningReducer",
     "DebugLoopNoPalReducer",
 ]
