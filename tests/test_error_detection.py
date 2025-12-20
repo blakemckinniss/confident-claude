@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "hooks"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
-from post_tool_use_runner import _detect_error_in_result
+from _hooks_state import _detect_error_in_result
 
 
 class TestStringResults:
