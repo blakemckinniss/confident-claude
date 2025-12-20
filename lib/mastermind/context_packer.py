@@ -892,6 +892,82 @@ def get_pal_continuation_hint(
         return ""
 
 
+def get_ralph_context() -> dict[str, Any]:
+    """Get ralph-wiggum task tracking state for routing context.
+
+    Returns ralph's task tracking state so the router/planner can:
+    - Know what task is being tracked and its goal
+    - See what evidence is required vs gathered
+    - Adjust recommendations based on missing evidence
+
+    Returns:
+        Dict with ralph state or empty dict if not active.
+    """
+    import json
+
+    state_file = Path.home() / ".claude" / "tmp" / "session_state.json"
+    if not state_file.exists():
+        return {}
+
+    try:
+        data = json.loads(state_file.read_text())
+
+        ralph_mode = data.get("ralph_mode", "")
+        if not ralph_mode:
+            return {}
+
+        task_contract = data.get("task_contract", {})
+        completion_confidence = data.get("completion_confidence", 0)
+        completion_evidence = data.get("completion_evidence", [])
+
+        # Calculate missing evidence
+        evidence_required = set(task_contract.get("evidence_required", []))
+        evidence_gathered = set()
+        for ev in completion_evidence:
+            if isinstance(ev, dict):
+                evidence_gathered.add(ev.get("type", ""))
+            elif isinstance(ev, str):
+                evidence_gathered.add(ev)
+        missing_evidence = evidence_required - evidence_gathered
+
+        return {
+            "ralph_mode": ralph_mode,
+            "goal": task_contract.get("goal", ""),
+            "completion_confidence": completion_confidence,
+            "evidence_gathered": list(evidence_gathered),
+            "evidence_missing": list(missing_evidence),
+        }
+    except (json.JSONDecodeError, OSError, KeyError):
+        return {}
+
+
+def format_ralph_context(ralph_state: dict[str, Any]) -> str:
+    """Format ralph state for injection into router/planner context."""
+    if not ralph_state or not ralph_state.get("ralph_mode"):
+        return ""
+
+    lines = []
+    lines.append(f"Mode: {ralph_state['ralph_mode']}")
+
+    if goal := ralph_state.get("goal"):
+        lines.append(f"Goal: {goal[:100]}")
+
+    comp_conf = ralph_state.get("completion_confidence", 0)
+    lines.append(f"Completion: {comp_conf}%")
+
+    if gathered := ralph_state.get("evidence_gathered"):
+        lines.append(f"Evidence gathered: {', '.join(gathered)}")
+
+    if missing := ralph_state.get("evidence_missing"):
+        lines.append(f"Evidence MISSING: {', '.join(missing)}")
+        if "test_pass" in missing:
+            lines.append("→ Tests needed before completion")
+        if "build_success" in missing:
+            lines.append("→ Build verification needed")
+
+    return "\n".join(lines)
+
+
 def get_confidence_context(confidence: int | None) -> str:
     """Format confidence level for router context.
 
@@ -1001,6 +1077,12 @@ def pack_for_router(
         if trend:
             sections["confidence"] += f" | {trend}"
 
+    # Add ralph-wiggum task tracking context (critical for completion routing)
+    ralph_state = get_ralph_context()
+    if ralph_state:
+        sections["ralph"] = ralph_state
+        sections["ralph_formatted"] = format_ralph_context(ralph_state)
+
     # Add recent errors (critical for debugging classification)
     errors = get_recent_errors()
     if errors:
@@ -1077,6 +1159,10 @@ Type: {sections["repo_type"]}{project_line}{beads_line}
     # Add confidence section (high priority - affects classification)
     if "confidence" in sections and sections["confidence"]:
         packed += f"\n## Agent State\n{sections['confidence']}\n"
+
+    # Add ralph-wiggum task tracking (high priority - completion requirements)
+    if "ralph_formatted" in sections and sections["ralph_formatted"]:
+        packed += f"\n## Task Tracking (ralph-wiggum)\n{sections['ralph_formatted']}\n"
 
     # Add memory hints (lightweight - just signals, not content)
     if "memory_hints" in sections:
@@ -1182,6 +1268,11 @@ def pack_for_planner(
         if memories and memories != "[no relevant memories]":
             sections["memories"] = memories
 
+    # Add ralph-wiggum task tracking context
+    ralph_state = get_ralph_context()
+    if ralph_state:
+        sections["ralph"] = format_ralph_context(ralph_state)
+
     # Build packed prompt
     packed = f"""## User Request
 {sections["prompt"]}
@@ -1200,6 +1291,9 @@ def pack_for_planner(
 
 ## Test Status
 {sections.get("tests", "[unknown]")}
+
+## Task Tracking (ralph-wiggum)
+{sections.get("ralph", "[not active]")}
 
 ## Relevant Memories
 {sections.get("memories", "[none]")}
