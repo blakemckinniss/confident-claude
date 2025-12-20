@@ -29,6 +29,18 @@ from _codemode_interfaces import (  # noqa: E402
     SCHEMA_CACHE,
     save_schemas_cache,
 )
+import hashlib  # noqa: E402
+
+
+def compute_manifest_fingerprint(manifest: dict[str, dict]) -> str:
+    """Compute a fingerprint of the manifest for change detection.
+
+    Returns a short hash based on sorted tool names.
+    When tools are added/removed from manifest, fingerprint changes.
+    """
+    tool_names = sorted(manifest.keys())
+    content = "|".join(tool_names)
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 # =============================================================================
 # SCHEMA MANIFEST - Curated list of commonly-used MCP tools
@@ -448,9 +460,20 @@ def check_status() -> dict:
         now = time.time()
         expired = now > expires_at
 
+        # Check manifest fingerprint (v1.1)
+        current_fingerprint = compute_manifest_fingerprint(SCHEMA_MANIFEST)
+        cached_fingerprint = meta.get("manifest_fingerprint", "")
+        fingerprint_match = cached_fingerprint == current_fingerprint
+        manifest_changed = not fingerprint_match and cached_fingerprint != ""
+
+        # Cache is invalid if expired OR manifest changed
+        is_valid = not expired and fingerprint_match
+
         return {
             "exists": True,
             "expired": expired,
+            "manifest_changed": manifest_changed,
+            "fingerprint_match": fingerprint_match,
             "protocol_version": meta.get("protocol_version"),
             "current_version": CACHE_PROTOCOL_VERSION,
             "version_match": meta.get("protocol_version") == CACHE_PROTOCOL_VERSION,
@@ -458,7 +481,9 @@ def check_status() -> dict:
             "created_at": meta.get("created_at"),
             "expires_at": expires_at,
             "ttl_remaining": max(0, expires_at - now) if not expired else 0,
-            "message": "Cache valid" if not expired else "Cache expired",
+            "message": "Cache valid" if is_valid else (
+                "Manifest changed" if manifest_changed else "Cache expired"
+            ),
         }
     except (json.JSONDecodeError, OSError) as e:
         return {
@@ -472,13 +497,19 @@ def check_status() -> dict:
 def populate_cache(ttl_hours: float = 24) -> dict:
     """Populate cache from manifest."""
     ttl_seconds = int(ttl_hours * 3600)
-    save_schemas_cache(SCHEMA_MANIFEST, ttl_seconds=ttl_seconds)
+    fingerprint = compute_manifest_fingerprint(SCHEMA_MANIFEST)
+    save_schemas_cache(
+        SCHEMA_MANIFEST,
+        ttl_seconds=ttl_seconds,
+        manifest_fingerprint=fingerprint,
+    )
 
     return {
         "success": True,
         "tool_count": len(SCHEMA_MANIFEST),
         "ttl_hours": ttl_hours,
         "cache_path": str(SCHEMA_CACHE),
+        "manifest_fingerprint": fingerprint,
     }
 
 

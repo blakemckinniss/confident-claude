@@ -317,13 +317,18 @@ def load_cached_schemas(ttl_seconds: int = 3600) -> dict[str, dict]:
         return {}
 
 
-def save_schemas_cache(schemas: dict[str, dict], ttl_seconds: int = 3600) -> None:
+def save_schemas_cache(
+    schemas: dict[str, dict],
+    ttl_seconds: int = 3600,
+    manifest_fingerprint: str = "",
+) -> None:
     """
     Save tool schemas to cache with metadata and atomic write.
 
     Args:
         schemas: Dict of tool schemas to cache
         ttl_seconds: Cache TTL in seconds (default 1 hour)
+        manifest_fingerprint: Hash of manifest for change detection (v1.1)
     """
     SCHEMA_CACHE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -335,6 +340,7 @@ def save_schemas_cache(schemas: dict[str, dict], ttl_seconds: int = 3600) -> Non
             "created_at": now,
             "expires_at": now + ttl_seconds,
             "tool_count": len(schemas),
+            "manifest_fingerprint": manifest_fingerprint,
         },
         **schemas,
     }
