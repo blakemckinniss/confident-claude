@@ -6,8 +6,9 @@ Scans .claude/hooks/ directory, validates each hook, and maintains registry.
 Used by test suite and monitoring systems.
 """
 
-import json
 import ast
+import json
+import logging
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -73,7 +74,7 @@ class HookRegistry:
                     # First line only
                     metadata["description"] = docstring.split("\n")[0].strip()
         except Exception:
-            pass
+            logging.debug("hook_registry: docstring extraction failed for %s", hook_path.name)
 
         return metadata
 
@@ -106,7 +107,7 @@ class HookRegistry:
                     if self._match_hook_in_group(matcher_group, hook_path.name):
                         return event_type
         except Exception:
-            pass
+            logging.debug("hook_registry: settings inference failed for %s", hook_path.name)
         return None
 
     def _infer_from_content(self, hook_path: Path) -> Optional[str]:
@@ -124,7 +125,7 @@ class HookRegistry:
                 if event in content:
                     return event
         except Exception:
-            pass
+            logging.debug("hook_registry: content inference failed for %s", hook_path.name)
         return None
 
     def _infer_event_type(self, hook_path: Path) -> Optional[str]:

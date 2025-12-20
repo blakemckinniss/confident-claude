@@ -17,6 +17,7 @@ This module provides:
 
 import hashlib
 import json
+import logging
 import os
 import re
 import time as _time_module
@@ -286,7 +287,7 @@ def run_spark(text: str, timeout: float = 3.0) -> Optional[Dict]:
         return result
 
     except Exception:
-        pass
+        logging.debug("synapse_core: spark cache lookup failed (non-critical)")
 
     # Cache failures too (avoid repeated errors)
     _SPARK_CACHE[cache_key] = (_time_module.time(), None)
