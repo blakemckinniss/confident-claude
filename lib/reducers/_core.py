@@ -262,7 +262,12 @@ def _extract_semantic_keywords(activity: str) -> set[str]:
 
 @dataclass
 class GoalDriftReducer(ConfidenceReducer):
-    """Triggers when activity diverges from original goal."""
+    """DISABLED: Keyword overlap is too crude for detecting actual goal drift.
+
+    The semantic keyword extraction doesn't understand that "sweep for net-negative
+    reducers" naturally involves reading reducer files - which have different keywords.
+    Related work looks like drift. Net negative.
+    """
 
     name: str = "goal_drift"
     delta: int = -8
@@ -273,32 +278,8 @@ class GoalDriftReducer(ConfidenceReducer):
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
-            return False
-        # Use existing goal drift detection from session_state
-        if not state.original_goal or not state.goal_keywords:
-            return False
-        if state.turn_count - state.goal_set_turn < 5:
-            return False
-
-        # Get current activity and extract semantic keywords
-        current = context.get("current_activity", "")
-        if not current:
-            return False
-
-        # Extract keywords from file paths/commands (semantic matching)
-        activity_keywords = _extract_semantic_keywords(current)
-        if not activity_keywords:
-            return False
-
-        # Check overlap between goal keywords and activity keywords
-        goal_set = set(state.goal_keywords)
-        matches = len(goal_set & activity_keywords)
-        overlap = matches / len(goal_set) if goal_set else 0
-
-        # Only trigger if very low overlap (< 10% instead of 20%)
-        # This is more lenient since semantic extraction is imperfect
-        return overlap < 0.1
+        # DISABLED: Keyword overlap is too crude. See docstring.
+        return False
 
 
 @dataclass

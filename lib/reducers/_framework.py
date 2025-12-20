@@ -117,114 +117,48 @@ class RawSymbolHuntReducer(ConfidenceReducer):
 
 @dataclass
 class GrepOverSerenaReducer(ConfidenceReducer):
-    """Triggers when using Grep on code when serena is active.
+    """DISABLED: Grep is often the right tool even when Serena is active.
 
-    Serena's search_for_pattern and find_symbol are more semantic.
-
-    EXEMPT: Single-file searches - Grep on a known specific file is fine.
-    Only penalize broad directory searches where Serena would be better.
+    Serena is better for symbol-based queries, but Grep excels at:
+    - Quick pattern matching across many files
+    - Non-code patterns (config, comments, strings)
+    - When you know what you're looking for
+    Net negative - creates friction on legitimate tool use.
     """
 
     name: str = "grep_over_serena"
     delta: int = -1
     description: str = "Grep on code (serena has semantic search)"
     remedy: str = "use serena search_for_pattern instead"
-    cooldown_turns: int = 2  # One signal per behavior is enough
+    cooldown_turns: int = 2
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
-            return False
-        # Only if serena is activated
-        if not context.get("serena_activated", False):
-            return False
-
-        tool_name = context.get("tool_name", "")
-        if tool_name != "Grep":
-            return False
-
-        # Check if searching in code-heavy areas
-        path = context.get("grep_path", "")
-
-        # FIX: Exempt single-file searches - Grep on a specific file is fine
-        # Only penalize broad directory searches where Serena adds value
-        file_extensions = (
-            ".py",
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".rs",
-            ".go",
-            ".java",
-            ".md",
-        )
-        if path.endswith(file_extensions):
-            return False  # Searching specific file, Grep is appropriate
-
-        code_indicators = ("/src/", "/lib/", ".py", ".ts", ".js", "/hooks/", "/ops/")
-        return any(ind in path for ind in code_indicators)
+        # DISABLED: Grep is often the right choice. See docstring.
+        return False
 
 
 @dataclass
 class FileReeditReducer(ConfidenceReducer):
-    """Triggers when re-editing a file already edited this session.
+    """DISABLED: "Get it right the first time" is unrealistic and counterproductive.
 
-    Creates immediate friction on any re-edit. Stacks with edit_oscillation
-    for repeated patterns. Signal: couldn't get it right the first time.
-
-    EXEMPT: Framework DNA files (CLAUDE.md, /rules/) - iterative refinement expected.
-    These files get +15 boost via rules_update, so net effect is still positive.
+    Iterative editing is normal, healthy development. This reducer punished
+    legitimate refinement. edit_oscillation already catches actual thrashing.
+    Net negative - creates anxiety about normal editing.
     """
 
     name: str = "file_reedit"
     delta: int = -2
     description: str = "Re-editing file (get it right first time)"
     remedy: str = "get it right the first time"
-    cooldown_turns: int = 2  # One signal per behavior is enough
-
-    # Files exempt from re-edit penalty (iterative refinement expected)
-    exempt_patterns: tuple = (
-        "CLAUDE.md",
-        "/rules/",
-        "/.claude/rules/",
-        "/plans/",  # Plan mode explicitly requires iterative plan file edits
-        "/.claude/plans/",
-    )
+    cooldown_turns: int = 2
 
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
-        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
-            return False
-        tool_name = context.get("tool_name", "")
-        if tool_name not in ("Edit", "Write"):
-            return False
-
-        file_path = context.get("file_path", "")
-        if not file_path:
-            return False
-
-        # Exempt framework DNA files - iterative refinement is expected
-        if any(pattern in file_path for pattern in self.exempt_patterns):
-            return False
-
-        # Check if file was edited before this turn
-        # NOTE: state_updater (priority 10) runs BEFORE this reducer (priority 12),
-        # so the current edit is ALREADY in files_edited. We need count >= 2 to
-        # detect a RE-edit (current + at least one previous).
-        files_edited = getattr(state, "files_edited", [])
-        edit_count = 0
-        for entry in files_edited:
-            if isinstance(entry, dict):
-                if entry.get("path") == file_path:
-                    edit_count += 1
-            elif isinstance(entry, str) and entry == file_path:
-                edit_count += 1
-
-        # Trigger if this is 2nd+ edit (count >= 2 because current edit already added)
-        return edit_count >= 2
+        # DISABLED: Iteration is healthy. See docstring.
+        return False
 
 
 @dataclass
