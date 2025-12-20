@@ -316,6 +316,93 @@ class CodeModeExecutor:
         }
 
 
+class ResultCache:
+    """
+    Cache for tool call results with TTL support.
+
+    Reduces redundant MCP calls for repeated (tool, args) patterns.
+    """
+
+    # Default cache settings
+    DEFAULT_TTL_SECONDS = 300  # 5 minutes
+    DEFAULT_MAX_ENTRIES = 100
+    HASH_PREFIX_LEN = 16
+
+    def __init__(
+        self,
+        ttl_seconds: int = DEFAULT_TTL_SECONDS,
+        max_entries: int = DEFAULT_MAX_ENTRIES,
+    ):
+        """
+        Initialize result cache.
+
+        Args:
+            ttl_seconds: Time-to-live for cache entries (default 5 min).
+            max_entries: Maximum cache entries before eviction.
+        """
+        self._cache: dict[str, tuple[Any, float]] = {}  # hash -> (result, expires_at)
+        self._ttl = ttl_seconds
+        self._max_entries = max_entries
+        self._hits = 0
+        self._misses = 0
+
+    def _make_key(self, tool: str, args: dict) -> str:
+        """Generate cache key from tool name and args."""
+        import hashlib
+
+        # Stable JSON serialization for consistent hashing
+        args_str = json.dumps(args, sort_keys=True, default=str)
+        content = f"{tool}:{args_str}"
+        return hashlib.sha256(content.encode()).hexdigest()[: self.HASH_PREFIX_LEN]
+
+    def get(self, tool: str, args: dict) -> tuple[bool, Any]:
+        """
+        Get cached result if available and not expired.
+
+        Returns:
+            (hit, result) - hit is True if cache hit, result is cached value
+        """
+        import time
+
+        key = self._make_key(tool, args)
+        if key in self._cache:
+            result, expires_at = self._cache[key]
+            if time.time() < expires_at:
+                self._hits += 1
+                return (True, result)
+            # Expired - remove
+            del self._cache[key]
+
+        self._misses += 1
+        return (False, None)
+
+    def set(self, tool: str, args: dict, result: Any) -> None:
+        """Cache a result."""
+        import time
+
+        # Evict oldest if at capacity
+        if len(self._cache) >= self._max_entries:
+            oldest_key = min(self._cache, key=lambda k: self._cache[k][1])
+            del self._cache[oldest_key]
+
+        key = self._make_key(tool, args)
+        self._cache[key] = (result, time.time() + self._ttl)
+
+    def stats(self) -> dict:
+        """Return cache statistics."""
+        total = self._hits + self._misses
+        return {
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate": self._hits / total if total > 0 else 0.0,
+            "entries": len(self._cache),
+        }
+
+    def clear(self) -> None:
+        """Clear all cached entries."""
+        self._cache.clear()
+
+
 @dataclass
 class PlanResult:
     """Result from a single tool call in a plan."""
@@ -326,6 +413,7 @@ class PlanResult:
     result: Any = None
     error: str | None = None
     duration_ms: float = 0.0
+    cached: bool = False  # Whether result came from cache
 
     def to_dict(self) -> dict:
         return {
@@ -335,6 +423,7 @@ class PlanResult:
             "result": self.result,
             "error": self.error,
             "duration_ms": self.duration_ms,
+            "cached": self.cached,
         }
 
 
@@ -382,6 +471,7 @@ class PlanExecutor:
         log_executions: bool = True,
         parallel: bool = True,
         max_workers: int = 4,
+        cache: ResultCache | None = None,
     ):
         """
         Initialize plan executor.
@@ -393,11 +483,13 @@ class PlanExecutor:
             log_executions: Whether to log executions to JSONL.
             parallel: Execute independent calls concurrently.
             max_workers: Max concurrent executions (default 4).
+            cache: Optional ResultCache for caching repeated tool calls.
         """
         self._invoker = tool_invoker
         self._log_executions = log_executions
         self._parallel = parallel
         self._max_workers = max_workers
+        self._cache = cache
 
     def execute(self, plan: ExecutionPlan) -> PlanExecutionResult:
         """
@@ -492,8 +584,21 @@ class PlanExecutor:
         return exec_result
 
     def _execute_call(self, call: ToolCallSpec) -> PlanResult:
-        """Execute a single tool call."""
+        """Execute a single tool call, with optional caching."""
         import time
+
+        # Check cache first
+        if self._cache is not None:
+            hit, cached_result = self._cache.get(call.tool, call.args)
+            if hit:
+                return PlanResult(
+                    call_id=call.id,
+                    tool=call.tool,
+                    success=True,
+                    result=cached_result,
+                    duration_ms=0.0,
+                    cached=True,
+                )
 
         start = time.time()
 
@@ -520,6 +625,10 @@ class PlanExecutor:
                     error=str(result["error"]),
                     duration_ms=duration,
                 )
+
+            # Cache successful result
+            if self._cache is not None:
+                self._cache.set(call.tool, call.args, result)
 
             return PlanResult(
                 call_id=call.id,
