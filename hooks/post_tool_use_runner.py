@@ -87,7 +87,9 @@ from _hook_registry import HOOKS, matches_tool
 
 # Import hook modules (triggers registration via decorators)
 import _hooks_cache  # noqa: F401 - Cache hooks (priority 5-6)
-import _hooks_state  # noqa: F401 - State hooks (priority 10-16)
+import _hooks_state_pal  # noqa: F401 - PAL mandate hook (priority 5)
+import _hooks_state  # noqa: F401 - State hooks (priority 9-10, 12-16)
+import _hooks_state_decay  # noqa: F401 - Confidence decay (priority 11)
 import _hooks_quality  # noqa: F401 - Quality hooks (priority 22-50)
 import _hooks_tracking  # noqa: F401 - Tracking hooks (priority 55-72)
 import _hooks_stuck_loop  # noqa: F401 - Stuck loop detection (priority 78-83)
@@ -158,7 +160,9 @@ def run_hooks(data: dict, state: SessionState) -> dict:
     output = {"hookSpecificOutput": {"hookEventName": "PostToolUse"}}
     if contexts:
         if len(contexts) > 5:
-            print(f"[post-runner] Truncated {len(contexts) - 5} contexts", file=sys.stderr)
+            print(
+                f"[post-runner] Truncated {len(contexts) - 5} contexts", file=sys.stderr
+            )
         output["hookSpecificOutput"]["additionalContext"] = "\n\n".join(contexts[:5])
     return output
 
