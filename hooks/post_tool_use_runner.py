@@ -45,6 +45,9 @@ HOOKS INDEX (by priority):
     84 confidence_floor_debug - Force research when confidence <50% during debug
     85 confidence_recovery  - Track recovery after confidence-triggered research
 
+  CODE-MODE (88):
+    88 codemode_result_recorder - Auto-record results for pending handoff calls
+
   SMART COMMIT (95-97):
     95 smart_commit_bead_close - Auto-commit on bd close with bead title
     96 smart_commit_track_edit - Track file edits for commit suggestions
@@ -97,6 +100,7 @@ import _hooks_tracking  # noqa: F401 - Tracking hooks (priority 55-72)
 import _hooks_stuck_loop  # noqa: F401 - Stuck loop detection (priority 78-83)
 import _hooks_mastermind  # noqa: F401 - Mastermind integration (priority 86-89)
 import _hooks_smart_commit  # noqa: F401 - Smart auto-commit (priority 95-97)
+import _hooks_codemode  # noqa: F401 - Code-mode result recording (priority 88)
 from _hooks_tracking import _get_scratch_state_file, _get_info_gain_state_file
 
 # =============================================================================
