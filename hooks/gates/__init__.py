@@ -6,8 +6,9 @@ This package breaks down pre_tool_use_runner.py into category-based modules.
 Each module registers its hooks into the shared HOOKS list on import.
 
 Modules:
-  _serena.py  - Serena activation and code tool gates
-  _content.py - Content quality gates (dangerous patterns, stubs, docs, etc.)
+  _serena.py     - Serena activation and code tool gates
+  _content.py    - Content quality gates (dangerous patterns, stubs, docs, etc.)
+  _confidence.py - Confidence system gates (Entity Model self-regulation)
 """
 
 from ._common import HOOKS, register_hook, HookResult
@@ -31,6 +32,15 @@ from ._content import (
     check_import_gate,
     check_modularization,
     inject_curiosity_prompt,
+)
+from ._confidence import (
+    check_homeostatic_drive,
+    check_threat_anticipation,
+    check_confidence_tool_gate,
+    check_oracle_gate,
+    check_confidence_external_suggestion,
+    check_integration_gate,
+    check_error_suppression,
 )
 
 __all__ = [
@@ -56,4 +66,12 @@ __all__ = [
     "check_import_gate",
     "check_modularization",
     "inject_curiosity_prompt",
+    # Confidence gates
+    "check_homeostatic_drive",
+    "check_threat_anticipation",
+    "check_confidence_tool_gate",
+    "check_oracle_gate",
+    "check_confidence_external_suggestion",
+    "check_integration_gate",
+    "check_error_suppression",
 ]
