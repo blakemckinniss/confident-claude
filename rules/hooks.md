@@ -19,18 +19,38 @@ Rules for developing and maintaining the Whitebox hook system.
 ├── subagent_stop.py             # SubagentStop handler
 ├── pre_compact.py               # PreCompact handler
 ├── statusline.py                # Status bar renderer
+│
+│   # Core Infrastructure
 ├── _hook_result.py              # HookResult API (approve/deny/none)
+├── _hook_registry.py            # Decorator-based hook registration
 ├── _config.py                   # Centralized config with hot-reload
 ├── _cooldown.py                 # Cooldown management (spam prevention)
 ├── _patterns.py                 # Path patterns (scratch, protected paths)
-├── _beads.py                    # Bead/task tracking helpers (bd CLI)
-├── _logging.py                  # Hook logging utilities
-├── _ast_utils.py                # AST analysis utilities
-├── _lib_path.py                 # Library path management
-├── _pal_mandates.py             # PAL MCP mandate handling
-├── _quality_scanner.py          # Code quality scanning
 ├── _cache.py                    # Hook result caching
+├── _logging.py                  # Hook logging utilities
+├── _lib_path.py                 # Library path management
+│
+│   # Code-Mode Infrastructure (Plan Protocol)
+├── _prompt_codemode.py          # Code-mode plan injection
+├── _hooks_codemode.py           # Code-mode result handling
+│
+│   # Thinking & Suggestions
+├── _thinking_suggester.py       # Pattern-based capability suggestions from thinking
+├── _prompt_suggestions.py       # Prompt-based tool suggestions
+├── _pal_mandates.py             # PAL MCP mandate handling
 ├── _intent_classifier.py        # Intent classification
+│
+│   # Quality & State
+├── _hooks_state.py              # Session state management
+├── _hooks_state_reducers.py     # Confidence reducers
+├── _hooks_state_increasers.py   # Confidence increasers
+├── _hooks_quality.py            # Code quality checks
+├── _quality_scanner.py          # Code quality scanning
+├── _ast_utils.py                # AST analysis utilities
+│
+│   # Integration
+├── _beads.py                    # Bead/task tracking helpers (bd CLI)
+├── _integration.py              # Cross-system integration
 └── py                           # Python wrapper script (auto-detects venv)
 ```
 
@@ -124,6 +144,36 @@ ruff check ~/.claude/hooks/pre_tool_use_runner.py
 # Test specific hook behavior
 # Trigger the condition and verify behavior
 ```
+
+## Code-Mode Plan Protocol
+
+Hooks cannot invoke MCP tools directly. Code-mode generates structured plans that Claude executes.
+
+```
+Hook generates plan → Claude executes tools → Results flow back → Next iteration
+```
+
+**Key files:**
+- `lib/_codemode_planner.py` - Plan generation with ToolCallSpec
+- `lib/_codemode_executor.py` - PlanExecutor for structured execution
+- `lib/_codemode_interfaces.py` - Schema cache for MCP tool discovery
+- `hooks/_prompt_codemode.py` - Plan injection into prompts
+- `hooks/_hooks_codemode.py` - Result handling and handoff
+
+**Plan phases:** `NEED_SCHEMAS` → `NEED_TOOLS` → `HAVE_RESULTS` → `DONE`
+
+## Thinking Suggester
+
+Analyzes Claude's thinking blocks to surface relevant tools proactively.
+
+```python
+# Pattern → Suggestion mapping in _thinking_suggester.py
+(regex_pattern, Suggestion(emoji, title, tools, hint))
+
+# Example: thinking mentions "browser" → Playwright suggestion
+```
+
+**Philosophy:** Thinking tokens contain rich intent signal. Proactive suggestion beats reactive correction.
 
 ## Important Rules
 

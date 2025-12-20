@@ -275,6 +275,26 @@ Decisions logged to `~/.claude/tmp/mastermind/`:
 | `GROQ_API_KEY` | Required for Groq router |
 | `OPENAI_API_KEY` | Required for GPT-5.2 planner (via PAL) |
 
+## PAL Mandates
+
+Conditions that trigger **mandatory** PAL tool usage. Aggressive by design - prefers external consultation over solo work.
+
+**Key file:** `~/.claude/hooks/_pal_mandates.py`
+
+### Mandate Triggers
+
+| Condition | Mandate |
+|-----------|---------|
+| Confidence < 50% | `mcp__pal__debug` or `mcp__pal__thinkdeep` |
+| Complex architecture decision | `mcp__pal__consensus` |
+| API/library uncertainty | `mcp__pal__apilookup` |
+| Extended debugging (3+ attempts) | `mcp__pal__debug` |
+| Pre-commit on significant changes | `mcp__pal__precommit` |
+
+### Code-Mode Integration
+
+PAL mandates can trigger code-mode plan generation when complex tool orchestration is needed. See `hooks/_prompt_codemode.py` for plan injection.
+
 ## Troubleshooting
 
 ### Router not classifying
