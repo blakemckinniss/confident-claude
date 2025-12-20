@@ -1491,6 +1491,95 @@ def check_codemode_mandate(
 
 
 # =============================================================================
+# RALPH-WIGGUM INTEGRATION (task completion tracking)
+# =============================================================================
+
+
+def check_ralph_mandate(
+    ralph_mode: str,
+    task_contract: dict,
+    completion_confidence: int,
+    completion_evidence: list,
+    confidence: int,
+) -> Optional[Mandate]:
+    """
+    Check for ralph-aware mandates based on task tracking state.
+
+    Ralph-wiggum tracks non-trivial tasks and requires evidence before completion.
+    This function generates mandates that help ensure PAL is used appropriately
+    for implementation tasks.
+
+    Args:
+        ralph_mode: "auto" or "explicit" if ralph is tracking, "" otherwise
+        task_contract: Dict with goal, criteria, evidence_required
+        completion_confidence: Ralph's completion confidence (0-100)
+        completion_evidence: List of evidence gathered so far
+        confidence: Current system confidence (0-100)
+
+    Returns:
+        Mandate if ralph state warrants PAL consultation, None otherwise
+    """
+    if not ralph_mode or not task_contract:
+        return None
+
+    goal = task_contract.get("goal", "")
+    criteria = task_contract.get("criteria", [])
+    evidence_required = task_contract.get("evidence_required", [])
+
+    # Determine what evidence is missing
+    evidence_types = set(
+        e.get("type") if isinstance(e, dict) else e for e in completion_evidence
+    )
+    missing_evidence = set(evidence_required) - evidence_types
+
+    # If ralph is tracking and completion confidence is very low, suggest planning
+    if completion_confidence < 20 and confidence < 80:
+        return Mandate(
+            tool="mcp__pal__planner",
+            directive=(
+                f"🎯 **RALPH TASK ACTIVE**: `{goal[:60]}...`\n\n"
+                f"Completion confidence is low ({completion_confidence}%). "
+                f"Use `mcp__pal__planner` to structure your approach.\n\n"
+                f"**Required evidence**: {', '.join(evidence_required)}\n"
+                f"**Missing**: {', '.join(missing_evidence) if missing_evidence else 'none yet'}"
+            ),
+            priority=P_PROACTIVE,
+            reason=f"Ralph task: low completion confidence ({completion_confidence}%)",
+        )
+
+    # If tests are required but not yet passing, suggest debug tool
+    if "test_pass" in missing_evidence and completion_confidence < 50:
+        return Mandate(
+            tool="mcp__pal__debug",
+            directive=(
+                f"🎯 **RALPH TASK**: Tests required but not passing.\n\n"
+                f"Goal: `{goal[:60]}...`\n"
+                f"Use `mcp__pal__debug` to analyze test failures or "
+                f"`mcp__pal__codereview` before running tests.\n\n"
+                f"**Criteria**: {', '.join(criteria[:3])}"
+            ),
+            priority=P_MEDIUM,
+            reason="Ralph task: tests required, not yet passing",
+        )
+
+    # If build is required but not yet successful, suggest debug
+    if "build_success" in missing_evidence and completion_confidence < 50:
+        return Mandate(
+            tool="mcp__pal__debug",
+            directive=(
+                f"🎯 **RALPH TASK**: Build success required.\n\n"
+                f"Goal: `{goal[:60]}...`\n"
+                f"Use `mcp__pal__debug` to analyze build issues.\n\n"
+                f"**Criteria**: {', '.join(criteria[:3])}"
+            ),
+            priority=P_MEDIUM,
+            reason="Ralph task: build required, not yet successful",
+        )
+
+    return None
+
+
+# =============================================================================
 # SUMMARY: Mandate Thresholds (v2.0 - AGGRESSIVE)
 # =============================================================================
 #

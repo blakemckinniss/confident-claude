@@ -87,6 +87,7 @@ try:
         check_challenge_mandate,
         check_precommit_mandate,
         check_codemode_mandate,
+        check_ralph_mandate,
     )
 
     PAL_MANDATES_AVAILABLE = True
@@ -101,6 +102,7 @@ except ImportError:
     check_challenge_mandate = None
     check_precommit_mandate = None
     check_codemode_mandate = None
+    check_ralph_mandate = None
 
 # Try to import Serena activation mandate
 try:
@@ -2046,7 +2048,13 @@ def check_expert_probe(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("pal_mandate", priority=89)
 def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
-    """Inject MANDATORY PAL tool directives based on confidence/intent/state."""
+    """Inject MANDATORY PAL tool directives based on confidence/intent/state.
+
+    Integrates with ralph-wiggum task tracking to enhance mandates:
+    - When ralph_mode is active, PAL mandates are more assertive
+    - Task contract criteria inform tool selection
+    - Completion evidence requirements boost mandate priority
+    """
     if not PAL_MANDATES_AVAILABLE or get_mandate is None:
         return HookResult.allow()
 
@@ -2074,8 +2082,43 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     goal_drift = state.get("goal_drift_active", False)
     consecutive_failures = state.get("consecutive_failures", 0)
 
+    # ==========================================================================
+    # RALPH-WIGGUM INTEGRATION
+    # When ralph tracks a non-trivial task, enhance PAL mandate behavior
+    # ==========================================================================
+    ralph_mode = state.get("ralph_mode", "")
+    task_contract = state.get("task_contract", {})
+    completion_confidence = state.get("completion_confidence", 0)
+    completion_evidence = state.get("completion_evidence", [])
+
+    # Ralph-aware intent inference: If ralph detected implementation task,
+    # use that to inform intent if not already set
+    if ralph_mode and not intent:
+        # Infer intent from task contract goal
+        goal = task_contract.get("goal", "").lower()
+        if any(kw in goal for kw in ["fix", "bug", "debug", "error"]):
+            intent = "debug"
+        elif any(kw in goal for kw in ["refactor", "clean", "improve"]):
+            intent = "refactor"
+        elif any(kw in goal for kw in ["implement", "build", "create", "add"]):
+            intent = "implement"
+
+    # Ralph boost: If ralph is tracking and completion_confidence is low,
+    # lower the effective confidence to trigger stronger mandates
+    effective_confidence = confidence
+    if ralph_mode and task_contract:
+        # Evidence required but not yet gathered = more aggressive PAL
+        evidence_required = task_contract.get("evidence_required", [])
+        evidence_gathered = set(e.get("type") if isinstance(e, dict) else e
+                                for e in completion_evidence)
+        missing_evidence = set(evidence_required) - evidence_gathered
+
+        if missing_evidence and completion_confidence < 50:
+            # Lower effective confidence to trigger PAL consultation
+            effective_confidence = min(confidence, 65)
+
     mandate = get_mandate(
-        confidence=confidence,
+        confidence=effective_confidence,
         intent=intent,
         cascade_failure=cascade_failure,
         edit_oscillation=edit_oscillation,
@@ -2116,6 +2159,16 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
         mastermind_class = state.get("mastermind_classification")
         mandate = check_codemode_mandate(
             prompt, mastermind_classification=mastermind_class
+        )
+
+    # Check for ralph-wiggum task tracking triggers (missing evidence, low completion confidence)
+    if mandate is None and check_ralph_mandate is not None:
+        mandate = check_ralph_mandate(
+            ralph_mode=ralph_mode,
+            task_contract=task_contract,
+            completion_confidence=completion_confidence,
+            completion_evidence=completion_evidence,
+            confidence=confidence,
         )
 
     if mandate is None:
