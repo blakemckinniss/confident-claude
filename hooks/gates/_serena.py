@@ -20,6 +20,10 @@ from typing import Optional
 
 from ._common import register_hook, HookResult, SessionState
 
+# Constants for activation cleanup
+ACTIVATION_MAX_AGE_HOURS = 24
+SECONDS_PER_HOUR = 3600
+
 
 def _detect_serena_project(from_path: Optional[str] = None) -> tuple[Path | None, str]:
     """Detect .serena/ directory and extract project name.
@@ -91,8 +95,10 @@ def _is_serena_activated_for_project(serena_dir: Path) -> bool:
     ~/.claude for hooks), not the target project.
 
     The registry is at ~/.claude/memory/.serena_activations.json
+    Values can be True (legacy) or timestamp (new format) - both are truthy.
     """
     import json
+    import time
 
     registry_path = Path.home() / ".claude" / "memory" / ".serena_activations.json"
     if not registry_path.exists():
@@ -105,17 +111,53 @@ def _is_serena_activated_for_project(serena_dir: Path) -> bool:
         project_root = str(serena_dir.parent.resolve())
         session_id = _get_session_id()
         key = f"{project_root}:{session_id}"
-        return activations.get(key, False)
+        value = activations.get(key)
+
+        # Handle both formats: True (legacy) or timestamp (new)
+        if value is True:
+            return True
+        if isinstance(value, (int, float)):
+            # Check if not stale (within max age)
+            return (time.time() - value) < (ACTIVATION_MAX_AGE_HOURS * SECONDS_PER_HOUR)
+        return False
     except (json.JSONDecodeError, OSError):
         return False
+
+
+def _cleanup_stale_activations(
+    activations: dict, max_age_hours: int = ACTIVATION_MAX_AGE_HOURS
+) -> dict:
+    """Remove stale activation entries older than max_age_hours.
+
+    Entries store timestamps, so we can prune old sessions automatically.
+    This prevents unbounded registry growth from accumulating old sessions.
+    """
+    import time
+
+    now = time.time()
+    max_age_seconds = max_age_hours * SECONDS_PER_HOUR
+    cleaned = {}
+
+    for key, value in activations.items():
+        # Handle both old format (bool) and new format (timestamp)
+        if isinstance(value, (int, float)):
+            if now - value < max_age_seconds:
+                cleaned[key] = value
+        elif value is True:
+            # Legacy entry - keep it but convert to timestamp for future cleanup
+            cleaned[key] = now
+
+    return cleaned
 
 
 def _register_serena_activation(project_name: str, serena_dir: Path) -> None:
     """Register that Serena was activated for a project in THIS session.
 
     Called by post-tool-use hook after activate_project succeeds.
+    Also cleans up stale entries (>24h old) to prevent registry bloat.
     """
     import json
+    import time
 
     registry_path = Path.home() / ".claude" / "memory" / ".serena_activations.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,11 +170,15 @@ def _register_serena_activation(project_name: str, serena_dir: Path) -> None:
         except (json.JSONDecodeError, OSError):
             pass
 
+    # Clean up stale entries before adding new one
+    activations = _cleanup_stale_activations(activations)
+
     # Key is project_root:session_id for full isolation
+    # Value is timestamp for cleanup purposes
     project_root = str(serena_dir.parent.resolve())
     session_id = _get_session_id()
     key = f"{project_root}:{session_id}"
-    activations[key] = True
+    activations[key] = time.time()
 
     try:
         with open(registry_path, "w") as f:
