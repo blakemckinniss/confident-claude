@@ -69,6 +69,14 @@ try:
 except ImportError:
     DEPENDENCY_CHECK_AVAILABLE = False
 
+# Import memory integration for session context (v3.13)
+try:
+    from _hooks_memory import get_session_context_suggestion
+
+    MEMORY_INTEGRATION_AVAILABLE = True
+except ImportError:
+    MEMORY_INTEGRATION_AVAILABLE = False
+
 # Scope's punch list file
 PUNCH_LIST_FILE = MEMORY_DIR / "punch_list.json"
 
@@ -692,6 +700,13 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
         parts.append(recovery)
 
     parts.extend(_build_lessons_context(state, project_context))
+
+    # Add memory context suggestion for fresh sessions without handoff (v3.13)
+    if MEMORY_INTEGRATION_AVAILABLE and not handoff:
+        project_name = None
+        if project_context and project_context.project_type != "ephemeral":
+            project_name = project_context.project_name
+        parts.append(get_session_context_suggestion(project_name))
 
     return "\n".join(parts) if parts else ""
 
