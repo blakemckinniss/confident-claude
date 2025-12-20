@@ -14,12 +14,15 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 # Cache location for discovered schemas
 SCHEMA_CACHE = Path.home() / ".claude" / "tmp" / "codemode_schemas.json"
+
+CACHE_PROTOCOL_VERSION = "1.0"  # Increment when cache format changes
 
 # Runtime tool executor - bound by codemode_executor at execution time
 _tool_executor: Callable[[str, dict], dict] | None = None
@@ -275,20 +278,77 @@ def generate_interface_summary(interfaces: list[ToolInterface]) -> str:
     return "\n".join(lines)
 
 
-def load_cached_schemas() -> dict[str, dict]:
-    """Load cached tool schemas if available."""
-    if SCHEMA_CACHE.exists():
-        try:
-            return json.loads(SCHEMA_CACHE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {}
+def load_cached_schemas(ttl_seconds: int = 3600) -> dict[str, dict]:
+    """
+    Load cached tool schemas if available and not expired.
+
+    Args:
+        ttl_seconds: Cache TTL in seconds (default 1 hour)
+
+    Returns:
+        Dict of tool schemas, or empty dict if cache invalid/expired
+    """
+    if not SCHEMA_CACHE.exists():
+        return {}
+
+    try:
+        data = json.loads(SCHEMA_CACHE.read_text())
+
+        # Check metadata
+        meta = data.get("_metadata", {})
+        if not meta:
+            # Old format without metadata - invalidate
+            return {}
+
+        # Check expiration
+        expires_at = meta.get("expires_at", 0)
+        if time.time() > expires_at:
+            return {}
+
+        # Check protocol version
+        if meta.get("protocol_version") != CACHE_PROTOCOL_VERSION:
+            return {}
+
+        # Return schemas without metadata
+        schemas = {k: v for k, v in data.items() if not k.startswith("_")}
+        return schemas
+
+    except (json.JSONDecodeError, OSError, KeyError):
+        return {}
 
 
-def save_schemas_cache(schemas: dict[str, dict]) -> None:
-    """Save tool schemas to cache."""
+def save_schemas_cache(schemas: dict[str, dict], ttl_seconds: int = 3600) -> None:
+    """
+    Save tool schemas to cache with metadata and atomic write.
+
+    Args:
+        schemas: Dict of tool schemas to cache
+        ttl_seconds: Cache TTL in seconds (default 1 hour)
+    """
     SCHEMA_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    SCHEMA_CACHE.write_text(json.dumps(schemas, indent=2))
+
+    # Build cache with metadata
+    now = time.time()
+    cache_data = {
+        "_metadata": {
+            "protocol_version": CACHE_PROTOCOL_VERSION,
+            "created_at": now,
+            "expires_at": now + ttl_seconds,
+            "tool_count": len(schemas),
+        },
+        **schemas,
+    }
+
+    # Atomic write: temp file then rename
+    tmp_file = SCHEMA_CACHE.with_suffix(".tmp")
+    try:
+        tmp_file.write_text(json.dumps(cache_data, indent=2))
+        tmp_file.rename(SCHEMA_CACHE)
+    except OSError:
+        # Clean up temp file on failure
+        if tmp_file.exists():
+            tmp_file.unlink()
+        raise
 
 
 # For direct testing
