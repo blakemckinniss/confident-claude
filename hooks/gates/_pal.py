@@ -295,3 +295,70 @@ def track_pal_tool_usage(data: dict, state: SessionState) -> HookResult:
         pass
 
     return HookResult.approve()
+
+
+# =============================================================================
+# PAL CONTINUATION SUGGESTER (Priority 2) - Suggest reusing continuation_id
+# =============================================================================
+
+
+@register_hook("pal_continuation_suggester", "mcp__pal__.*", priority=2)
+def suggest_pal_continuation(data: dict, state: SessionState) -> HookResult:
+    """
+    Suggest reusing continuation_id for PAL tools.
+
+    When a PAL tool is called without a continuation_id but one exists
+    in mastermind state for that tool type, return an informational
+    message suggesting reuse. This enables multi-turn PAL conversations
+    that preserve context.
+
+    Benefits:
+    - +4 confidence for continuation_reuse (confidence increaser)
+    - Maintains PAL conversation context across turns
+    - Reduces token usage by not re-explaining context
+    """
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
+
+    # Only process PAL tool calls
+    if not tool_name.startswith("mcp__pal__"):
+        return HookResult.approve()
+
+    # Extract tool type (e.g., "debug" from "mcp__pal__debug")
+    tool_type = tool_name.replace("mcp__pal__", "")
+
+    # Check if continuation_id is already provided
+    if tool_input.get("continuation_id"):
+        return HookResult.approve()
+
+    # Check mastermind state for stored continuation
+    try:
+        from mastermind.state import load_state
+        from mastermind.hook_integration import get_session_id
+
+        session_id = get_session_id()
+        mm_state = load_state(session_id)
+
+        # Check for continuation for this specific tool type
+        stored_cont = mm_state.get_pal_continuation(tool_type)
+        if stored_cont:
+            return HookResult.approve(
+                f"📎 **Continuation Available**: `continuation_id=\"{stored_cont}\"`\n"
+                f"Consider adding this parameter to `{tool_name}` to resume prior context.\n"
+                f"This earns +4 confidence (`continuation_reuse`) and preserves PAL conversation state."
+            )
+
+        # Check for any other PAL continuations that might be relevant
+        if mm_state.pal_continuations:
+            available = list(mm_state.pal_continuations.keys())
+            if available:
+                return HookResult.approve(
+                    f"📎 **Other PAL continuations available**: {', '.join(available)}\n"
+                    f"If switching from another PAL tool, you can reuse its continuation_id."
+                )
+
+    except (ImportError, FileNotFoundError, AttributeError):
+        # Mastermind state unavailable - non-critical, continue
+        pass
+
+    return HookResult.approve()

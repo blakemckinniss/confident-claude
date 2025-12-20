@@ -83,6 +83,9 @@ try:
         check_repomix_mandate,
         check_serena_mandate,
         check_crawl4ai_mandate,
+        check_analyze_mandate,
+        check_challenge_mandate,
+        check_precommit_mandate,
     )
 
     PAL_MANDATES_AVAILABLE = True
@@ -93,6 +96,9 @@ except ImportError:
     check_repomix_mandate = None
     check_serena_mandate = None
     check_crawl4ai_mandate = None
+    check_analyze_mandate = None
+    check_challenge_mandate = None
+    check_precommit_mandate = None
 
 # Try to import Serena activation mandate
 try:
@@ -2090,6 +2096,18 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     # Check for Crawl4AI triggers (web scraping, search, documentation)
     if mandate is None and check_crawl4ai_mandate is not None:
         mandate = check_crawl4ai_mandate(prompt)
+
+    # Check for PAL analyze triggers (performance, quality, code analysis)
+    if mandate is None and check_analyze_mandate is not None:
+        mandate = check_analyze_mandate(prompt)
+
+    # Check for PAL challenge triggers (assumptions, claims, pushback)
+    if mandate is None and check_challenge_mandate is not None:
+        mandate = check_challenge_mandate(prompt)
+
+    # Check for PAL precommit triggers (git commit, PR creation)
+    if mandate is None and check_precommit_mandate is not None:
+        mandate = check_precommit_mandate(prompt)
 
     if mandate is None:
         return HookResult.allow()

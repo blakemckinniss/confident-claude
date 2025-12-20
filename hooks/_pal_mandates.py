@@ -995,6 +995,224 @@ def check_serena_mandate(prompt: str) -> Optional[Mandate]:
 
 
 # =============================================================================
+# PAL ANALYZE TRIGGERS (for code analysis and understanding)
+# =============================================================================
+
+_RE_CODE_ANALYSIS = re.compile(
+    r"(analyz|understand|explain|how\s+does|what\s+does|break\s*down|"
+    r"walk\s+through|trace|follow|diagram|map\s+out)\s+"
+    r".{0,30}(code|function|class|method|logic|flow|implementation)",
+    re.IGNORECASE,
+)
+
+_RE_PERFORMANCE_ANALYSIS = re.compile(
+    r"(performance|slow|fast|optimi[sz]|bottleneck|profile|benchmark|"
+    r"memory|cpu|latency|throughput|n\+1|query\s+count)",
+    re.IGNORECASE,
+)
+
+_RE_QUALITY_ANALYSIS = re.compile(
+    r"(quality|maintainab|readab|clean|smell|debt|pattern|anti.?pattern|"
+    r"solid|dry|kiss|yagni|coupling|cohesion)",
+    re.IGNORECASE,
+)
+
+
+def check_analyze_mandate(prompt: str) -> Optional[Mandate]:
+    """
+    Check for PAL Analyze MCP triggers in user prompt.
+
+    PAL Analyze is ideal for:
+    - Code understanding and explanation
+    - Performance analysis
+    - Quality/maintainability analysis
+    - Architecture review
+    """
+    if len(prompt) < 10 or prompt.startswith("/"):
+        return None
+
+    # Performance analysis → analyze with performance focus
+    if _RE_PERFORMANCE_ANALYSIS.search(prompt):
+        return Mandate(
+            tool="mcp__pal__analyze",
+            directive=(
+                "⚡ **USE PAL ANALYZE**: Performance analysis detected. "
+                "Use `mcp__pal__analyze` with `analysis_type=\"performance\"`. "
+                "External analysis catches bottlenecks you might miss."
+            ),
+            priority=P_MEDIUM,
+            reason="Performance analysis",
+        )
+
+    # Quality analysis → analyze with quality focus
+    if _RE_QUALITY_ANALYSIS.search(prompt):
+        return Mandate(
+            tool="mcp__pal__analyze",
+            directive=(
+                "🔍 **USE PAL ANALYZE**: Quality analysis detected. "
+                "Use `mcp__pal__analyze` with `analysis_type=\"quality\"`. "
+                "External perspective on code quality is valuable."
+            ),
+            priority=P_MEDIUM,
+            reason="Quality analysis",
+        )
+
+    # General code analysis → analyze
+    if _RE_CODE_ANALYSIS.search(prompt):
+        return Mandate(
+            tool="mcp__pal__analyze",
+            directive=(
+                "🧠 **USE PAL ANALYZE**: Code analysis request detected. "
+                "Use `mcp__pal__analyze` for comprehensive understanding. "
+                "External analysis provides structured insights."
+            ),
+            priority=P_LOW,
+            reason="Code analysis",
+        )
+
+    return None
+
+
+# =============================================================================
+# PAL CHALLENGE TRIGGERS (for assumption testing)
+# =============================================================================
+
+_RE_ASSUMPTION = re.compile(
+    r"(assum|believ|think\s+that|pretty\s+sure|probably|"
+    r"should\s+be|must\s+be|likely|expect|suppos)",
+    re.IGNORECASE,
+)
+
+_RE_CLAIM = re.compile(
+    r"(this\s+will|this\s+should|this\s+is\s+the\s+best|"
+    r"obviously|clearly|definitely|certainly|always|never|"
+    r"the\s+only\s+way|no\s+other\s+way)",
+    re.IGNORECASE,
+)
+
+_RE_PUSHBACK = re.compile(
+    r"(are\s+you\s+sure|really\?|but\s+what\s+about|"
+    r"have\s+you\s+considered|what\s+if|couldn.t\s+we|"
+    r"why\s+not|disagree|don.t\s+think\s+so)",
+    re.IGNORECASE,
+)
+
+
+def check_challenge_mandate(prompt: str, is_claude_output: bool = False) -> Optional[Mandate]:
+    """
+    Check for PAL Challenge MCP triggers.
+
+    PAL Challenge is ideal for:
+    - Testing assumptions before acting on them
+    - Validating claims and statements
+    - Responding to user pushback thoughtfully
+    - Preventing reflexive agreement
+    """
+    if len(prompt) < 10 or prompt.startswith("/"):
+        return None
+
+    # User pushback → challenge to avoid sycophancy
+    if _RE_PUSHBACK.search(prompt):
+        return Mandate(
+            tool="mcp__pal__challenge",
+            directive=(
+                "🤔 **USE PAL CHALLENGE**: User pushback detected. "
+                "Use `mcp__pal__challenge` to critically analyze your position. "
+                "Avoid reflexive agreement - test your reasoning first."
+            ),
+            priority=P_HIGH,
+            reason="User pushback",
+        )
+
+    # Strong claims in Claude output → challenge before proceeding
+    if is_claude_output and _RE_CLAIM.search(prompt):
+        return Mandate(
+            tool="mcp__pal__challenge",
+            directive=(
+                "⚠️ **USE PAL CHALLENGE**: Strong claim detected. "
+                "Use `mcp__pal__challenge` to validate before asserting. "
+                "Challenge overconfident statements."
+            ),
+            priority=P_MEDIUM,
+            reason="Strong claim",
+        )
+
+    # Assumptions → suggest challenge
+    if _RE_ASSUMPTION.search(prompt) and len(prompt) > 50:
+        return Mandate(
+            tool="mcp__pal__challenge",
+            directive=(
+                "💡 **CONSIDER PAL CHALLENGE**: Assumption detected. "
+                "Consider `mcp__pal__challenge` to test this assumption. "
+                "Untested assumptions can lead to wasted effort."
+            ),
+            priority=P_LOW,
+            reason="Assumption detected",
+        )
+
+    return None
+
+
+# =============================================================================
+# PAL PRECOMMIT TRIGGERS (for git commit validation)
+# =============================================================================
+
+_RE_GIT_COMMIT = re.compile(
+    r"(git\s+commit|commit\s+(?:the\s+)?changes?|ready\s+to\s+commit|"
+    r"let.?s\s+commit|make\s+a\s+commit|create\s+(?:a\s+)?commit)",
+    re.IGNORECASE,
+)
+
+_RE_PR_CREATE = re.compile(
+    r"(create\s+(?:a\s+)?(?:pull\s+request|pr)|open\s+(?:a\s+)?pr|"
+    r"submit\s+(?:a\s+)?pr|gh\s+pr\s+create|ready\s+for\s+(?:review|pr))",
+    re.IGNORECASE,
+)
+
+
+def check_precommit_mandate(prompt: str, has_staged_changes: bool = True) -> Optional[Mandate]:
+    """
+    Check for PAL Precommit MCP triggers.
+
+    PAL Precommit is ideal for:
+    - Validating changes before commit
+    - Security review of staged changes
+    - Ensuring completeness (tests, docs)
+    - Catching issues before they enter history
+    """
+    if len(prompt) < 10 or prompt.startswith("/"):
+        return None
+
+    # PR creation → precommit validation
+    if _RE_PR_CREATE.search(prompt):
+        return Mandate(
+            tool="mcp__pal__precommit",
+            directive=(
+                "🔍 **USE PAL PRECOMMIT**: PR creation detected. "
+                "Use `mcp__pal__precommit` to validate changes before PR. "
+                "Catches issues before review - saves time."
+            ),
+            priority=P_HIGH,
+            reason="PR creation",
+        )
+
+    # Git commit → precommit validation
+    if _RE_GIT_COMMIT.search(prompt) and has_staged_changes:
+        return Mandate(
+            tool="mcp__pal__precommit",
+            directive=(
+                "✅ **USE PAL PRECOMMIT**: Commit intent detected. "
+                "Use `mcp__pal__precommit` to validate changes. "
+                "Verify security, completeness, and quality before commit."
+            ),
+            priority=P_MEDIUM,
+            reason="Git commit",
+        )
+
+    return None
+
+
+# =============================================================================
 # SUMMARY: Mandate Thresholds (v2.0 - AGGRESSIVE)
 # =============================================================================
 #
