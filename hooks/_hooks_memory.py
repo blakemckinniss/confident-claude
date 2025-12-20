@@ -4,10 +4,19 @@ Memory Integration - claude-mem awareness in the hook system.
 Enhances hook context to suggest memory queries when appropriate:
 1. Stuck loop assistance - suggest searching memory for past solutions
 2. Pre-edit awareness - remind about memory when editing problem files
+3. Timeline context - suggest timeline queries for file history
+4. Session start context - suggest get_recent_context for context recovery
 
 The actual memory queries are performed by Claude using MCP tools.
 This module injects helpful suggestions and the stuck loop module
 tracks when memory tools are used (via RESEARCH_TOOLS).
+
+claude-mem MCP Tools Reference:
+- search(query, project, obs_type, files) - Semantic search across observations
+- get_recent_context(project, limit) - Recent observations for context recovery
+- timeline(anchor, project, depth_before, depth_after) - Chronological context
+- get_observations(ids) - Batch fetch by IDs (10-100x faster than individual)
+- get_observation(id) - Single observation fetch
 
 Priority range: 75-79 (runs before circuit breaker at 82)
 """
@@ -46,9 +55,17 @@ SYMPTOM_QUERIES: dict[str, str] = {
 
 
 def _format_memory_suggestion(
-    symptoms: list[tuple[str, int, str]], file_path: str | None = None
+    symptoms: list[tuple[str, int, str]],
+    file_path: str | None = None,
+    include_timeline: bool = False,
 ) -> str:
-    """Format a suggestion to query memory for past solutions."""
+    """Format a suggestion to query memory for past solutions.
+
+    Args:
+        symptoms: List of (symptom_name, turn, description) tuples
+        file_path: Optional file path for file-specific suggestions
+        include_timeline: If True, include timeline suggestion for deeper context
+    """
     lines = ["📎 **Check Memory for Prior Art**:\n"]
 
     # Build suggested queries based on symptoms
@@ -69,6 +86,15 @@ def _format_memory_suggestion(
         file_name = Path(file_path).name
         lines.append(f'   Or search by file: `files="{file_name}"`\n')
 
+        # Add timeline suggestion for repeated file edits
+        if include_timeline:
+            lines.append("   🕐 **For deeper context** - use timeline after search:\n")
+            lines.append("   ```")
+            lines.append(
+                "   mcp__mem-search__timeline(anchor=<id_from_search>, depth_before=3, depth_after=3)"
+            )
+            lines.append("   ```\n")
+
     lines.append("💡 Memory search is faster than web search - try it first!")
     lines.append("   Past solutions may already exist for this exact issue.")
 
@@ -88,6 +114,63 @@ def _format_file_reminder(file_path: str) -> str:
     )
 
 
+def _format_timeline_suggestion(file_path: str) -> str:
+    """Format a suggestion to use timeline for file history context."""
+    file_name = Path(file_path).name
+
+    return (
+        f"🕐 **Timeline Context**: See what happened around previous work on `{file_name}`\n"
+        f"   ```\n"
+        f'   mcp__mem-search__search(files="{file_name}", limit=5)\n'
+        f"   # Then use timeline with the observation ID:\n"
+        f"   mcp__mem-search__timeline(anchor=<id>, depth_before=3, depth_after=3)\n"
+        f"   ```\n"
+        f"💡 Timeline shows what was happening before/after - reveals patterns"
+    )
+
+
+# =============================================================================
+# SESSION START HELPERS (for session_init.py integration)
+# =============================================================================
+
+
+def get_session_context_suggestion(project_name: str | None = None) -> str:
+    """Generate suggestion to fetch recent context at session start.
+
+    This helps with context recovery by showing what was recently worked on.
+
+    Args:
+        project_name: Optional project name to filter by
+
+    Returns:
+        Formatted suggestion string for get_recent_context
+    """
+    project_param = f', project="{project_name}"' if project_name else ""
+
+    return (
+        f"📎 **Recent Context Available**: Recover context from previous sessions\n"
+        f"   ```\n"
+        f"   mcp__mem-search__get_recent_context(limit=10{project_param})\n"
+        f"   ```\n"
+        f"💡 Shows recent observations - faster than re-reading files"
+    )
+
+
+def get_batch_fetch_hint() -> str:
+    """Generate hint about batch fetching after search returns IDs.
+
+    Returns:
+        Formatted hint about using get_observations for batch fetching
+    """
+    return (
+        "💡 **Batch Fetch Tip**: After search returns IDs, use batch fetch:\n"
+        "   ```\n"
+        "   mcp__mem-search__get_observations(ids=[id1, id2, id3])\n"
+        "   ```\n"
+        "   10-100x faster than individual get_observation calls!"
+    )
+
+
 # =============================================================================
 # HOOK: MEMORY SUGGESTION FOR STUCK LOOPS (priority 79)
 # Runs BEFORE circuit breaker (82) to suggest memory search first
@@ -101,7 +184,8 @@ def suggest_memory_search(
     """Suggest memory search when stuck signals are detected.
 
     This hook runs before the circuit breaker to remind about memory
-    as a faster alternative to web search.
+    as a faster alternative to web search. Includes timeline suggestion
+    when repeatedly editing the same file.
     """
     stuck = runner_state.get("stuck_loop_state", {})
 
@@ -129,8 +213,15 @@ def suggest_memory_search(
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
+    # Include timeline suggestion if this specific file has multiple attempts
+    include_timeline = False
+    if file_path:
+        file_name = Path(file_path).name
+        file_attempts = fix_attempts.get(file_name, [])
+        include_timeline = len(file_attempts) >= 3  # 3+ attempts = suggest timeline
+
     reset_cooldown(cooldown_key)
-    context = _format_memory_suggestion(symptoms_seen, file_path)
+    context = _format_memory_suggestion(symptoms_seen, file_path, include_timeline)
 
     return HookResult.with_context(context)
 
