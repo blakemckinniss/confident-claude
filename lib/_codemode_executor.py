@@ -51,6 +51,160 @@ from _codemode_planner import (  # noqa: E402
 # Execution log location
 EXECUTION_LOG = Path.home() / ".claude" / "tmp" / "codemode_execution.jsonl"
 
+# Handoff state file for Claude-mediated tool execution
+HANDOFF_STATE = Path.home() / ".claude" / "tmp" / "codemode_handoff.json"
+
+
+@dataclass
+class ToolCallRequest:
+    """Request for Claude to execute a tool call."""
+
+    id: str
+    tool: str
+    args: dict
+    priority: int = 0  # Lower = higher priority
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tool": self.tool,
+            "args": self.args,
+            "priority": self.priority,
+        }
+
+
+@dataclass
+class ToolCallResponse:
+    """Response from Claude after executing a tool call."""
+
+    id: str
+    success: bool
+    result: Any = None
+    error: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "success": self.success,
+            "result": self.result,
+            "error": self.error,
+        }
+
+
+@dataclass
+class HandoffState:
+    """State for tool execution handoff between Python and Claude."""
+
+    pending: list[ToolCallRequest]
+    completed: dict[str, ToolCallResponse]  # id -> response
+    created_at: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "pending": [r.to_dict() for r in self.pending],
+            "completed": {k: v.to_dict() for k, v in self.completed.items()},
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "HandoffState":
+        pending = [
+            ToolCallRequest(
+                id=r["id"],
+                tool=r["tool"],
+                args=r["args"],
+                priority=r.get("priority", 0),
+            )
+            for r in data.get("pending", [])
+        ]
+        completed = {
+            k: ToolCallResponse(
+                id=v["id"],
+                success=v["success"],
+                result=v.get("result"),
+                error=v.get("error"),
+            )
+            for k, v in data.get("completed", {}).items()
+        }
+        return cls(
+            pending=pending,
+            completed=completed,
+            created_at=data.get("created_at", 0.0),
+        )
+
+
+def write_handoff_state(state: HandoffState) -> None:
+    """Write handoff state for Claude to process."""
+    import time
+
+    HANDOFF_STATE.parent.mkdir(parents=True, exist_ok=True)
+    state.created_at = time.time()
+    HANDOFF_STATE.write_text(json.dumps(state.to_dict(), indent=2))
+
+
+def read_handoff_state() -> HandoffState | None:
+    """Read handoff state, returns None if not exists."""
+    if not HANDOFF_STATE.exists():
+        return None
+    try:
+        data = json.loads(HANDOFF_STATE.read_text())
+        return HandoffState.from_dict(data)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def clear_handoff_state() -> None:
+    """Clear handoff state after processing."""
+    if HANDOFF_STATE.exists():
+        HANDOFF_STATE.unlink()
+
+
+def submit_tool_call(call: ToolCallRequest) -> None:
+    """Add a tool call request to the handoff queue."""
+    import time
+
+    state = read_handoff_state()
+    if state is None:
+        state = HandoffState(pending=[], completed={}, created_at=time.time())
+    state.pending.append(call)
+    write_handoff_state(state)
+
+
+def record_tool_result(
+    call_id: str, success: bool, result: Any = None, error: str | None = None
+) -> None:
+    """Record a tool call result (called by Claude after execution)."""
+    state = read_handoff_state()
+    if state is None:
+        return
+
+    # Remove from pending, add to completed
+    state.pending = [r for r in state.pending if r.id != call_id]
+    state.completed[call_id] = ToolCallResponse(
+        id=call_id,
+        success=success,
+        result=result,
+        error=error,
+    )
+    write_handoff_state(state)
+
+
+def get_pending_calls() -> list[ToolCallRequest]:
+    """Get pending tool calls for Claude to execute."""
+    state = read_handoff_state()
+    if state is None:
+        return []
+    # Sort by priority (lower first)
+    return sorted(state.pending, key=lambda r: r.priority)
+
+
+def get_completed_result(call_id: str) -> ToolCallResponse | None:
+    """Get result for a completed call."""
+    state = read_handoff_state()
+    if state is None:
+        return None
+    return state.completed.get(call_id)
+
 
 @dataclass
 class ExecutionResult:
