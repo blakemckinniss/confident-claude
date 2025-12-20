@@ -18,13 +18,14 @@ HOOKS INDEX (by priority):
     8  confidence_dispute       - Handle false positive reducer disputes
    10  verified_library_unlock  - Unlock verified libraries
 
-  EXTRACTION/CONTEXT (12-70) - _prompt_context.py:
+  EXTRACTION/CONTEXT (12-70) - _prompt_context.py, _prompt_thinking.py:
    12  tool_debt_enrichment - Enrich context with tool debt tracking
    15  intention_tracker   - Extract mentioned files/searches
    30  prompt_disclaimer   - System context + task checklist
    32  tech_version_risk   - Warn about outdated AI knowledge
    35  project_context     - Git state, project structure
    40  memory_injector     - Lessons, spark, decisions, scope
+   42  thinking_memory_injection - Past reasoning patterns (metacognitive)
    45  context_injector    - Session state, command suggestions
    50  reminder_injector   - Custom trigger-based reminders
 
@@ -73,6 +74,7 @@ from _prompt_registry import HOOKS
 import _prompt_gating  # noqa: F401 - Gating hooks (priority 0-10)
 import _prompt_mastermind  # noqa: F401 - Mastermind orchestration (priority 6)
 import _prompt_context  # noqa: F401 - Context hooks (priority 15-70)
+import _prompt_thinking  # noqa: F401 - Thinking memory injection (priority 42)
 import _prompt_suggestions  # noqa: F401 - Suggestion hooks (priority 72-95)
 
 
