@@ -357,6 +357,84 @@ _THINKING_SUGGESTIONS: List[Tuple[re.Pattern, Suggestion]] = [
             hint="See all network requests since page load",
         ),
     ),
+    # === PATTERNS FROM REAL THINKING DATA ===
+    # References/Impact (126 occurrences in real data)
+    (
+        re.compile(
+            r"(search for|find|check).{0,15}references",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🔬",
+            title="Serena Reference Search",
+            tools=["mcp__serena__find_referencing_symbols"],
+            hint="Find all usages of a symbol across codebase",
+        ),
+    ),
+    (
+        re.compile(
+            r"(files that|who|what).{0,10}(reference|call|use)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🔬",
+            title="Serena Impact Analysis",
+            tools=["mcp__serena__find_referencing_symbols"],
+            hint="Find all callers/usages before making changes",
+        ),
+    ),
+    # Investigation/Tracing (from DEBUG category)
+    (
+        re.compile(
+            r"let me (investigate|trace|debug)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🐛",
+            title="PAL Debug Available",
+            tools=["mcp__pal__debug"],
+            hint="Systematic debugging with hypothesis testing",
+        ),
+    ),
+    # Read file first (37 occurrences - common pattern)
+    (
+        re.compile(
+            r"(need to|should|let me).{0,10}read.{0,10}(file|code).{0,10}first",
+            re.I,
+        ),
+        Suggestion(
+            emoji="📖",
+            title="Read Before Edit",
+            tools=["Read", "mcp__serena__get_symbols_overview"],
+            hint="Use Read tool or serena get_symbols_overview for structure",
+        ),
+    ),
+    # Run tests/lint (81 occurrences - common workflow)
+    (
+        re.compile(
+            r"let me run.{0,10}(test|lint|linter|build)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🧪",
+            title="Test/Lint Execution",
+            tools=["Bash"],
+            hint="pytest, ruff check, npm test - run in background for long tasks",
+        ),
+    ),
+    # Earlier/created earlier (memory from same session)
+    (
+        re.compile(
+            r"(I |that I ).{0,10}(created|read|wrote|made).{0,10}earlier",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🧠",
+            title="Session Context",
+            tools=["mcp__plugin_claude-mem_mem-search__get_recent_context"],
+            hint="Check recent context for what was done earlier",
+        ),
+    ),
 ]
 
 # =============================================================================
