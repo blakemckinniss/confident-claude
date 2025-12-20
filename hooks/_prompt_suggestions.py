@@ -86,6 +86,7 @@ try:
         check_analyze_mandate,
         check_challenge_mandate,
         check_precommit_mandate,
+        check_codemode_mandate,
     )
 
     PAL_MANDATES_AVAILABLE = True
@@ -99,6 +100,7 @@ except ImportError:
     check_analyze_mandate = None
     check_challenge_mandate = None
     check_precommit_mandate = None
+    check_codemode_mandate = None
 
 # Try to import Serena activation mandate
 try:
@@ -2108,6 +2110,13 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     # Check for PAL precommit triggers (git commit, PR creation)
     if mandate is None and check_precommit_mandate is not None:
         mandate = check_precommit_mandate(prompt)
+
+    # Check for code-mode triggers (multi-tool orchestration, batch operations)
+    if mandate is None and check_codemode_mandate is not None:
+        mastermind_class = state.get("mastermind_classification")
+        mandate = check_codemode_mandate(
+            prompt, mastermind_classification=mastermind_class
+        )
 
     if mandate is None:
         return HookResult.allow()

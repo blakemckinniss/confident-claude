@@ -1037,7 +1037,7 @@ def check_analyze_mandate(prompt: str) -> Optional[Mandate]:
             tool="mcp__pal__analyze",
             directive=(
                 "⚡ **USE PAL ANALYZE**: Performance analysis detected. "
-                "Use `mcp__pal__analyze` with `analysis_type=\"performance\"`. "
+                'Use `mcp__pal__analyze` with `analysis_type="performance"`. '
                 "External analysis catches bottlenecks you might miss."
             ),
             priority=P_MEDIUM,
@@ -1050,7 +1050,7 @@ def check_analyze_mandate(prompt: str) -> Optional[Mandate]:
             tool="mcp__pal__analyze",
             directive=(
                 "🔍 **USE PAL ANALYZE**: Quality analysis detected. "
-                "Use `mcp__pal__analyze` with `analysis_type=\"quality\"`. "
+                'Use `mcp__pal__analyze` with `analysis_type="quality"`. '
                 "External perspective on code quality is valuable."
             ),
             priority=P_MEDIUM,
@@ -1098,7 +1098,9 @@ _RE_PUSHBACK = re.compile(
 )
 
 
-def check_challenge_mandate(prompt: str, is_claude_output: bool = False) -> Optional[Mandate]:
+def check_challenge_mandate(
+    prompt: str, is_claude_output: bool = False
+) -> Optional[Mandate]:
     """
     Check for PAL Challenge MCP triggers.
 
@@ -1170,7 +1172,9 @@ _RE_PR_CREATE = re.compile(
 )
 
 
-def check_precommit_mandate(prompt: str, has_staged_changes: bool = True) -> Optional[Mandate]:
+def check_precommit_mandate(
+    prompt: str, has_staged_changes: bool = True
+) -> Optional[Mandate]:
     """
     Check for PAL Precommit MCP triggers.
 
@@ -1207,6 +1211,141 @@ def check_precommit_mandate(prompt: str, has_staged_changes: bool = True) -> Opt
             ),
             priority=P_MEDIUM,
             reason="Git commit",
+        )
+
+    return None
+
+
+# =============================================================================
+# CODE-MODE TRIGGERS (for multi-tool chaining)
+# =============================================================================
+
+_RE_MULTI_TOOL = re.compile(
+    r"(then\s+(use|call|run|execute)|after\s+that|next\s+step|"
+    r"first\s+.+\s+then|step\s*\d|chain|sequence|pipeline|"
+    r"multiple\s+(tools?|steps?|calls?)|orchestrat|automat)",
+    re.IGNORECASE,
+)
+
+_RE_BATCH_OPERATIONS = re.compile(
+    r"(for\s+each|all\s+(?:the\s+)?files?|every\s+(?:file|item|entry)|"
+    r"batch|bulk|mass|iterate|loop\s+through|process\s+all)",
+    re.IGNORECASE,
+)
+
+_RE_CONDITIONAL_FLOW = re.compile(
+    r"(if\s+.+\s+then|based\s+on\s+(?:the\s+)?result|depending\s+on|"
+    r"when\s+.+\s+(?:do|run|execute)|conditionally|branching)",
+    re.IGNORECASE,
+)
+
+_RE_DATA_TRANSFORM = re.compile(
+    r"(extract\s+.+\s+(?:and|then)|parse\s+.+\s+(?:and|then)|"
+    r"transform|convert\s+.+\s+to|map\s+.+\s+to|filter\s+.+\s+(?:and|then))",
+    re.IGNORECASE,
+)
+
+_RE_TOOL_MENTIONS = re.compile(
+    r"(mcp__|serena|repomix|crawl4ai|playwright|pal__|"
+    r"grep\s+.+\s+then|read\s+.+\s+then|search\s+.+\s+then)",
+    re.IGNORECASE,
+)
+
+
+def check_codemode_mandate(
+    prompt: str,
+    mastermind_classification: str | None = None,
+    tool_count_estimate: int = 0,
+) -> Optional[Mandate]:
+    """
+    Check for code-mode triggers in user prompt.
+
+    Code-mode is ideal for:
+    - Multi-tool orchestration (67-88% efficiency improvement)
+    - Batch operations across files/items
+    - Conditional workflows with branching
+    - Data transformation pipelines
+    - Complex automation sequences
+
+    Code-mode lets Claude write code that chains tool calls instead of
+    sequential API round-trips. The code has access to all MCP tools
+    as namespaced functions.
+
+    Args:
+        prompt: User's prompt text
+        mastermind_classification: Optional classification from Mastermind router
+        tool_count_estimate: Estimated number of tools needed
+
+    Returns:
+        Mandate if code-mode should be suggested, None otherwise
+    """
+    if len(prompt) < 20 or prompt.startswith("/"):
+        return None
+
+    # Count signals for code-mode appropriateness
+    signals = 0
+    reasons = []
+
+    # Strong signals
+    if _RE_MULTI_TOOL.search(prompt):
+        signals += 2
+        reasons.append("multi-tool sequence")
+
+    if _RE_BATCH_OPERATIONS.search(prompt):
+        signals += 2
+        reasons.append("batch operations")
+
+    if _RE_CONDITIONAL_FLOW.search(prompt):
+        signals += 2
+        reasons.append("conditional flow")
+
+    # Medium signals
+    if _RE_DATA_TRANSFORM.search(prompt):
+        signals += 1
+        reasons.append("data transformation")
+
+    if _RE_TOOL_MENTIONS.search(prompt):
+        signals += 1
+        reasons.append("explicit tool mentions")
+
+    # Mastermind boost
+    if mastermind_classification in ("medium", "complex"):
+        signals += 1
+        reasons.append(f"mastermind:{mastermind_classification}")
+
+    # Tool count boost
+    if tool_count_estimate >= 3:
+        signals += 1
+        reasons.append(f"{tool_count_estimate}+ tools estimated")
+
+    # Decision thresholds
+    if signals >= 3:
+        # Strong recommendation
+        return Mandate(
+            tool="codemode_executor",
+            directive=(
+                "⚡ **USE CODE-MODE**: Multi-tool orchestration detected. "
+                f"Signals: {', '.join(reasons)}. "
+                "Write Python code that chains tool calls instead of sequential invocations. "
+                "Code-mode provides 67-88% efficiency improvement for multi-tool tasks. "
+                "Available tools: All MCP tools as `namespace.tool_name()` functions."
+            ),
+            priority=P_HIGH,
+            reason=f"Code-mode signals: {', '.join(reasons)}",
+        )
+
+    if signals >= 2:
+        # Moderate recommendation
+        return Mandate(
+            tool="codemode_executor",
+            directive=(
+                "💡 **CONSIDER CODE-MODE**: Multi-step task detected. "
+                f"Signals: {', '.join(reasons)}. "
+                "For complex tool chaining, consider writing code instead of sequential calls. "
+                "Code-mode reduces API round-trips significantly."
+            ),
+            priority=P_PROACTIVE,
+            reason=f"Code-mode signals: {', '.join(reasons)}",
         )
 
     return None

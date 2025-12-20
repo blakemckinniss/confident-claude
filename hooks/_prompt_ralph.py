@@ -71,6 +71,20 @@ TRIVIAL_KEYWORDS = {
     "log",
 }
 
+# Interrogative patterns that indicate questions about feasibility, not implementation requests
+# These contain implementation keywords but are asking "could we?" not "do it"
+FEASIBILITY_PATTERNS = [
+    r"\bcould\s+(it|this|we|i)\s+(?:be\s+)?(?:implement|build|create|integrate)",
+    r"\bcan\s+(it|this|we|i)\s+(?:be\s+)?(?:implement|build|create|integrate)",
+    r"\bis\s+it\s+possible\s+to\s+(?:implement|build|create|integrate)",
+    r"\bwould\s+it\s+(?:be\s+)?possible\s+to",
+    r"\bhow\s+(?:would|could)\s+(?:we|i|you)\s+(?:implement|build|create|integrate)",
+    r"\bwhat\s+would\s+it\s+take\s+to",
+    r"\bfeasib(?:le|ility)\b",
+    r"\bpossible\s+to\s+(?:implement|build|add|create)",
+    r"\?\s*$",  # Ends with question mark - strong signal
+]
+
 # File patterns that indicate substantial work
 MULTI_FILE_PATTERNS = [
     r"\b\d+\s*files?\b",  # "5 files", "multiple files"
@@ -104,6 +118,12 @@ def detect_task_complexity(prompt: str) -> tuple[str, list[str]]:
         - criteria: list of inferred acceptance criteria
     """
     prompt_lower = prompt.lower()
+
+    # Check for feasibility/interrogative patterns FIRST
+    # These contain implementation keywords but are questions, not requests
+    for pattern in FEASIBILITY_PATTERNS:
+        if re.search(pattern, prompt_lower):
+            return "", []  # Skip ralph - this is a research/feasibility question
 
     # Check for trivial task signals first
     for keyword in TRIVIAL_KEYWORDS:
@@ -216,7 +236,7 @@ def check_ralph_detection(data: dict, state: SessionState) -> HookResult:
     # Injection message (subtle, not intrusive)
     message = f"""🎯 **Task Tracking Active** (ralph-wiggum)
 Goal: {goal}
-Criteria: {', '.join(criteria)}
+Criteria: {", ".join(criteria)}
 Evidence required before completion."""
 
     return HookResult.with_context(message)
