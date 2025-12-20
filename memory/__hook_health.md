@@ -89,7 +89,7 @@
 
 | File | Lines | Problem | Priority |
 |------|-------|---------|----------|
-| `stop_runner.py` | 1800 | Inline language patterns, debt scanning | High |
+| `stop_runner.py` | 1237 | ✅ SPLIT 2025-12-20 → `_stop_language.py` (541) + `_stop_registry.py` (74) | Done |
 | `_prompt_suggestions.py` | 1269 | ✅ SPLIT 2025-12-20 → `_prompt_routing.py` (1225 lines) | Done |
 | `gates/_content.py` | ~800 | Too many gates | Medium |
 | `_hooks_tracking.py` | 868 | Multiple trackers | Medium |
