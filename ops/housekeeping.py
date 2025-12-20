@@ -24,19 +24,29 @@ import sys
 import time
 from pathlib import Path
 
+# Add lib to path for constants
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
+from _constants import (  # noqa: E402
+    MASTERMIND_STATE_MAX_HOURS,
+    RETENTION_DEBUG_DAYS,
+    RETENTION_FILE_HISTORY_DAYS,
+    RETENTION_SESSION_ENV_DAYS,
+    RETENTION_SHELL_SNAPSHOTS_DAYS,
+    RETENTION_TODOS_DAYS,
+    SECONDS_PER_DAY,
+    SECONDS_PER_HOUR,
+)
+
 CLAUDE_DIR = Path(__file__).parent.parent
 
 # Retention policies in days
 RETENTION_DAYS = {
-    "debug": 7,
-    "file-history": 30,
-    "session-env": 14,
-    "shell-snapshots": 7,
-    "todos": 30,
+    "debug": RETENTION_DEBUG_DAYS,
+    "file-history": RETENTION_FILE_HISTORY_DAYS,
+    "session-env": RETENTION_SESSION_ENV_DAYS,
+    "shell-snapshots": RETENTION_SHELL_SNAPSHOTS_DAYS,
+    "todos": RETENTION_TODOS_DAYS,
 }
-
-# Mastermind state files cleanup (hours, not days - these accumulate fast)
-MASTERMIND_STATE_MAX_HOURS = 24
 
 
 def get_dir_size(path: Path) -> int:
@@ -67,7 +77,7 @@ def get_age_days(path: Path) -> float:
     """Get age of file/directory in days based on mtime."""
     try:
         mtime = path.stat().st_mtime
-        return (time.time() - mtime) / 86400
+        return (time.time() - mtime) / SECONDS_PER_DAY
     except (OSError, PermissionError):
         return 0
 
@@ -146,7 +156,7 @@ def cleanup_mastermind_states(execute: bool = False) -> tuple[int, int]:
     """
     state_dir = CLAUDE_DIR / "tmp"
     pattern = "mastermind_*.json"
-    max_age_seconds = MASTERMIND_STATE_MAX_HOURS * 3600
+    max_age_seconds = MASTERMIND_STATE_MAX_HOURS * SECONDS_PER_HOUR
     now = time.time()
 
     count = 0
@@ -160,7 +170,7 @@ def cleanup_mastermind_states(execute: bool = False) -> tuple[int, int]:
         try:
             age_seconds = now - f.stat().st_mtime
             if age_seconds > max_age_seconds:
-                expired.append((f, age_seconds / 3600, f.stat().st_size))
+                expired.append((f, age_seconds / SECONDS_PER_HOUR, f.stat().st_size))
         except OSError:
             pass
 

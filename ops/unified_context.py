@@ -25,6 +25,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Add lib to path for constants
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
+from _constants import CLAUDE_MEM_URL  # noqa: E402
+
 
 def get_serena_context(project_root: Path | None = None) -> dict:
     """Get Serena project context if available."""
@@ -83,7 +87,7 @@ def get_claudemem_context(limit: int = 10) -> dict:
     try:
         import urllib.request
 
-        url = "http://127.0.0.1:37777/api/status"
+        url = f"{CLAUDE_MEM_URL}/api/status"
         req = urllib.request.Request(url, method="GET")
         req.add_header("Content-Type", "application/json")
 

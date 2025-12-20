@@ -23,6 +23,11 @@ import sys
 from pathlib import Path
 
 CLAUDE_DIR = Path.home() / ".claude"
+
+# Add lib to path for constants
+sys.path.insert(0, str(CLAUDE_DIR / "lib"))
+from _constants import CLAUDE_MEM_URL  # noqa: E402
+
 VENV_PYTHON = CLAUDE_DIR / ".venv" / "bin" / "python"
 
 # Required files for integration
@@ -66,7 +71,7 @@ def check_claudemem() -> tuple[bool, str]:
     try:
         import urllib.request
 
-        req = urllib.request.Request("http://127.0.0.1:37777/api/status", method="GET")
+        req = urllib.request.Request(f"{CLAUDE_MEM_URL}/api/status", method="GET")
         with urllib.request.urlopen(req, timeout=2) as resp:
             if resp.status == 200:
                 return True, "✅ claude-mem API reachable"

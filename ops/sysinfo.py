@@ -32,7 +32,7 @@ def get_cpu_info() -> dict:
                 if line.startswith("model name"):
                     info["model"] = line.split(":")[1].strip()
                     break
-    except Exception:
+    except (OSError, IOError):
         pass
 
     # Core count
@@ -43,7 +43,7 @@ def get_cpu_info() -> dict:
         with open("/proc/loadavg") as f:
             parts = f.read().split()
             info["load"] = f"{parts[0]} {parts[1]} {parts[2]}"
-    except Exception:
+    except (OSError, IOError, IndexError):
         pass
 
     return info
@@ -71,7 +71,7 @@ def get_memory_info() -> dict:
         info["used_gb"] = round(used / 1024 / 1024, 1)
         info["available_gb"] = round(available / 1024 / 1024, 1)
         info["percent"] = round(used / total * 100, 1) if total else 0
-    except Exception:
+    except (OSError, IOError, KeyError, ValueError, ZeroDivisionError):
         pass
 
     return info
@@ -90,14 +90,16 @@ def get_disk_info() -> list:
                 free = stat.f_bfree * stat.f_frsize
                 used = total - free
 
-                disks.append({
-                    "path": path,
-                    "total_gb": round(total / 1024**3, 1),
-                    "used_gb": round(used / 1024**3, 1),
-                    "free_gb": round(free / 1024**3, 1),
-                    "percent": round(used / total * 100, 1) if total else 0,
-                })
-            except Exception:
+                disks.append(
+                    {
+                        "path": path,
+                        "total_gb": round(total / 1024**3, 1),
+                        "used_gb": round(used / 1024**3, 1),
+                        "free_gb": round(free / 1024**3, 1),
+                        "percent": round(used / total * 100, 1) if total else 0,
+                    }
+                )
+            except (OSError, ZeroDivisionError):
                 pass
 
     return disks
@@ -119,14 +121,16 @@ def get_wsl_info() -> dict:
                 if line.startswith("PRETTY_NAME="):
                     info["distro"] = line.split("=")[1].strip().strip('"')
                     break
-    except Exception:
+    except (OSError, IOError):
         pass
 
     # Kernel version
     try:
-        result = subprocess.run("uname -r", shell=True, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            "uname -r", shell=True, capture_output=True, text=True, timeout=5
+        )
         info["kernel"] = result.stdout.strip() or "Unknown"
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     # Check if WSL2
@@ -138,11 +142,15 @@ def get_wsl_info() -> dict:
     win_user_path = Path("/mnt/c/Users")
     if win_user_path.exists():
         try:
-            users = [d.name for d in win_user_path.iterdir()
-                     if d.is_dir() and d.name not in ("Public", "Default", "Default User", "All Users")]
+            users = [
+                d.name
+                for d in win_user_path.iterdir()
+                if d.is_dir()
+                and d.name not in ("Public", "Default", "Default User", "All Users")
+            ]
             if users:
                 info["windows_user"] = users[0]
-        except Exception:
+        except (OSError, PermissionError):
             pass
 
     return info
@@ -154,12 +162,18 @@ def get_services_status() -> dict:
 
     # Docker
     try:
-        result = subprocess.run("docker info 2>/dev/null | head -1", shell=True, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            "docker info 2>/dev/null | head -1",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         if result.stdout.strip():
             services["docker"] = "running"
         elif os.path.exists("/usr/bin/docker"):
             services["docker"] = "installed but not running"
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         if os.path.exists("/usr/bin/docker"):
             services["docker"] = "installed but not running"
 
@@ -178,14 +192,22 @@ def get_network_info() -> dict:
 
     # Hostname
     try:
-        result = subprocess.run("hostname", shell=True, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            "hostname", shell=True, capture_output=True, text=True, timeout=5
+        )
         info["hostname"] = result.stdout.strip() or "Unknown"
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     # Get interfaces with IPs
     try:
-        result = subprocess.run("ip -4 addr show | grep -E 'inet |^[0-9]+:'", shell=True, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            "ip -4 addr show | grep -E 'inet |^[0-9]+:'",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         ip_output = result.stdout.strip()
         current_iface = None
         for line in ip_output.split("\n"):
@@ -198,14 +220,20 @@ def get_network_info() -> dict:
                 if current_iface != "lo":
                     info["interfaces"].append({"name": current_iface, "ip": ip})
                 current_iface = None
-    except Exception:
+    except (OSError, subprocess.SubprocessError, IndexError):
         pass
 
     # Internet connectivity
     try:
-        result = subprocess.run("ping -c 1 -W 2 8.8.8.8 2>/dev/null | grep -c '1 received'", shell=True, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            "ping -c 1 -W 2 8.8.8.8 2>/dev/null | grep -c '1 received'",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         info["internet"] = result.stdout.strip() == "1"
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     return info
@@ -225,13 +253,17 @@ def format_output(data: dict) -> str:
     bar_len = 20
     filled = int(bar_len * mem["percent"] / 100)
     bar = "[" + "#" * filled + "-" * (bar_len - filled) + "]"
-    lines.append(f"Memory: {mem['used_gb']:.1f} / {mem['total_gb']:.1f} GB ({mem['percent']:.0f}%)")
+    lines.append(
+        f"Memory: {mem['used_gb']:.1f} / {mem['total_gb']:.1f} GB ({mem['percent']:.0f}%)"
+    )
     lines.append(f"        {bar}\n")
 
     # Disk
     lines.append("Disk:")
     for disk in data["disks"]:
-        lines.append(f"  {disk['path']:10} {disk['used_gb']:>6.1f} / {disk['total_gb']:.1f} GB ({disk['percent']:.0f}%)")
+        lines.append(
+            f"  {disk['path']:10} {disk['used_gb']:>6.1f} / {disk['total_gb']:.1f} GB ({disk['percent']:.0f}%)"
+        )
     lines.append("")
 
     # WSL
@@ -253,7 +285,9 @@ def format_output(data: dict) -> str:
     lines.append(f"Network: {net['hostname']}")
     for iface in net["interfaces"]:
         lines.append(f"  {iface['name']}: {iface['ip']}")
-    lines.append(f"  [{internet_icon}] Internet: {'connected' if net['internet'] else 'disconnected'}")
+    lines.append(
+        f"  [{internet_icon}] Internet: {'connected' if net['internet'] else 'disconnected'}"
+    )
 
     return "\n".join(lines)
 
@@ -269,7 +303,9 @@ def format_quick(data: dict) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="WSL2 system information")
-    parser.add_argument("--quick", action="store_true", help="Quick CPU/mem/disk summary")
+    parser.add_argument(
+        "--quick", action="store_true", help="Quick CPU/mem/disk summary"
+    )
     parser.add_argument("--json", action="store_true", help="JSON output")
     args = parser.parse_args()
 
