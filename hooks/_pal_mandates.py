@@ -722,6 +722,122 @@ def check_crawl4ai_mandate(prompt: str) -> Optional[Mandate]:
 
 
 # =============================================================================
+# CONTEXT7 MCP TRIGGERS (for library documentation)
+# =============================================================================
+
+# Import Context7 library detection if available
+try:
+    from _hooks_context7 import detect_library_context, LIBRARY_MENTION_PATTERNS
+
+    CONTEXT7_DETECTION_AVAILABLE = True
+except ImportError:
+    CONTEXT7_DETECTION_AVAILABLE = False
+    detect_library_context = None
+    LIBRARY_MENTION_PATTERNS = []
+
+_RE_LIBRARY_DOCS = re.compile(
+    r"(how\s+(do\s+i|to|does)|what.?s\s+the|show\s+me|explain)\s+"
+    r".{0,30}(api|hook|component|function|method|syntax|usage|example)",
+    re.IGNORECASE,
+)
+
+_RE_LIBRARY_ERROR = re.compile(
+    r"(error|issue|problem|bug|not\s+working)\s+.{0,30}"
+    r"(with|in|using|from)\s+(react|vue|next|prisma|tailwind|zod|trpc|"
+    r"express|fastapi|django|axios|tanstack|shadcn|radix)",
+    re.IGNORECASE,
+)
+
+_RE_LIBRARY_SPECIFIC = re.compile(
+    r"(react|vue|angular|svelte|next\.?js|nuxt|remix|astro|"
+    r"prisma|drizzle|sequelize|typeorm|mongoose|"
+    r"tailwind|styled-components|emotion|chakra|"
+    r"redux|zustand|jotai|recoil|mobx|pinia|"
+    r"zod|yup|joi|valibot|trpc|graphql|apollo|"
+    r"tanstack|react-query|swr|framer-motion|"
+    r"radix|headless-?ui|shadcn|mantine|"
+    r"fastapi|flask|django|express|nest\.?js|"
+    r"pytest|jest|vitest|playwright|cypress)\b"
+    r".{0,50}(docs?|documentation|api|how|usage|example|hook|component)",
+    re.IGNORECASE,
+)
+
+
+def check_context7_mandate(prompt: str) -> Optional[Mandate]:
+    """
+    Check for Context7 MCP triggers in user prompt.
+
+    Context7 is ideal for:
+    - Library/framework documentation lookup
+    - API reference and code examples
+    - Current/up-to-date library usage patterns
+    - Specific library error troubleshooting
+
+    Context7 is FASTER and more accurate than web search for library docs.
+    """
+    if len(prompt) < 10 or prompt.startswith("/"):
+        return None
+
+    # First, try smart library detection if available
+    if CONTEXT7_DETECTION_AVAILABLE and detect_library_context:
+        library_ctx = detect_library_context(prompt=prompt)
+        if library_ctx and library_ctx.confidence >= 0.7:
+            lib = library_ctx.library_name
+            return Mandate(
+                tool="mcp__plugin_context7_context7__resolve-library-id",
+                directive=(
+                    f"📚 **USE CONTEXT7**: Library `{lib}` detected. "
+                    f"Use `mcp__plugin_context7_context7__resolve-library-id` with `{lib}` first, "
+                    f"then `get-library-docs` for API reference and code examples. "
+                    f"Context7 is FASTER than web search for library documentation."
+                ),
+                priority=P_HIGH,
+                reason=f"Library detected: {lib}",
+            )
+
+    # Library-specific error → Context7 for troubleshooting
+    if _RE_LIBRARY_ERROR.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_context7_context7__resolve-library-id",
+            directive=(
+                "📚 **USE CONTEXT7**: Library error detected. "
+                "Use Context7 to get current docs and code examples. "
+                "Library docs often have troubleshooting sections."
+            ),
+            priority=P_HIGH,
+            reason="Library error",
+        )
+
+    # Specific library + docs/api question → Context7
+    if _RE_LIBRARY_SPECIFIC.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_context7_context7__resolve-library-id",
+            directive=(
+                "📚 **USE CONTEXT7**: Library documentation request. "
+                "Use `resolve-library-id` then `get-library-docs` for structured API reference. "
+                "Context7 provides code snippets and current documentation."
+            ),
+            priority=P_MEDIUM,
+            reason="Library docs request",
+        )
+
+    # General API/usage question → suggest Context7
+    if _RE_LIBRARY_DOCS.search(prompt):
+        return Mandate(
+            tool="mcp__plugin_context7_context7__resolve-library-id",
+            directive=(
+                "📚 **CONSIDER CONTEXT7**: API/usage question detected. "
+                "If this involves a library, use Context7 for authoritative docs. "
+                "Context7 > web search for library documentation."
+            ),
+            priority=P_LOW,
+            reason="API usage question",
+        )
+
+    return None
+
+
+# =============================================================================
 # SERENA MCP TRIGGERS (for semantic code analysis)
 # =============================================================================
 

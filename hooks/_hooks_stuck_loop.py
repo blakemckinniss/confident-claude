@@ -23,6 +23,23 @@ from _config import get_magic_number
 from _cooldown import _resolve_state_path
 from session_state import SessionState
 
+# Context7 integration for library-specific stuck loops
+try:
+    from _hooks_context7 import (
+        detect_library_context,
+        format_context7_circuit_breaker_suggestion,
+        is_context7_tool,
+        get_context7_research_credit,
+    )
+
+    CONTEXT7_AVAILABLE = True
+except ImportError:
+    CONTEXT7_AVAILABLE = False
+    detect_library_context = None
+    format_context7_circuit_breaker_suggestion = None
+    is_context7_tool = None
+    get_context7_research_credit = None
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -50,6 +67,9 @@ RESEARCH_TOOLS = {
     # claude-mem memory search - counts as research since it surfaces past solutions
     "mcp__mem-search__search",
     "mcp__plugin_claude-mem_mem-search__search",
+    # Context7 library documentation - high-quality structured docs with code examples
+    "mcp__plugin_context7_context7__resolve-library-id",
+    "mcp__plugin_context7_context7__get-library-docs",
 }
 
 
@@ -296,12 +316,39 @@ def track_fix_attempt(
         if not stuck.get("research_done", False):
             stuck["circuit_breaker_active"] = True
             runner_state["stuck_loop_state"] = stuck
+
+            # Detect library context for smarter suggestions
+            library_ctx = None
+            context7_suggestion = ""
+            if CONTEXT7_AVAILABLE and detect_library_context:
+                library_ctx = detect_library_context(
+                    prompt=state.last_user_prompt or state.original_goal or "",
+                    error_output=stuck.get("last_error_output", ""),
+                )
+                if library_ctx:
+                    context7_suggestion = format_context7_circuit_breaker_suggestion(
+                        library_ctx
+                    )
+
+            # Build suggestion list - Context7 first if library detected
+            if library_ctx and context7_suggestion:
+                suggestions = (
+                    f"{context7_suggestion}"
+                    f"   → `mcp__pal__debug` for external analysis\n"
+                    f"   → `WebSearch` for community solutions"
+                )
+            else:
+                suggestions = (
+                    "   → `mcp__plugin_context7_context7__resolve-library-id` if library-related\n"
+                    "   → `WebSearch` for current docs/patterns\n"
+                    "   → `mcp__pal__debug` for external analysis\n"
+                    "   → `mcp__pal__apilookup` for API verification"
+                )
+
             return HookResult.with_context(
                 f"🔴 **STUCK LOOP DETECTED** ({attempt_count} edits to `{file_name}`)\n"
                 f"⚡ **CIRCUIT BREAKER**: Research REQUIRED before more edits\n"
-                f"   → `WebSearch` for current docs/patterns\n"
-                f"   → `mcp__pal__debug` for external analysis\n"
-                f"   → `mcp__pal__apilookup` for API verification\n"
+                f"{suggestions}\n"
                 f"💡 The same approach isn't working. Get external perspective."
             )
         else:
@@ -369,17 +416,23 @@ def track_symptoms(data: dict, state: SessionState, runner_state: dict) -> HookR
 
 
 @register_hook(
-    "research_tracker", "WebSearch|WebFetch|mcp__pal__*|mcp__crawl4ai__*", priority=80
+    "research_tracker",
+    "WebSearch|WebFetch|mcp__pal__*|mcp__crawl4ai__*|mcp__plugin_context7_context7__*",
+    priority=80,
 )
 def track_research(data: dict, state: SessionState, runner_state: dict) -> HookResult:
     """Track when research is performed to reset stuck state."""
     tool_name = data.get("tool_name", "")
 
     # Check if this is a research tool
+    is_context7 = (
+        CONTEXT7_AVAILABLE and is_context7_tool and is_context7_tool(tool_name)
+    )
     is_research = (
         tool_name in RESEARCH_TOOLS
         or tool_name.startswith("mcp__pal__")
         or tool_name.startswith("mcp__crawl4ai__")
+        or tool_name.startswith("mcp__plugin_context7_context7__")
     )
 
     if not is_research:
@@ -390,6 +443,13 @@ def track_research(data: dict, state: SessionState, runner_state: dict) -> HookR
     stuck["last_research_turn"] = state.turn_count
     stuck["circuit_breaker_active"] = False
     runner_state["stuck_loop_state"] = stuck
+
+    # Context7-specific feedback
+    if is_context7:
+        return HookResult.with_context(
+            "✅ **Context7 library docs retrieved** - Circuit breaker reset\n"
+            "💡 Apply the API patterns and code examples to your implementation"
+        )
 
     return HookResult.with_context(
         "✅ **Research performed** - Circuit breaker reset\n"
