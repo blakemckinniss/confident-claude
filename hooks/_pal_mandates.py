@@ -31,6 +31,7 @@ if str(_LIB_DIR) not in sys.path:
 
 # Lazy import codemode modules (may not exist during initial setup)
 _codemode_available = False
+_planner_available = False
 try:
     from _codemode_interfaces import (
         generate_interface,
@@ -41,6 +42,14 @@ try:
     _codemode_available = True
 except ImportError:
     pass
+
+try:
+    from _codemode_planner import CodeModePlanner, ExecutionPlan
+    from _codemode_executor import PlanExecutor
+
+    _planner_available = True
+except ImportError:
+    ExecutionPlan = None  # Type stub for annotation
 
 
 @dataclass
@@ -1286,6 +1295,88 @@ def _get_codemode_tool_summary() -> str:
     return f"\n\n{summary}"
 
 
+def _generate_plan_hint(reasons: list[str]) -> str:
+    """
+    Generate a plan execution hint based on detected patterns.
+
+    When PlanExecutor is available, provides guidance on using structured plans
+    vs ad-hoc tool execution.
+    """
+    if not _planner_available:
+        return ""
+
+    # Build guidance based on detected patterns
+    hints = []
+
+    if "multi-tool sequence" in reasons:
+        hints.append(
+            "**Plan Execution Available**: Use `CodeModePlanner.create_tool_plan()` "
+            "to generate structured plans with dependency tracking."
+        )
+
+    if "batch operations" in reasons:
+        hints.append(
+            "For batch operations, structure as parallel tool calls in a single plan."
+        )
+
+    if "conditional flow" in reasons:
+        hints.append(
+            "For conditional flows, execute plan phases and branch based on results."
+        )
+
+    if not hints:
+        return ""
+
+    return "\n\n🔧 " + " ".join(hints)
+
+
+def create_execution_plan_from_prompt(prompt: str) -> "ExecutionPlan | None":
+    """
+    Attempt to create an execution plan from prompt analysis.
+
+    This is a best-effort static analysis - extracts tool names mentioned
+    and creates a skeleton plan. Returns None if planner unavailable or
+    no tools detected.
+    """
+    if not _planner_available or not _codemode_available:
+        return None
+
+    schemas = load_cached_schemas()
+    if not schemas:
+        return None
+
+    # Extract potential tool mentions from prompt
+    prompt_lower = prompt.lower()
+    detected_tools = []
+
+    # Map common terms to tools
+    tool_keywords = {
+        "find symbol": "mcp__serena__find_symbol",
+        "symbol": "mcp__serena__find_symbol",
+        "overview": "mcp__serena__get_symbols_overview",
+        "references": "mcp__serena__find_referencing_symbols",
+        "search": "mcp__serena__search_for_pattern",
+        "list dir": "mcp__serena__list_dir",
+        "crawl": "mcp__crawl4ai__crawl",
+        "web search": "mcp__crawl4ai__ddg_search",
+        "debug": "mcp__pal__debug",
+        "think": "mcp__pal__thinkdeep",
+    }
+
+    for keyword, tool in tool_keywords.items():
+        if keyword in prompt_lower and tool in schemas:
+            detected_tools.append(tool)
+
+    if len(detected_tools) < 2:
+        return None  # Not enough tools for meaningful plan
+
+    # Create planner and generate skeleton plan
+    planner = CodeModePlanner(schemas)
+    tool_calls = [(tool, {}) for tool in detected_tools[:5]]  # Cap at 5 tools
+
+    return planner.create_tool_plan(tool_calls)
+
+
 def check_codemode_mandate(
     prompt: str,
     mastermind_classification: str | None = None,
@@ -1353,6 +1444,16 @@ def check_codemode_mandate(
 
     # Get available tools summary if schemas are cached
     tools_summary = _get_codemode_tool_summary() if _codemode_available else ""
+    plan_hints = _generate_plan_hint(reasons)
+
+    # Build executor reference for directive
+    executor_note = ""
+    if _planner_available and PlanExecutor is not None:
+        executor_note = (
+            "\n\n**Execution Options**:\n"
+            "- `CodeModePlanner.create_tool_plan([...])` → structured plan with deps\n"
+            "- `PlanExecutor(tool_invoker).execute(plan)` → execute with results"
+        )
 
     # Decision thresholds
     if signals >= 3:
@@ -1365,7 +1466,7 @@ def check_codemode_mandate(
                 "**Plan Protocol**: Write Python code using MCP tools as `namespace.tool_name()`. "
                 "Execute tools in sequence, use results to drive next steps. "
                 "Code-mode provides 67-88% efficiency improvement for multi-tool tasks."
-                f"{tools_summary}"
+                f"{tools_summary}{plan_hints}{executor_note}"
             ),
             priority=P_HIGH,
             reason=f"Code-mode signals: {', '.join(reasons)}",
@@ -1380,7 +1481,7 @@ def check_codemode_mandate(
                 f"Signals: {', '.join(reasons)}.\n\n"
                 "For complex tool chaining, write code that orchestrates MCP tools. "
                 "Tools available as `namespace.tool_name()` functions."
-                f"{tools_summary}"
+                f"{tools_summary}{plan_hints}"
             ),
             priority=P_PROACTIVE,
             reason=f"Code-mode signals: {', '.join(reasons)}",
