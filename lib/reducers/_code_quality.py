@@ -55,6 +55,22 @@ class PlaceholderImplReducer(ConfidenceReducer):
         )
         return bool(specific_except_pass.search(content))
 
+    def _is_pass_in_control_flow(self, content: str) -> bool:
+        """Check if pass is legitimately in a control flow branch.
+
+        Returns True if pass appears in an if/elif branch with an explanatory comment,
+        indicating intentional no-op for fall-through or explicit do-nothing logic.
+        Pattern: if condition:\n    # comment explaining why\n    pass
+        """
+        # Pattern for if/elif with comment explaining intent, followed by pass
+        control_flow_pass = re.compile(
+            r"(?:if|elif)\s+[^\n:]+:\s*\n"  # if/elif condition:
+            r"\s*#[^\n]+\n"  # comment explaining intent
+            r"\s*pass\b",  # pass statement
+            re.MULTILINE,
+        )
+        return bool(control_flow_pass.search(content))
+
     def should_trigger(
         self, context: dict, state: "SessionState", last_trigger_turn: int
     ) -> bool:
@@ -73,10 +89,12 @@ class PlaceholderImplReducer(ConfidenceReducer):
         for pattern in self._get_patterns():
             if re.search(pattern, new_content, re.MULTILINE | re.IGNORECASE):
                 # Special case: pass in specific exception handler is OK
-                if pattern == r"^\s*pass\s*$" and self._is_pass_in_except_handler(
-                    new_content
-                ):
-                    continue
+                if pattern == r"^\s*pass\s*$":
+                    if self._is_pass_in_except_handler(new_content):
+                        continue
+                    # pass in if/elif with explanatory comment is OK (control flow)
+                    if self._is_pass_in_control_flow(new_content):
+                        continue
                 return True
         return False
 
@@ -660,17 +678,21 @@ class MagicNumbersReducer(ConfidenceReducer):
 
         try:
             tree = ast.parse(new_content)
-            
+
             # First, collect all constant definition targets
             constant_assignments = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.Assign):
                     for target in node.targets:
-                        if isinstance(target, ast.Name) and constant_pattern.match(target.id):
+                        if isinstance(target, ast.Name) and constant_pattern.match(
+                            target.id
+                        ):
                             # This is a constant definition - mark its value location
-                            if hasattr(node.value, 'lineno'):
-                                constant_assignments.add((node.value.lineno, node.value.col_offset))
-            
+                            if hasattr(node.value, "lineno"):
+                                constant_assignments.add(
+                                    (node.value.lineno, node.value.col_offset)
+                                )
+
             for node in ast.walk(tree):
                 # Look for numeric literals
                 if isinstance(node, ast.Constant) and isinstance(

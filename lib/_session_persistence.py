@@ -10,6 +10,7 @@ v3.13: Project-aware state isolation
 
 import fcntl
 import json
+import logging
 import os
 import tempfile
 import time
@@ -101,7 +102,9 @@ def load_state() -> "SessionState":
             if current_mtime == const._STATE_CACHE_MTIME:
                 return const._STATE_CACHE
         except OSError:
-            pass
+            logging.debug(
+                "_session_persistence: cache mtime check failed (non-critical)"
+            )
 
     # Cache miss or stale - load from disk
     lock_fd = _acquire_state_lock(shared=True)
@@ -121,8 +124,10 @@ def load_state() -> "SessionState":
                         )
                         const._STATE_CACHE_MTIME = current_mtime
                         return const._STATE_CACHE
-            except (json.JSONDecodeError, TypeError, KeyError, OSError):
-                pass
+            except (json.JSONDecodeError, TypeError, KeyError, OSError) as e:
+                logging.warning(
+                    "_session_persistence: state file corrupted or unreadable: %s", e
+                )
     finally:
         _release_state_lock(lock_fd)
 
@@ -142,8 +147,10 @@ def load_state() -> "SessionState":
                         )
                         const._STATE_CACHE_MTIME = current_mtime
                         return const._STATE_CACHE
-            except (json.JSONDecodeError, TypeError, KeyError, OSError):
-                pass
+            except (json.JSONDecodeError, TypeError, KeyError, OSError) as e:
+                logging.warning(
+                    "_session_persistence: state file corrupted during lock: %s", e
+                )
 
         # Initialize new state for this session
         state = SessionState(
@@ -242,7 +249,10 @@ def update_state(modifier_func):
                 with open(state_file) as f:
                     data = json.load(f)
                     state = SessionState(**data)
-            except (json.JSONDecodeError, TypeError, KeyError):
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                logging.warning(
+                    "_session_persistence: update_state failed to load: %s", e
+                )
                 state = SessionState(
                     session_id=os.environ.get("CLAUDE_SESSION_ID", "")[:16]
                     or f"ses_{int(time.time())}",
