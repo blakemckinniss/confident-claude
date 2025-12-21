@@ -395,6 +395,119 @@ def get_recent_errors(max_items: int = 3) -> str:
         return ""
 
 
+def get_stuck_loop_context() -> dict[str, Any]:
+    """Get stuck loop state for routing context.
+
+    Returns information about debugging loops to help router suggest
+    research/alternatives when Claude is stuck. Critical for preventing
+    wasted edits and prompting external consultation.
+
+    Returns:
+        Dict with stuck loop signals or empty dict if not in debug session.
+    """
+    import json
+
+    # Check runner state for stuck loop info
+    runner_state_file = Path.home() / ".claude" / "tmp" / "runner_state.json"
+    if not runner_state_file.exists():
+        return {}
+
+    try:
+        data = json.loads(runner_state_file.read_text())
+        stuck = data.get("stuck_loop_state", {})
+        if not stuck:
+            return {}
+
+        fix_attempts = stuck.get("fix_attempts", {})
+        max_attempts = max((len(v) for v in fix_attempts.values()), default=0)
+
+        # Threshold for circuit breaker is 4 edits
+        edits_until_block = max(0, 4 - max_attempts)
+
+        return {
+            "in_debug_session": stuck.get("debug_session_start", 0) > 0,
+            "circuit_breaker_active": stuck.get("circuit_breaker_active", False),
+            "research_done": stuck.get("research_done", False),
+            "max_fix_attempts": max_attempts,
+            "edits_until_block": edits_until_block,
+            "problem_files": [f for f, a in fix_attempts.items() if len(a) >= 3],
+            "symptoms_count": len(stuck.get("symptoms_seen", [])),
+        }
+    except (json.JSONDecodeError, OSError, KeyError):
+        return {}
+
+
+def get_bead_goals(max_items: int = 3) -> list[str]:
+    """Get bead titles (goals) for active work context.
+
+    Returns actual task descriptions instead of just counts,
+    enabling better task type classification.
+
+    Returns:
+        List of bead titles for in_progress work.
+    """
+    try:
+        result = subprocess.run(
+            ["bd", "list", "--status=in_progress"],
+            capture_output=True,
+            text=True,
+            timeout=10,  # Increased timeout for slower systems
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return []
+
+        goals = []
+        for line in result.stdout.strip().split("\n"):
+            # Format: {id} [{priority}] [{type}] {status} [{project:X}]? - {title}
+            # Extract title after " - "
+            if " - " in line:
+                title = line.split(" - ", 1)[1].strip()
+                if title:
+                    goals.append(title[:80])  # Truncate long titles
+                    if len(goals) >= max_items:
+                        break
+        return goals
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        return []
+
+
+def get_recent_reducers(max_items: int = 5) -> list[str]:
+    """Get recently fired reducers for behavioral pattern awareness.
+
+    Helps router understand what penalties have been applied,
+    signaling behavioral patterns that need course correction.
+
+    Returns:
+        List of reducer names that fired recently.
+    """
+    import json
+
+    state_file = Path.home() / ".claude" / "tmp" / "session_state.json"
+    if not state_file.exists():
+        return []
+
+    try:
+        data = json.loads(state_file.read_text())
+        # Check reducer history if available
+        reducer_history = data.get("reducer_history", [])
+        if not reducer_history:
+            return []
+
+        # Get unique recent reducers
+        recent = []
+        seen = set()
+        for entry in reversed(reducer_history[-20:]):
+            name = entry.get("name", "") if isinstance(entry, dict) else str(entry)
+            if name and name not in seen:
+                seen.add(name)
+                recent.append(name)
+                if len(recent) >= max_items:
+                    break
+        return recent
+    except (json.JSONDecodeError, OSError, KeyError):
+        return []
+
+
 def get_confidence_trend() -> str:
     """Get confidence trend from recent history."""
     import json
@@ -1093,6 +1206,21 @@ def pack_for_router(
     if test_results:
         sections["tests"] = test_results
 
+    # Add stuck loop context (critical for routing when debugging)
+    stuck_loop = get_stuck_loop_context()
+    if stuck_loop:
+        sections["stuck_loop"] = stuck_loop
+
+    # Add bead goals (task descriptions for better classification)
+    bead_goals = get_bead_goals()
+    if bead_goals:
+        sections["bead_goals"] = bead_goals
+
+    # Add recent reducers (behavioral pattern signals)
+    recent_reducers = get_recent_reducers()
+    if recent_reducers:
+        sections["recent_reducers"] = recent_reducers
+
     # Add memory hints (Path B - lightweight signals)
     if config.context_packer.include_memory_hints:
         memory_hints = get_memory_hints(cwd)
@@ -1210,6 +1338,54 @@ Type: {sections["repo_type"]}{project_line}{beads_line}
 
     if "tests" in sections:
         packed += f"\n## Test Status\n{sections['tests']}\n"
+
+    # Add stuck loop context (critical for routing during debugging)
+    if "stuck_loop" in sections:
+        sl = sections["stuck_loop"]
+        stuck_parts = []
+        if sl.get("circuit_breaker_active"):
+            stuck_parts.append(
+                "🚨 CIRCUIT BREAKER ACTIVE - research required before editing"
+            )
+        elif sl.get("in_debug_session"):
+            attempts = sl.get("max_fix_attempts", 0)
+            until_block = sl.get("edits_until_block", 4)
+            stuck_parts.append(f"Debug session: {attempts} fix attempts")
+            if until_block <= 2:
+                stuck_parts.append(f"⚠️ {until_block} edits until circuit breaker")
+            if sl.get("problem_files"):
+                stuck_parts.append(
+                    f"Problem files: {', '.join(sl['problem_files'][:3])}"
+                )
+            if not sl.get("research_done"):
+                stuck_parts.append(
+                    "No research done yet - consider mcp__pal__debug or web search"
+                )
+        if stuck_parts:
+            packed += "\n## Stuck Loop State\n" + "\n".join(stuck_parts) + "\n"
+
+    # Add bead goals (task descriptions for better classification)
+    if "bead_goals" in sections:
+        goals_str = "\n".join(f"• {g}" for g in sections["bead_goals"])
+        packed += f"\n## Active Task Goals\n{goals_str}\n"
+        packed += "(Use these to infer task_type: 'Fix X'=debugging, 'Add X'=planning, 'Refactor X'=review)\n"
+
+    # Add recent reducers (behavioral pattern signals)
+    if "recent_reducers" in sections:
+        reducers_str = ", ".join(sections["recent_reducers"])
+        packed += f"\n## Recent Penalties\n{reducers_str}\n"
+        packed += "(These reducers fired recently - suggest tools to address underlying patterns)\n"
+
+    # Add PAL continuation hints (resume prior context)
+    # Get session_id from environment or generate from timestamp
+    import os
+
+    session_id = os.environ.get("CLAUDE_SESSION_ID", "")
+    if session_id:
+        pal_hint = get_pal_continuation_hint(session_id)
+        if pal_hint:
+            packed += f"\n## PAL Context\n{pal_hint}\n"
+            packed += "(Pass continuation_id to PAL tools to resume prior reasoning)\n"
 
     # Check budget and truncate if needed
     token_est = estimate_tokens(packed)

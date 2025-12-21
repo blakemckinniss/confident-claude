@@ -157,6 +157,7 @@ def write_persistent_env_vars(project_context=None, state=None):
     except (IOError, OSError) as e:
         log_debug("session_init", f"Failed to write CLAUDE_ENV_FILE: {e}")
 
+
 # Infrastructure manifest (prevents "create X" when X exists)
 INFRASTRUCTURE_FILE = MEMORY_DIR / "__infrastructure.md"
 
@@ -861,6 +862,43 @@ def _build_lessons_context(state, project_context) -> list[str]:
     return parts
 
 
+def _build_pal_context(handoff: dict | None) -> list[str]:
+    """Build PAL continuation context - CRITICAL for cross-session memory.
+
+    PAL continuation_ids allow resuming reasoning context across sessions.
+    This is EXTREMELY valuable and should be prominently surfaced.
+    """
+    parts = []
+
+    # First check handoff for PAL continuations
+    pal_conts = {}
+    if handoff:
+        pal_conts = handoff.get("pal_continuations", {})
+
+    # Fall back to reading mastermind state directly
+    if not pal_conts:
+        try:
+            mm_dir = Path.home() / ".claude/tmp/mastermind"
+            if mm_dir.exists():
+                state_files = list(mm_dir.glob("*/*/state.json"))
+                if state_files:
+                    latest = max(state_files, key=lambda p: p.stat().st_mtime)
+                    data = json.loads(latest.read_text())
+                    pal_conts = data.get("pal_continuations", {})
+        except Exception:
+            pass
+
+    if pal_conts:
+        cont_strs = [f"{k}={v[:12]}" for k, v in pal_conts.items() if v]
+        if cont_strs:
+            parts.append(f"🔥 **PAL CONTEXT AVAILABLE**: {', '.join(cont_strs)}")
+            parts.append(
+                "⚠️ **IMPORTANT**: Pass continuation_id to mcp__pal__* tools to resume prior reasoning!"
+            )
+
+    return parts
+
+
 def build_onboarding_context(state, handoff: dict | None, project_context=None) -> str:
     """Build the session onboarding protocol context.
 
@@ -887,6 +925,9 @@ def build_onboarding_context(state, handoff: dict | None, project_context=None) 
         parts.append(recovery)
 
     parts.extend(_build_lessons_context(state, project_context))
+
+    # 🔥 PAL CONTINUATIONS - Cross-session memory gold!
+    parts.extend(_build_pal_context(handoff))
 
     # Add memory context for fresh sessions (v3.14 - auto-inject, not just suggest)
     project_name = None

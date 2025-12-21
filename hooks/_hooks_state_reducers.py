@@ -402,6 +402,25 @@ def check_confidence_reducer(
     # Apply reducers
     triggered = apply_reducers(state, context)
 
+    # Persist reducer history for mastermind routing context (v4.26)
+    if triggered:
+        import time
+
+        if not hasattr(state, "reducer_history") or state.reducer_history is None:
+            state.reducer_history = []
+        for name, delta, desc in triggered:
+            state.reducer_history.append(
+                {
+                    "name": name,
+                    "delta": delta,
+                    "turn": state.turn_count,
+                    "timestamp": time.time(),
+                }
+            )
+        # Keep only last 50 entries to prevent unbounded growth
+        if len(state.reducer_history) > 50:
+            state.reducer_history = state.reducer_history[-50:]
+
     if not triggered:
         return HookResult.none()
 

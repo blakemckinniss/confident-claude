@@ -33,8 +33,10 @@ MAX_OUTPUT_CHARS = 500
 CHECKPOINT_REF_CHARS = 30  # Space reserved for checkpoint reference
 
 # Canonical field order (highest priority first)
+# PAL is SECOND priority - continuation_ids are cross-session memory gold
 FIELD_ORDER = [
     "GOAL",
+    "PAL",  # 🔥 PAL continuations - CRITICAL for cross-session context
     "KEY",
     "CONF",
     "SERENA",
@@ -123,6 +125,38 @@ def get_beads_context() -> list[str]:
                 extra = len(bead_lines) - 3
                 suffix = f"+{extra}" if extra > 0 else ""
                 lines.append(f"BEADS:{','.join(bead_ids)}{suffix}")
+    except Exception:
+        pass
+    return lines
+
+
+def get_pal_context() -> list[str]:
+    """Extract PAL continuation_ids - CRITICAL for cross-session context.
+
+    PAL continuations are cross-session memory gold. They allow resuming
+    reasoning context from prior PAL tool invocations (debug, planner, etc).
+    This is EXTREMELY valuable and should be prominently surfaced.
+    """
+    lines = []
+    try:
+        mm_dir = Path.home() / ".claude/tmp/mastermind"
+        if mm_dir.exists():
+            state_files = list(mm_dir.glob("*/*/state.json"))
+            if state_files:
+                latest = max(state_files, key=lambda p: p.stat().st_mtime)
+                data = json.loads(latest.read_text())
+
+                # Extract PAL continuations
+                pal_conts = data.get("pal_continuations", {})
+                if pal_conts:
+                    # Format: PAL:debug=abc12,planner=def34
+                    cont_strs = [f"{k}={v[:8]}" for k, v in pal_conts.items() if v]
+                    if cont_strs:
+                        lines.append(f"🔥PAL:{','.join(cont_strs[:3])}")
+                        # Add explicit reminder - be ANNOYING about this
+                        lines.append(
+                            "⚠️RESUME_PAL:pass continuation_id to mcp__pal__* tools!"
+                        )
     except Exception:
         pass
     return lines
@@ -250,6 +284,7 @@ def main():
         all_lines.append(f"CP:{checkpoint_id[-12:]}")
 
     all_lines.extend(get_goal_context(state))
+    all_lines.extend(get_pal_context())  # 🔥 PAL continuations - HIGHEST VALUE
     all_lines.extend(get_confidence_context(state))
     all_lines.extend(get_serena_context(state))
     all_lines.extend(get_beads_context())

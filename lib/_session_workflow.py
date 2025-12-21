@@ -195,7 +195,9 @@ def prepare_handoff(state: "SessionState") -> dict:
     completed = [p for p in state.progress_log if p.get("status") == "completed"]
     if completed:
         recent = completed[-3:]
-        summary_parts.append(f"Completed: {', '.join(p['description'][:30] for p in recent)}")
+        summary_parts.append(
+            f"Completed: {', '.join(p['description'][:30] for p in recent)}"
+        )
 
     if state.current_feature:
         summary_parts.append(f"In progress: {state.current_feature[:50]}")
@@ -203,7 +205,9 @@ def prepare_handoff(state: "SessionState") -> dict:
     if state.errors_unresolved:
         summary_parts.append(f"Unresolved errors: {len(state.errors_unresolved)}")
 
-    state.handoff_summary = " | ".join(summary_parts) if summary_parts else "No significant progress"
+    state.handoff_summary = (
+        " | ".join(summary_parts) if summary_parts else "No significant progress"
+    )
 
     next_items = sorted(
         [w for w in state.work_queue if w.get("status") == "pending"],
@@ -219,10 +223,27 @@ def prepare_handoff(state: "SessionState") -> dict:
         for e in state.errors_unresolved[:3]
     ]
 
+    # 🔥 PAL CONTINUATIONS - Cross-session memory gold!
+    pal_continuations = {}
+    try:
+        import json
+        from pathlib import Path
+
+        mm_dir = Path.home() / ".claude/tmp/mastermind"
+        if mm_dir.exists():
+            state_files = list(mm_dir.glob("*/*/state.json"))
+            if state_files:
+                latest = max(state_files, key=lambda p: p.stat().st_mtime)
+                data = json.loads(latest.read_text())
+                pal_continuations = data.get("pal_continuations", {})
+    except Exception:
+        pass
+
     return {
         "summary": state.handoff_summary,
         "next_steps": state.handoff_next_steps,
         "blockers": state.handoff_blockers,
+        "pal_continuations": pal_continuations,  # 🔥 CRITICAL for context resume
     }
 
 

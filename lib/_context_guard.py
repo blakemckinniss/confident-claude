@@ -110,6 +110,28 @@ def check_context_fit(
         return "ok", pct
 
 
+def _get_pal_continuations() -> dict[str, str]:
+    """Get PAL continuation_ids from mastermind state.
+
+    PAL continuations are EXTREMELY valuable - they allow resuming
+    reasoning context across sessions. This is cross-session memory gold.
+    """
+    try:
+        import json
+        from pathlib import Path
+
+        mm_dir = Path.home() / ".claude/tmp/mastermind"
+        if mm_dir.exists():
+            state_files = list(mm_dir.glob("*/*/state.json"))
+            if state_files:
+                latest = max(state_files, key=lambda p: p.stat().st_mtime)
+                data = json.loads(latest.read_text())
+                return data.get("pal_continuations", {})
+    except Exception:
+        pass
+    return {}
+
+
 def generate_resume_prompt(
     state,  # SessionState
     transcript_path: str,
@@ -122,6 +144,7 @@ def generate_resume_prompt(
     - Recent files modified
     - Last progress notes
     - Active beads
+    - PAL continuation_ids (CRITICAL for cross-session context!)
     - The interrupted prompt
     """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -132,6 +155,7 @@ def generate_resume_prompt(
     files_created = list(set(getattr(state, "files_created", [])[-5:]))
     handoff_next_steps = getattr(state, "handoff_next_steps", [])
     current_feature = getattr(state, "current_feature", "")
+    pal_continuations = _get_pal_continuations()
 
     # Build resume prompt
     lines = [
@@ -187,6 +211,28 @@ def generate_resume_prompt(
             lines.append(str(handoff_next_steps)[:300])
         lines.append("")
 
+    # 🔥 PAL CONTINUATIONS - CRITICAL FOR CROSS-SESSION CONTEXT
+    if pal_continuations:
+        lines.extend(
+            [
+                "## 🔥 PAL Continuation IDs (CRITICAL - USE THESE!)",
+                "",
+                "**These allow resuming prior reasoning context.**",
+                "**ALWAYS pass continuation_id to PAL tools!**",
+                "",
+            ]
+        )
+        for tool_type, cont_id in pal_continuations.items():
+            lines.append(f'- `mcp__pal__{tool_type}`: `continuation_id="{cont_id}"`')
+        lines.extend(
+            [
+                "",
+                "⚠️ **IMPORTANT:** When using ANY mcp__pal__* tool, pass the matching",
+                "continuation_id to resume context instead of starting fresh!",
+                "",
+            ]
+        )
+
     lines.extend(
         [
             "## Interrupted Prompt",
@@ -198,7 +244,7 @@ def generate_resume_prompt(
             "---",
             "",
             "**To continue:** Paste this into a new Claude Code session.",
-            "Run `/resume` first to load session state, then address the interrupted prompt.",
+            "Run `/resume` first to load session state, then continue.",
         ]
     )
 

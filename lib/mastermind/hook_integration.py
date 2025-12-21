@@ -580,7 +580,15 @@ def handle_session_start_routing(
         router_response = call_groq_router(redacted_prompt)
         router_response = apply_risk_lexicon(prompt, router_response)
 
-        # Log telemetry
+        # Log telemetry with context signals (v4.26)
+        context_signals = {
+            "stuck_loop": bool(router_ctx.sections.get("stuck_loop")),
+            "bead_goals": router_ctx.sections.get("bead_goals", []),
+            "recent_reducers": router_ctx.sections.get("recent_reducers", []),
+            "agent_confidence": state.confidence,
+            "has_errors": bool(router_ctx.sections.get("errors")),
+            "has_test_results": bool(router_ctx.sections.get("tests")),
+        }
         log_router_decision(
             state.session_id,
             state.turn_count,
@@ -591,6 +599,7 @@ def handle_session_start_routing(
             override,
             router_response.needs_research,
             router_response.research_topics,
+            context_signals=context_signals,
         )
 
         result["routed"] = True

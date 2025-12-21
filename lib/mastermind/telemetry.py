@@ -70,8 +70,19 @@ def log_router_decision(
     user_override: str | None = None,
     needs_research: bool = False,
     research_topics: list[str] | None = None,
+    # v4.26: Enhanced context signals for routing analysis
+    context_signals: dict[str, Any] | None = None,
 ) -> None:
-    """Log router classification decision."""
+    """Log router classification decision.
+
+    Args:
+        context_signals: Optional dict with routing context including:
+            - stuck_loop: bool - circuit breaker state
+            - bead_goals: list[str] - active task descriptions
+            - recent_reducers: list[str] - recently fired reducers
+            - pal_continuation: bool - whether PAL continuation exists
+            - agent_confidence: int - current confidence level
+    """
     config = get_config()
     if not config.telemetry.log_router_decisions:
         return
@@ -88,6 +99,7 @@ def log_router_decision(
             "user_override": user_override,
             "needs_research": needs_research,
             "research_topics": research_topics or [],
+            "context_signals": context_signals or {},
         },
     )
 
@@ -246,6 +258,104 @@ def log_threshold_update(
             "reason": reason,
         },
     )
+
+
+def get_routing_analysis(session_id: str | None = None) -> dict[str, Any]:
+    """Analyze Groq routing decisions for threshold tuning (v4.26).
+
+    If session_id provided, analyzes that session.
+    Otherwise, analyzes all sessions in telemetry directory.
+
+    Returns:
+        Analysis of routing patterns including:
+        - classification_distribution: counts by classification level
+        - context_signal_correlation: which signals correlate with which classifications
+        - confidence_accuracy: how often high-confidence routes were correct
+        - suggested_adjustments: threshold tuning recommendations
+    """
+    if session_id:
+        events = read_session_telemetry(session_id)
+    else:
+        # Aggregate across all sessions
+        events = []
+        for path in TELEMETRY_DIR.glob("*.jsonl"):
+            events.extend(read_session_telemetry(path.stem))
+
+    router_events = [e for e in events if e.event_type == "router_decision"]
+
+    if not router_events:
+        return {"error": "No routing decisions found", "event_count": 0}
+
+    # Classification distribution
+    classification_counts: dict[str, int] = {}
+    for e in router_events:
+        cls = e.data.get("classification", "unknown")
+        classification_counts[cls] = classification_counts.get(cls, 0) + 1
+
+    # Context signal correlation
+    signal_by_classification: dict[str, dict[str, int]] = {
+        "trivial": {"stuck_loop": 0, "has_errors": 0, "low_confidence": 0},
+        "medium": {"stuck_loop": 0, "has_errors": 0, "low_confidence": 0},
+        "complex": {"stuck_loop": 0, "has_errors": 0, "low_confidence": 0},
+    }
+
+    confidence_accuracy: dict[str, list[float]] = {
+        "trivial": [],
+        "medium": [],
+        "complex": [],
+    }
+
+    for e in router_events:
+        cls = e.data.get("classification", "unknown")
+        if cls not in signal_by_classification:
+            continue
+
+        signals = e.data.get("context_signals", {})
+        if signals.get("stuck_loop"):
+            signal_by_classification[cls]["stuck_loop"] += 1
+        if signals.get("has_errors"):
+            signal_by_classification[cls]["has_errors"] += 1
+        if signals.get("agent_confidence", 100) < 70:
+            signal_by_classification[cls]["low_confidence"] += 1
+
+        confidence_accuracy[cls].append(e.data.get("confidence", 0))
+
+    # Calculate average confidence per classification
+    avg_confidence = {}
+    for cls, confidences in confidence_accuracy.items():
+        if confidences:
+            avg_confidence[cls] = sum(confidences) / len(confidences)
+
+    # Generate suggestions
+    suggestions = []
+    total = len(router_events)
+
+    # Check if stuck_loop correlates with classification
+    if signal_by_classification.get("trivial", {}).get("stuck_loop", 0) > 0:
+        suggestions.append(
+            "ISSUE: stuck_loop=true classified as trivial - should be medium/complex"
+        )
+
+    # Check classification distribution
+    trivial_pct = classification_counts.get("trivial", 0) / total * 100 if total else 0
+    complex_pct = classification_counts.get("complex", 0) / total * 100 if total else 0
+
+    if trivial_pct > 70:
+        suggestions.append(
+            f"Classification skew: {trivial_pct:.0f}% trivial - consider tightening threshold"
+        )
+    if complex_pct > 50:
+        suggestions.append(
+            f"Over-classification: {complex_pct:.0f}% complex - consider relaxing threshold"
+        )
+
+    return {
+        "event_count": len(router_events),
+        "classification_distribution": classification_counts,
+        "context_signal_correlation": signal_by_classification,
+        "average_confidence_by_class": avg_confidence,
+        "suggested_adjustments": suggestions,
+    }
 
 
 def get_threshold_effectiveness(session_id: str) -> dict[str, Any]:
