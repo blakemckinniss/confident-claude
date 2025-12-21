@@ -825,6 +825,97 @@ def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
     return StopHookResult.block(block_msg.strip())
 
 
+# =============================================================================
+# PERPETUAL MOMENTUM GATE (v4.24)
+# =============================================================================
+# Core philosophy: "What can we do to make this even better?"
+# Things are never "done" - always enhancement, testing, meta-cognition available.
+# Responses must contain actionable forward motion, not deadend satisfaction.
+# =============================================================================
+
+MOMENTUM_PATTERNS = [
+    r"\bi\s+(?:can|will|could)\s+(?:also\s+)?(?:now\s+)?(?:\w+)",
+    r"\blet\s+me\s+(?:now\s+)?(?:\w+)",
+    r"\bnext\s+(?:i'?ll|step|steps?)[\s:]+",
+    r"\b(?:shall|should)\s+i\s+(?:\w+)",
+    r"\bwant\s+me\s+to\b",
+    r"(?:^|\n)#+\s*(?:next\s+steps?|➡️|🛤️)",
+    r"(?:^|\n)\*\*(?:next\s+steps?|➡️)\*\*",
+]
+
+DEADEND_PATTERNS = [
+    r"\bthat'?s\s+(?:all|it)\s+(?:for now|i have)\b",
+    r"\bwe'?re\s+(?:all\s+)?(?:done|finished|complete)\b",
+    r"\blet\s+me\s+know\s+if\s+(?:you\s+)?(?:need|want|have)\b",
+    r"\bhope\s+(?:this|that)\s+helps?\b",
+    r"\banything\s+else\s+(?:you\s+)?(?:need|want)\b",
+]
+
+
+def _check_momentum(transcript_path: str) -> tuple[bool, bool]:
+    """Check if response has momentum patterns vs deadend patterns.
+
+    Returns: (has_momentum, has_deadend)
+    """
+    content = _read_tail_content(transcript_path, 5000)
+    if not content:
+        return False, False
+
+    content_lower = content.lower()
+
+    has_momentum = any(
+        re.search(p, content_lower, re.IGNORECASE | re.MULTILINE)
+        for p in MOMENTUM_PATTERNS
+    )
+
+    has_deadend = any(
+        re.search(p, content_lower, re.IGNORECASE) for p in DEADEND_PATTERNS
+    )
+
+    return has_momentum, has_deadend
+
+
+@register_hook("momentum_gate", priority=36)
+def check_momentum_gate(data: dict, state: SessionState) -> StopHookResult:
+    """Enforce perpetual momentum - responses must drive continuation.
+
+    Philosophy: Things are never "done" - always enhancement, testing,
+    meta-cognition available. Deadend responses are penalized.
+
+    Bypassed by:
+    - SUDO in transcript
+    - Blocker acknowledgment ("I'm stuck")
+    - User deferral ("good enough")
+    """
+    # Skip if SUDO bypass
+    transcript_path = data.get("transcript_path", "")
+    if _has_sudo_bypass(transcript_path):
+        return StopHookResult.ok()
+
+    # Skip if blocker or deferral acknowledged
+    has_escape, _ = _has_blocker_or_deferral(transcript_path)
+    if has_escape:
+        return StopHookResult.ok()
+
+    # Check momentum patterns
+    has_momentum, has_deadend = _check_momentum(transcript_path)
+
+    if has_momentum:
+        return StopHookResult.ok()
+
+    if has_deadend:
+        return StopHookResult.warn(
+            "🔄 **PERPETUAL MOMENTUM** - Response lacks forward motion.\n\n"
+            "Before stopping, add actionable next steps:\n"
+            '  • "I can now..." / "Let me..." / "Shall I..."\n'
+            "  • Next Steps section with Claude-actionable items\n\n"
+            'Philosophy: Things are never "done" - always enhancement available.'
+        )
+
+    # No strong signal either way - soft reminder
+    return StopHookResult.ok()
+
+
 @register_hook("dismissal_check", priority=40)
 def check_dismissal(data: dict, state: SessionState) -> StopHookResult:
     """Catch false positive claims without fix."""

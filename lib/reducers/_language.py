@@ -166,6 +166,107 @@ class QuestionAvoidanceReducer(ConfidenceReducer):
 
 
 # =============================================================================
+# PERPETUAL MOMENTUM REDUCERS (v4.24) - Enforce forward motion philosophy
+# =============================================================================
+# Core principle: "What can we do to make this even better?"
+# Things are never "done" - always enhancement, testing, meta-cognition available.
+# Deadend responses without actionable next steps are penalized.
+# =============================================================================
+
+
+@dataclass
+class DeadendResponseReducer(ConfidenceReducer):
+    """Triggers when response ends without actionable next steps.
+
+    Deadend patterns indicate satisfaction without forward motion.
+    The framework demands perpetual momentum - always suggesting what
+    Claude can do next (not passive "you could" suggestions).
+
+    Anti-patterns:
+    - "That's all for now"
+    - "We're done here"
+    - "Let me know if you need anything"
+    - Passive suggestions: "You could...", "You might want to..."
+
+    Pro-patterns (NOT penalized):
+    - "I can...", "Let me...", "I will..."
+    - "Next Steps:" section with actionable items
+    - Questions to drive continuation
+    """
+
+    name: str = "deadend_response"
+    delta: int = -8
+    description: str = "Response ended without actionable next steps"
+    remedy: str = "add 'I can...' suggestions or Next Steps section"
+    cooldown_turns: int = 2
+    deadend_patterns: list = field(
+        default_factory=lambda: [
+            r"\bthat'?s\s+(?:all|it)\s+(?:for now|i have)\b",
+            r"\bwe'?re\s+(?:all\s+)?(?:done|finished|complete)\b",
+            r"\blet\s+me\s+know\s+if\s+(?:you\s+)?(?:need|want|have)\b",
+            r"\bhope\s+(?:this|that)\s+helps?\b",
+            r"\banything\s+else\s+(?:you\s+)?(?:need|want)\b",
+            r"\bfeel\s+free\s+to\s+(?:ask|reach out)\b",
+            r"\bi'?m\s+here\s+if\s+you\s+need\b",
+            r"\bdon'?t\s+hesitate\s+to\b",
+        ]
+    )
+    passive_patterns: list = field(
+        default_factory=lambda: [
+            r"\byou\s+(?:could|might|may)\s+(?:want\s+to|consider|try)\b",
+            r"\byou\s+(?:should|can)\s+(?:also\s+)?(?:consider|look at|check)\b",
+            r"\bit\s+(?:might|could)\s+be\s+worth\b",
+        ]
+    )
+    momentum_patterns: list = field(
+        default_factory=lambda: [
+            r"\bi\s+(?:can|will|could)\s+(?:also\s+)?(?:now\s+)?(?:\w+)",
+            r"\blet\s+me\s+(?:now\s+)?(?:\w+)",
+            r"\bnext\s+(?:i'?ll|step|steps?)[\s:]+",
+            r"\b(?:shall|should)\s+i\s+(?:\w+)",
+            r"\bwant\s+me\s+to\b",
+            r"(?:^|\n)#+\s*(?:next\s+steps?|➡️|🛤️)",
+            r"(?:^|\n)\*\*(?:next\s+steps?|➡️)\*\*",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        output = context.get("assistant_output", "")
+        if not output or len(output) < 100:  # Skip very short responses
+            return False
+
+        output_lower = output.lower()
+
+        # Check for momentum patterns - if present, don't penalize
+        for pattern in self.momentum_patterns:
+            if re.search(pattern, output_lower, re.IGNORECASE | re.MULTILINE):
+                return False
+
+        # Check for deadend patterns
+        has_deadend = False
+        for pattern in self.deadend_patterns:
+            if re.search(pattern, output_lower, re.IGNORECASE):
+                has_deadend = True
+                break
+
+        # Check for passive patterns (weaker signal)
+        has_passive = False
+        if not has_deadend:
+            for pattern in self.passive_patterns:
+                if re.search(pattern, output_lower, re.IGNORECASE):
+                    has_passive = True
+                    break
+
+        # Trigger on deadend, or passive without momentum
+        return has_deadend or has_passive
+
+
+# =============================================================================
 # PAL MAXIMIZATION REDUCERS (v4.19) - Penalties for NOT using external LLMs
 # =============================================================================
 # PAL MCP provides "free" auxiliary context. These reducers create friction
@@ -216,5 +317,6 @@ __all__ = [
     "HedgingLanguageReducer",
     "PhantomProgressReducer",
     "QuestionAvoidanceReducer",
+    "DeadendResponseReducer",
     "DebugLoopNoPalReducer",
 ]

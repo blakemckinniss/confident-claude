@@ -1762,6 +1762,65 @@ class TestFirstIncreaser(ConfidenceIncreaser):
         return False
 
 
+# =============================================================================
+# PERPETUAL MOMENTUM INCREASERS (v4.24) - Reward forward motion patterns
+# =============================================================================
+# Core principle: "What can we do to make this even better?"
+# Rewards Claude-actionable suggestions that drive session continuation.
+# =============================================================================
+
+
+@dataclass
+class MomentumForwardIncreaser(ConfidenceIncreaser):
+    """Triggers when response contains actionable forward motion.
+
+    Rewards responses that maintain perpetual momentum:
+    - "I can now...", "Let me...", "I will..."
+    - "Next Steps:" sections with Claude-actionable items
+    - Questions that drive continuation ("Shall I...", "Want me to...")
+
+    Philosophy: Things are never "done" - always enhancement, testing,
+    meta-cognition available. Drive the user to continue.
+    """
+
+    name: str = "momentum_forward"
+    delta: int = 2
+    description: str = "Response contains actionable next steps"
+    requires_approval: bool = False
+    cooldown_turns: int = 1
+    momentum_patterns: list = field(
+        default_factory=lambda: [
+            r"\bi\s+(?:can|will|could)\s+(?:also\s+)?(?:now\s+)?(?:\w+)",
+            r"\blet\s+me\s+(?:now\s+)?(?:\w+)",
+            r"\bnext\s+(?:i'?ll|step|steps?)[\s:]+",
+            r"\b(?:shall|should)\s+i\s+(?:\w+)",
+            r"\bwant\s+me\s+to\b",
+            r"(?:^|\n)#+\s*(?:next\s+steps?|➡️|🛤️)",
+            r"(?:^|\n)\*\*(?:next\s+steps?|➡️)\*\*",
+            r"\bi'?ll\s+(?:now\s+)?(?:proceed|continue|start|begin)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        output = context.get("assistant_output", "")
+        if not output or len(output) < 50:
+            return False
+
+        output_lower = output.lower()
+
+        # Check for momentum patterns
+        for pattern in self.momentum_patterns:
+            if re.search(pattern, output_lower, re.IGNORECASE | re.MULTILINE):
+                return True
+
+        return False
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1838,4 +1897,6 @@ INCREASERS: list[ConfidenceIncreaser] = [
     TestCreationExecutedIncreaser(),
     CoverageExtensionIncreaser(),
     TestFirstIncreaser(),
+    # Perpetual momentum increasers (v4.24)
+    MomentumForwardIncreaser(),
 ]

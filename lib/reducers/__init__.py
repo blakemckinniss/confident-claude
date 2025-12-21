@@ -100,6 +100,7 @@ from ._language import (
     HedgingLanguageReducer,
     PhantomProgressReducer,
     QuestionAvoidanceReducer,
+    DeadendResponseReducer,
     DebugLoopNoPalReducer,
 )
 
@@ -206,6 +207,8 @@ REDUCERS: list[ConfidenceReducer] = [
     QuestionAvoidanceReducer(),
     # PAL maximization reducers (v4.19)
     DebugLoopNoPalReducer(),
+    # Perpetual momentum reducers (v4.24)
+    DeadendResponseReducer(),
     # Test enforcement reducers (v4.20)
     TestsExistNotRunReducer(),
     OrphanedTestCreationReducer(),
@@ -281,6 +284,7 @@ __all__ = [
     "HedgingLanguageReducer",
     "PhantomProgressReducer",
     "QuestionAvoidanceReducer",
+    "DeadendResponseReducer",
     "DebugLoopNoPalReducer",
     # Framework
     "WebFetchOverCrawlReducer",
