@@ -111,6 +111,52 @@ PUNCH_LIST_FILE = MEMORY_DIR / "punch_list.json"
 # Cross-session FP history (Entity Model: immune memory)
 FP_HISTORY_FILE = Path.home() / ".claude" / "tmp" / "fp_history.jsonl"
 
+
+def write_persistent_env_vars(project_context=None, state=None):
+    """Write persistent environment variables via CLAUDE_ENV_FILE (v3.17).
+
+    Claude Code provides CLAUDE_ENV_FILE during SessionStart - writing KEY=VALUE
+    lines to this file makes them available for the entire session.
+
+    This enables:
+    - Project context available in all hooks without re-detection
+    - Framework paths accessible without hardcoding
+    - Session metadata propagation
+    """
+    env_file = os.environ.get("CLAUDE_ENV_FILE")
+    if not env_file:
+        return  # Not running in Claude Code context
+
+    env_vars = []
+
+    # Framework paths
+    framework_dir = Path.home() / ".claude"
+    env_vars.append(f"CLAUDE_FRAMEWORK_DIR={framework_dir}")
+    env_vars.append(f"CLAUDE_TMP_DIR={framework_dir / 'tmp'}")
+    env_vars.append(f"CLAUDE_OPS_DIR={framework_dir / 'ops'}")
+
+    # Project context (if detected)
+    if project_context:
+        env_vars.append(f"CLAUDE_PROJECT={project_context.project_name}")
+        env_vars.append(f"CLAUDE_PROJECT_TYPE={project_context.project_type}")
+        if hasattr(project_context, "project_root") and project_context.project_root:
+            env_vars.append(f"CLAUDE_PROJECT_ROOT={project_context.project_root}")
+
+    # Session metadata
+    if state:
+        env_vars.append(f"CLAUDE_SESSION_TURN={getattr(state, 'turn_count', 0)}")
+        confidence = getattr(state, "confidence", 75)
+        env_vars.append(f"CLAUDE_CONFIDENCE={confidence}")
+
+    # Write to env file
+    try:
+        with open(env_file, "a") as f:
+            for var in env_vars:
+                f.write(f"{var}\n")
+        log_debug("session_init", f"Wrote {len(env_vars)} env vars to CLAUDE_ENV_FILE")
+    except (IOError, OSError) as e:
+        log_debug("session_init", f"Failed to write CLAUDE_ENV_FILE: {e}")
+
 # Infrastructure manifest (prevents "create X" when X exists)
 INFRASTRUCTURE_FILE = MEMORY_DIR / "__infrastructure.md"
 
@@ -1057,6 +1103,11 @@ def main():
 
     # Initialize session (pass project_context for project-scoped operations)
     result = initialize_session(project_context)
+
+    # === CLAUDE_ENV_FILE: Persist env vars for session (v3.17) ===
+    # Load current state for env var injection
+    current_state = load_state()
+    write_persistent_env_vars(project_context, current_state)
 
     # SUDO SECURITY: Audit passed - clear stop hook flags for this session
     session_id = os.environ.get("CLAUDE_SESSION_ID", "default")[:16]
