@@ -232,6 +232,7 @@ These fire **mechanically** based on signals - no self-judgment involved.
 | `unresolved_antipattern` | -10 | mentioning issues → fix them or create bead | 3 turns |
 | `hook_block` | -5 | blocked by hook → fix the issue hook flagged | 1 turn |
 | `surrender_pivot` | -20 | switching to "easier" → ask user first or solve problem | NO LIMIT |
+| `rationalization_after_failure` | -12 | "that's fine" after tool error → fix the root cause | 2 turns |
 
 **Code quality reducers (v4.4):**
 

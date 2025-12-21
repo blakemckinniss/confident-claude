@@ -472,6 +472,81 @@ class LargeDiffReducer(ConfidenceReducer):
         return context.get("large_diff", False)
 
 
+@dataclass
+class RationalizationAfterFailureReducer(ConfidenceReducer):
+    """Triggers when dismissing/rationalizing after a tool failure.
+
+    Detects patterns like "that's fine" or "no problem" immediately after
+    a tool error, indicating failure blindness rather than addressing the issue.
+
+    Example: git commit fails (not in repo) → "that's fine, changes saved" → PENALTY
+    """
+
+    name: str = "rationalization_after_failure"
+    delta: int = -12
+    description: str = "Rationalized after tool failure instead of fixing"
+    remedy: str = "acknowledge the failure and fix the root cause"
+    cooldown_turns: int = 2
+    penalty_class: str = "INTEGRITY"
+    max_recovery_fraction: float = 0.0
+    impact_category: str = IMPACT_BEHAVIORAL
+
+    # Dismissive/rationalizing patterns after failure
+    rationalization_patterns: list = field(
+        default_factory=lambda: [
+            r"\bthat'?s\s+(fine|ok|okay|alright)\b",
+            r"\bno\s+(problem|worries|issue)\b",
+            r"\b(it'?s\s+)?(not\s+a\s+)?(big\s+)?deal\b",
+            r"\bsaved\s+(anyway|regardless)\b",
+            r"\bchanges\s+(are\s+)?saved\b",
+            r"\bstill\s+(works?|saved|persisted)\b",
+            r"\bdoesn'?t\s+matter\b",
+            r"\bwe\s+can\s+ignore\b",
+            r"\bignoring\s+(that|this|the\s+error)\b",
+            r"\bmoving\s+on\b",
+            r"\banyway,?\s+(let'?s|I'?ll)\b",
+            r"\bregardless,?\s+(let'?s|I'?ll)\b",
+        ]
+    )
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Check if there was a recent tool failure (within last 2 turns)
+        recent_failure = getattr(state, "_recent_tool_failure", False)
+        failure_turn = getattr(state, "_failure_turn", -10)
+
+        # Also check context for immediate failure
+        tool_failed = context.get("tool_failed", False)
+        exit_code = context.get("exit_code", 0)
+        has_error = context.get("has_error", False)
+
+        # Failure must be recent (within 2 turns) or in current context
+        is_recent_failure = (
+            tool_failed
+            or exit_code != 0
+            or has_error
+            or (recent_failure and state.turn_count - failure_turn <= 2)
+        )
+
+        if not is_recent_failure:
+            return False
+
+        # Check for rationalization in output
+        output = context.get("assistant_output", "")
+        if not output:
+            return False
+
+        for pattern in self.rationalization_patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                return True
+
+        return False
+
+
 __all__ = [
     "BackupFileReducer",
     "VersionFileReducer",
@@ -484,4 +559,5 @@ __all__ = [
     "SpottedIgnoredReducer",
     "DebtBashReducer",
     "LargeDiffReducer",
+    "RationalizationAfterFailureReducer",
 ]
