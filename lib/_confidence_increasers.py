@@ -1821,6 +1821,33 @@ class MomentumForwardIncreaser(ConfidenceIncreaser):
         return False
 
 
+@dataclass
+class ActionTakenIncreaser(ConfidenceIncreaser):
+    """Triggers when productive action is taken (Edit/Write/Bash).
+
+    AGILE v4.25: Rewards taking action. Complements stagnation penalty.
+    Action should be rewarded, not just tolerated.
+
+    Philosophy: A loud error that needs fixing is better than silent stagnation.
+    """
+
+    name: str = "action_taken"
+    delta: int = 1
+    description: str = "Productive action taken (Edit/Write/Bash)"
+    requires_approval: bool = False
+    cooldown_turns: int = 2  # Max once per 2 turns to avoid spam
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.cooldown_turns:
+            return False
+
+        tool_name = context.get("tool_name", "")
+        productive_tools = {"Edit", "Write", "Bash", "MultiEdit"}
+        return tool_name in productive_tools
+
+
 # Registry of all increasers
 INCREASERS: list[ConfidenceIncreaser] = [
     # High-value context gathering (+10)
@@ -1899,4 +1926,6 @@ INCREASERS: list[ConfidenceIncreaser] = [
     TestFirstIncreaser(),
     # Perpetual momentum increasers (v4.24)
     MomentumForwardIncreaser(),
+    # AGILE momentum increasers (v4.25)
+    ActionTakenIncreaser(),
 ]
