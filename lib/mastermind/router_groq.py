@@ -17,6 +17,7 @@ from .config import get_config
 # Groq API endpoint
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "moonshotai/kimi-k2-instruct-0905"
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Fallback if primary unavailable
 
 # Classification prompt
 ROUTER_SYSTEM_PROMPT = """You are a task complexity classifier for an AI coding assistant.
@@ -284,42 +285,24 @@ def _parse_response(text: str) -> dict[str, Any]:
         raise
 
 
-def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
-    """Call Groq API to classify task complexity.
-
-    Args:
-        prompt: The packed context prompt for classification
-        timeout: Request timeout in seconds
-
-    Returns:
-        RouterResponse with classification, confidence, and reason codes
-    """
+def _make_groq_request(
+    prompt: str,
+    model: str,
+    api_key: str,
+    timeout: float,
+) -> tuple[dict | None, int | None, str | None]:
+    """Make a single Groq API request. Returns (result, http_code, error)."""
     import urllib.request
     import urllib.error
 
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        return RouterResponse(
-            classification="complex",
-            confidence=0.0,
-            reason_codes=["no_api_key"],
-            raw_response="",
-            latency_ms=0,
-            task_type="general",
-            suggested_tool="chat",
-            error="GROQ_API_KEY not set",
-        )
-
-    start = time.time()
-
     payload = {
-        "model": GROQ_MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
-        "max_tokens": 650,  # Increased for action_hints + recommended + intent clarification
+        "max_tokens": 650,
         "response_format": {"type": "json_object"},
     }
 
@@ -336,133 +319,159 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             headers=headers,
             method="POST",
         )
-
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            result = json.loads(resp.read().decode())
-
-        latency_ms = int((time.time() - start) * 1000)
-        raw_text = result["choices"][0]["message"]["content"]
-
-        try:
-            parsed = _parse_response(raw_text)
-
-            # Parse action hints
-            action_hints = None
-            if raw_hints := parsed.get("action_hints"):
-                action_hints = [
-                    ActionHint(id=h.get("id", ""), priority=h.get("priority", "p1"))
-                    for h in raw_hints
-                    if h.get("id")
-                ]
-
-            # Parse recommended capabilities
-            recommended = None
-            if raw_rec := parsed.get("recommended"):
-                recommended = RecommendedCapabilities(
-                    skills=raw_rec.get("skills") or None,
-                    agents=raw_rec.get("agents") or None,
-                    mcp_tools=raw_rec.get("mcp_tools") or None,
-                    ops_scripts=raw_rec.get("ops_scripts") or None,
-                )
-
-            # Parse discovery aids (always populated)
-            discovery = DiscoveryAids(
-                research_suggestions=parsed.get("research_suggestions") or None,
-                tools_suggested=parsed.get("tools_suggested") or None,
-                discovery_questions=parsed.get("discovery_questions") or None,
-            )
-
-            # Parse intent clarification (prompt enhancement)
-            intent = None
-            if raw_intent := parsed.get("intent"):
-                # Only create if there's actual content
-                has_content = (
-                    raw_intent.get("inferred_goal")
-                    or raw_intent.get("inferred_scope")
-                    or raw_intent.get("unstated_constraints")
-                    or raw_intent.get("ambiguity_detected")
-                )
-                if has_content:
-                    intent = IntentClarification(
-                        inferred_goal=raw_intent.get("inferred_goal") or None,
-                        inferred_scope=raw_intent.get("inferred_scope") or None,
-                        unstated_constraints=raw_intent.get("unstated_constraints")
-                        or None,
-                        ambiguity_detected=bool(
-                            raw_intent.get("ambiguity_detected", False)
-                        ),
-                        clarification_confidence=float(
-                            raw_intent.get("clarification_confidence", 0.0)
-                        ),
-                        # Semantic pointers
-                        likely_relevant=raw_intent.get("likely_relevant") or None,
-                        related_concepts=raw_intent.get("related_concepts") or None,
-                        prior_art=raw_intent.get("prior_art") or None,
-                    )
-
-            return RouterResponse(
-                classification=parsed.get("classification", "complex"),
-                confidence=float(parsed.get("confidence", 0.5)),
-                reason_codes=parsed.get("reason_codes", []),
-                raw_response=raw_text,
-                latency_ms=latency_ms,
-                task_type=parsed.get("task_type", "general"),
-                suggested_tool=parsed.get("suggested_tool", "chat"),
-                needs_research=bool(parsed.get("needs_research", False)),
-                research_topics=parsed.get("research_topics") or [],
-                action_hints=action_hints,
-                recommended=recommended,
-                discovery=discovery,
-                intent=intent,
-            )
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            # Parse error - default to complex (safe fallback)
-            return RouterResponse(
-                classification="complex",
-                confidence=0.5,
-                reason_codes=["parse_error"],
-                raw_response=raw_text,
-                latency_ms=latency_ms,
-                task_type="general",
-                suggested_tool="chat",
-                error=f"Parse error: {e}",
-            )
-
+            return json.loads(resp.read().decode()), 200, None
     except urllib.error.HTTPError as e:
-        latency_ms = int((time.time() - start) * 1000)
-        return RouterResponse(
-            classification="complex",
-            confidence=0.0,
-            reason_codes=["http_error"],
-            raw_response="",
-            latency_ms=latency_ms,
-            task_type="general",
-            suggested_tool="chat",
-            error=f"HTTP {e.code}: {e.reason}",
-        )
+        return None, e.code, f"HTTP {e.code}: {e.reason}"
     except urllib.error.URLError as e:
-        latency_ms = int((time.time() - start) * 1000)
-        return RouterResponse(
-            classification="complex",
-            confidence=0.0,
-            reason_codes=["network_error"],
-            raw_response="",
-            latency_ms=latency_ms,
-            task_type="general",
-            suggested_tool="chat",
-            error=f"Network error: {e.reason}",
-        )
+        return None, None, f"Network error: {e.reason}"
     except TimeoutError:
-        latency_ms = int((time.time() - start) * 1000)
+        return None, None, "Request timed out"
+
+
+# HTTP codes that warrant fallback to alternative model
+_RETRIABLE_CODES = {403, 429, 500, 502, 503, 504}
+
+
+def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
+    """Call Groq API to classify task complexity with automatic fallback.
+
+    Tries primary model (Kimi K2), falls back to llama-3.3 if unavailable.
+
+    Args:
+        prompt: The packed context prompt for classification
+        timeout: Request timeout in seconds
+
+    Returns:
+        RouterResponse with classification, confidence, and reason codes
+    """
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
         return RouterResponse(
             classification="complex",
             confidence=0.0,
-            reason_codes=["timeout"],
+            reason_codes=["no_api_key"],
+            raw_response="",
+            latency_ms=0,
+            task_type="general",
+            suggested_tool="chat",
+            error="GROQ_API_KEY not set",
+        )
+
+    start = time.time()
+    used_model = GROQ_MODEL
+
+    # Try primary model
+    result, http_code, error = _make_groq_request(prompt, GROQ_MODEL, api_key, timeout)
+
+    # Fallback if primary failed with retriable error
+    if result is None and http_code in _RETRIABLE_CODES:
+        used_model = GROQ_FALLBACK_MODEL
+        result, http_code, error = _make_groq_request(
+            prompt, GROQ_FALLBACK_MODEL, api_key, timeout
+        )
+
+    latency_ms = int((time.time() - start) * 1000)
+
+    # If still failed, return error response
+    if result is None:
+        return RouterResponse(
+            classification="complex",
+            confidence=0.0,
+            reason_codes=["api_error", f"model_{used_model.split('/')[-1]}"],
             raw_response="",
             latency_ms=latency_ms,
             task_type="general",
             suggested_tool="chat",
-            error="Request timed out",
+            error=error or "Unknown error",
+        )
+
+    latency_ms = int((time.time() - start) * 1000)
+    raw_text = result["choices"][0]["message"]["content"]
+
+    try:
+        parsed = _parse_response(raw_text)
+
+        # Parse action hints
+        action_hints = None
+        if raw_hints := parsed.get("action_hints"):
+            action_hints = [
+                ActionHint(id=h.get("id", ""), priority=h.get("priority", "p1"))
+                for h in raw_hints
+                if h.get("id")
+            ]
+
+        # Parse recommended capabilities
+        recommended = None
+        if raw_rec := parsed.get("recommended"):
+            recommended = RecommendedCapabilities(
+                skills=raw_rec.get("skills") or None,
+                agents=raw_rec.get("agents") or None,
+                mcp_tools=raw_rec.get("mcp_tools") or None,
+                ops_scripts=raw_rec.get("ops_scripts") or None,
+            )
+
+        # Parse discovery aids (always populated)
+        discovery = DiscoveryAids(
+            research_suggestions=parsed.get("research_suggestions") or None,
+            tools_suggested=parsed.get("tools_suggested") or None,
+            discovery_questions=parsed.get("discovery_questions") or None,
+        )
+
+        # Parse intent clarification (prompt enhancement)
+        intent = None
+        if raw_intent := parsed.get("intent"):
+            # Only create if there's actual content
+            has_content = (
+                raw_intent.get("inferred_goal")
+                or raw_intent.get("inferred_scope")
+                or raw_intent.get("unstated_constraints")
+                or raw_intent.get("ambiguity_detected")
+            )
+            if has_content:
+                intent = IntentClarification(
+                    inferred_goal=raw_intent.get("inferred_goal") or None,
+                    inferred_scope=raw_intent.get("inferred_scope") or None,
+                    unstated_constraints=raw_intent.get("unstated_constraints")
+                    or None,
+                    ambiguity_detected=bool(
+                        raw_intent.get("ambiguity_detected", False)
+                    ),
+                    clarification_confidence=float(
+                        raw_intent.get("clarification_confidence", 0.0)
+                    ),
+                    # Semantic pointers
+                    likely_relevant=raw_intent.get("likely_relevant") or None,
+                    related_concepts=raw_intent.get("related_concepts") or None,
+                    prior_art=raw_intent.get("prior_art") or None,
+                )
+
+        return RouterResponse(
+            classification=parsed.get("classification", "complex"),
+            confidence=float(parsed.get("confidence", 0.5)),
+            reason_codes=parsed.get("reason_codes", []),
+            raw_response=raw_text,
+            latency_ms=latency_ms,
+            task_type=parsed.get("task_type", "general"),
+            suggested_tool=parsed.get("suggested_tool", "chat"),
+            needs_research=bool(parsed.get("needs_research", False)),
+            research_topics=parsed.get("research_topics") or [],
+            action_hints=action_hints,
+            recommended=recommended,
+            discovery=discovery,
+            intent=intent,
+        )
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        # Parse error - default to complex (safe fallback)
+        return RouterResponse(
+            classification="complex",
+            confidence=0.5,
+            reason_codes=["parse_error"],
+            raw_response=raw_text,
+            latency_ms=latency_ms,
+            task_type="general",
+            suggested_tool="chat",
+            error=f"Parse error: {e}",
         )
 
 
