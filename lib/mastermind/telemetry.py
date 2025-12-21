@@ -17,6 +17,10 @@ from .config import get_config
 # Default telemetry directory
 TELEMETRY_DIR = Path.home() / ".claude" / "tmp" / "mastermind_telemetry"
 
+# PAL continuation efficiency thresholds (v4.28.1)
+CONTINUATION_GRADE_A_THRESHOLD = 80  # 80%+ reuse = Grade A
+CONTINUATION_GRADE_B_THRESHOLD = 50  # 50%+ reuse = Grade B, else C
+
 
 @dataclass
 class TelemetryEvent:
@@ -479,8 +483,8 @@ def get_continuation_reuse_stats(session_id: str) -> dict[str, Any]:
         "reuse_rate_pct": round(reuse_rate, 1),
         "waste_count": by_event["wasted"],
         "efficiency_grade": "A"
-        if reuse_rate >= 80
+        if reuse_rate >= CONTINUATION_GRADE_A_THRESHOLD
         else "B"
-        if reuse_rate >= 50
+        if reuse_rate >= CONTINUATION_GRADE_B_THRESHOLD
         else "C",
     }
