@@ -6,9 +6,10 @@ Provides decorators and helpers to skip/compress hooks based on current phase.
 Hooks declare their priority level and get automatically disabled when context is high.
 
 v1.0: Initial implementation
+v1.1: Add lifecycle phase markers for debugging (horizon item)
 """
 
-from enum import IntEnum
+from enum import IntEnum, Enum
 from functools import wraps
 from typing import Callable, Any
 
@@ -20,6 +21,69 @@ try:
 except ImportError:
     BUDGET_AVAILABLE = False
     Phase = None
+
+
+class LifecyclePhase(str, Enum):
+    """Session lifecycle phases for debugging markers.
+
+    These are distinct from token budget phases (VERBOSE/CONDENSED/etc).
+    Lifecycle phases track WHERE we are in the session flow.
+    """
+
+    SESSION_START = "SESSION_START"  # Initial setup, checkpoint recovery
+    SESSION_RUNNING = "SESSION_RUNNING"  # Normal operation
+    PRE_COMPACT = "PRE_COMPACT"  # About to summarize context
+    POST_COMPACT = "POST_COMPACT"  # Reduced context, recovered from checkpoint
+    SESSION_STOP = "SESSION_STOP"  # Wrapping up, close protocol
+    SESSION_CLEANUP = "SESSION_CLEANUP"  # Handoff persistence, memory grooming
+    SESSION_REVIVAL = "SESSION_REVIVAL"  # /resume or continuation
+
+
+# Current lifecycle phase (set by hooks)
+_current_lifecycle_phase: LifecyclePhase = LifecyclePhase.SESSION_RUNNING
+
+
+def set_lifecycle_phase(phase: LifecyclePhase) -> None:
+    """Set the current lifecycle phase (called by hook runners)."""
+    global _current_lifecycle_phase
+    _current_lifecycle_phase = phase
+
+
+def get_lifecycle_phase() -> LifecyclePhase:
+    """Get the current lifecycle phase."""
+    return _current_lifecycle_phase
+
+
+def format_phase_marker(context: str = "", include_budget_phase: bool = False) -> str:
+    """Format a phase marker for hook output debugging.
+
+    Args:
+        context: Optional context string to append
+        include_budget_phase: Also include token budget phase (VERBOSE/CONDENSED/etc)
+
+    Returns:
+        Formatted marker like "[PHASE: SESSION_START] context" or
+        "[PHASE: SESSION_START | CONDENSED] context"
+
+    Example:
+        >>> format_phase_marker("Loading checkpoint")
+        '[PHASE: SESSION_START] Loading checkpoint'
+    """
+    lifecycle = _current_lifecycle_phase.value
+
+    if include_budget_phase and BUDGET_AVAILABLE:
+        try:
+            mgr = get_budget_manager()
+            budget_phase = mgr.get_phase().name
+            marker = f"[PHASE: {lifecycle} | {budget_phase}]"
+        except Exception:
+            marker = f"[PHASE: {lifecycle}]"
+    else:
+        marker = f"[PHASE: {lifecycle}]"
+
+    if context:
+        return f"{marker} {context}"
+    return marker
 
 
 class HookTier(IntEnum):

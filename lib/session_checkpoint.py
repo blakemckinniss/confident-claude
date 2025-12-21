@@ -10,13 +10,21 @@ Implements tiered state management:
 Uses PAL continuation_id as cross-session state store.
 
 v1.0: Initial implementation
+v1.1: Add schema version validation and migration infrastructure
 """
 
 import json
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
+
+# Current schema version - increment when checkpoint format changes
+CURRENT_SCHEMA_VERSION = "1.0"
+
+# Migration registry: {from_version: (to_version, migration_fn)}
+# Migration functions take checkpoint dict and return migrated dict
+_MIGRATIONS: dict[str, tuple[str, Callable[[dict], dict]]] = {}
 
 # Checkpoint storage constants
 CHECKPOINT_DIR = Path.home() / ".claude/tmp/checkpoints"
@@ -35,6 +43,102 @@ DEFAULT_CONFIDENCE = 75
 MAX_CHECKPOINT_AGE_HOURS = 24
 MAX_TIER3_AGE_HOURS = 1  # Ephemeral data expires quickly
 MAX_CHECKPOINT_COUNT = 10
+
+
+# =============================================================================
+# SCHEMA MIGRATION INFRASTRUCTURE
+# =============================================================================
+
+
+def register_migration(
+    from_version: str, to_version: str, migration_fn: Callable[[dict], dict]
+) -> None:
+    """Register a migration function for a version transition.
+
+    Example:
+        def migrate_v1_to_v2(data: dict) -> dict:
+            # Add new field with default
+            if "tier1" in data:
+                data["tier1"]["new_field"] = "default_value"
+            return data
+
+        register_migration("1.0", "2.0", migrate_v1_to_v2)
+    """
+    _MIGRATIONS[from_version] = (to_version, migration_fn)
+
+
+def apply_migrations(data: dict) -> tuple[dict, list[str]]:
+    """Apply all necessary migrations to bring checkpoint to current version.
+
+    Args:
+        data: Raw checkpoint dict from JSON
+
+    Returns:
+        Tuple of (migrated_data, list of applied migration versions)
+
+    Migrations are applied in order: 1.0 → 1.1 → 2.0 → current
+    """
+    version = data.get("version", "1.0")
+    applied = []
+
+    # Apply migrations iteratively until we reach current version
+    max_iterations = 10  # Safety limit
+    iterations = 0
+
+    while version != CURRENT_SCHEMA_VERSION and iterations < max_iterations:
+        if version not in _MIGRATIONS:
+            # No migration path - version is either current or unsupported
+            break
+
+        to_version, migration_fn = _MIGRATIONS[version]
+        try:
+            data = migration_fn(data)
+            data["version"] = to_version
+            applied.append(f"{version} → {to_version}")
+            version = to_version
+        except Exception as e:
+            # Migration failed - log and stop
+            applied.append(f"{version} → {to_version} FAILED: {e}")
+            break
+
+        iterations += 1
+
+    return data, applied
+
+
+def get_migration_path(from_version: str) -> list[str]:
+    """Get the migration path from a version to current.
+
+    Returns list of version transitions needed.
+    """
+    path = []
+    version = from_version
+    max_iterations = 10
+
+    for _ in range(max_iterations):
+        if version == CURRENT_SCHEMA_VERSION:
+            break
+        if version not in _MIGRATIONS:
+            break
+        to_version, _ = _MIGRATIONS[version]
+        path.append(f"{version} → {to_version}")
+        version = to_version
+
+    return path
+
+
+# =============================================================================
+# Example migration (for future use):
+#
+# def migrate_v1_to_v2(data: dict) -> dict:
+#     """Migrate from schema 1.0 to 2.0."""
+#     # Example: Add pal_continuation_id to tier1 if missing
+#     if "tier1" in data and "pal_continuation_id" not in data["tier1"]:
+#         data["tier1"]["pal_continuation_id"] = ""
+#     return data
+#
+# register_migration("1.0", "2.0", migrate_v1_to_v2)
+# =============================================================================
 
 
 @dataclass
@@ -277,12 +381,22 @@ def load_checkpoint_local(checkpoint_id: str) -> Optional[SessionCheckpoint]:
     try:
         data = json.loads(path.read_text())
 
-        # Schema version validation - prevent incompatible checkpoint loading
+        # Schema version validation with migration support
         checkpoint_version = data.get("version", "1.0")
-        if checkpoint_version != "1.0":
-            # Future: implement migration logic for version upgrades
-            # For now, reject incompatible versions
-            return None
+        if checkpoint_version != CURRENT_SCHEMA_VERSION:
+            # Apply migrations if path exists
+            migration_path = get_migration_path(checkpoint_version)
+            if migration_path:
+                data, applied = apply_migrations(data)
+                # Log migrations for debugging
+                if applied:
+                    log_path = CHECKPOINT_DIR / "migration.log"
+                    with open(log_path, "a") as f:
+                        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} ")
+                        f.write(f"Migrated {checkpoint_id}: {', '.join(applied)}\n")
+            elif checkpoint_version != CURRENT_SCHEMA_VERSION:
+                # No migration path and version mismatch - reject
+                return None
 
         # Age validation for tier-based loading
         created_at = data.get("created_at", 0)
