@@ -33,6 +33,7 @@ MAX_BEADS_COMMANDS_HISTORY = 10
 MAX_LAST_TOOLS_HISTORY = 5
 DEFAULT_CONFIDENCE = 75
 MAX_CHECKPOINT_AGE_HOURS = 24
+MAX_TIER3_AGE_HOURS = 1  # Ephemeral data expires quickly
 MAX_CHECKPOINT_COUNT = 10
 
 
@@ -263,19 +264,50 @@ def save_checkpoint_local(checkpoint: SessionCheckpoint) -> Path:
 
 
 def load_checkpoint_local(checkpoint_id: str) -> Optional[SessionCheckpoint]:
-    """Load checkpoint from local JSON file."""
+    """Load checkpoint from local JSON file with schema validation.
+
+    Schema versioning prevents stale state injection:
+    - Version mismatch → discard checkpoint (incompatible schema)
+    - Age > MAX_CHECKPOINT_AGE_HOURS → discard Tier2/Tier3
+    """
     path = CHECKPOINT_DIR / f"{checkpoint_id}.json"
     if not path.exists():
         return None
 
     try:
         data = json.loads(path.read_text())
+
+        # Schema version validation - prevent incompatible checkpoint loading
+        checkpoint_version = data.get("version", "1.0")
+        if checkpoint_version != "1.0":
+            # Future: implement migration logic for version upgrades
+            # For now, reject incompatible versions
+            return None
+
+        # Age validation for tier-based loading
+        created_at = data.get("created_at", 0)
+        age_hours = (time.time() - created_at) / 3600 if created_at else float("inf")
+
+        # Always load Tier1
+        tier1_data = data.get("tier1", {})
+        tier1 = Tier1State(**tier1_data)
+
+        # Load Tier2 only if checkpoint is fresh enough
+        tier2 = None
+        if data.get("tier2") and age_hours < MAX_CHECKPOINT_AGE_HOURS:
+            tier2 = Tier2State(**data["tier2"])
+
+        # Load Tier3 only if very fresh - ephemeral by nature
+        tier3 = None
+        if data.get("tier3") and age_hours < MAX_TIER3_AGE_HOURS:
+            tier3 = Tier3State(**data["tier3"])
+
         checkpoint = SessionCheckpoint(
-            version=data.get("version", "1.0"),
-            tier1=Tier1State(**data.get("tier1", {})),
-            tier2=Tier2State(**data["tier2"]) if data.get("tier2") else None,
-            tier3=Tier3State(**data["tier3"]) if data.get("tier3") else None,
-            created_at=data.get("created_at", 0),
+            version=checkpoint_version,
+            tier1=tier1,
+            tier2=tier2,
+            tier3=tier3,
+            created_at=created_at,
             trigger=data.get("trigger", ""),
             context_usage_percent=data.get("context_usage_percent", 0),
             phase_at_checkpoint=data.get("phase_at_checkpoint", 1),

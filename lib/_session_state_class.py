@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
 Session State Class - The SessionState dataclass definition.
+
+Session Lifecycle Tiers (see memory/__session_lifecycle.md):
+- Tier 1 (Critical): ALWAYS persist - cannot be reconstructed, essential for recovery
+- Tier 2 (Extended): Persist if <1hr - high-value cache, reconstructible
+- Tier 3 (Ephemeral): Discard at CONDENSED+ - noise that harms revival
+
+Fields are annotated with [T1], [T2], [T3] to indicate their tier.
 """
 
 from dataclasses import dataclass, field
@@ -11,79 +18,98 @@ from _session_constants import Domain
 
 @dataclass
 class SessionState:
-    """Comprehensive session state."""
+    """Comprehensive session state with lifecycle tier annotations."""
 
-    # Identity
+    # ==========================================================================
+    # TIER 1: CRITICAL - ALWAYS persist across sessions (see session_checkpoint.py)
+    # These fields CANNOT be reconstructed and are essential for recovery.
+    # ==========================================================================
+
+    # [T1] Identity
     session_id: str = ""
     started_at: float = 0
     last_activity_time: float = 0  # For mean reversion calculation
 
-    # Domain detection
+    # [T2] Domain detection - reconstructible from context
     domain: str = Domain.UNKNOWN
     domain_signals: list = field(default_factory=list)
     domain_confidence: float = 0.0
 
-    # File tracking
+    # ==========================================================================
+    # TIER 2: EXTENDED - Persist if <1hr, reconstructible from git/context
+    # ==========================================================================
+
+    # [T2] File tracking - can be reconstructed from git status/log
     files_read: list = field(default_factory=list)
     files_edited: list = field(default_factory=list)
     files_created: list = field(default_factory=list)
     dirs_listed: list = field(default_factory=list)  # Directories explored via ls/Bash
     globs_run: list = field(default_factory=list)  # Glob patterns executed
 
-    # Library tracking
+    # [T2] Library tracking
     libraries_used: list = field(default_factory=list)
     libraries_researched: list = field(default_factory=list)
 
-    # Command tracking
+    # [T2] Command tracking
     commands_succeeded: list = field(default_factory=list)
     commands_failed: list = field(default_factory=list)
 
-    # Error tracking
+    # [T2] Error tracking - errors_unresolved is borderline T1 (blocking issues)
     errors_recent: list = field(default_factory=list)  # Last 10
-    errors_unresolved: list = field(default_factory=list)
+    errors_unresolved: list = field(default_factory=list)  # [T1-adjacent: blockers]
 
-    # Pattern tracking
+    # ==========================================================================
+    # TIER 3: EPHEMERAL - Discard at CONDENSED+, causes context pollution
+    # ==========================================================================
+
+    # [T3] Pattern tracking - verbose, reconstruct from git if needed
     edit_counts: dict = field(default_factory=dict)  # file -> count
     edit_history: dict = field(
         default_factory=dict
     )  # file -> [(old_hash, new_hash, ts), ...]
-    tool_counts: dict = field(default_factory=dict)  # tool -> count
-    tests_run: bool = False
-    last_verify: Optional[float] = None
-    last_deploy: Optional[dict] = None
+    tool_counts: dict = field(default_factory=dict)  # [T2] tool -> count
+    tests_run: bool = False  # [T2]
+    last_verify: Optional[float] = None  # [T2]
+    last_deploy: Optional[dict] = None  # [T2]
 
-    # Gap tracking
+    # [T3] Gap tracking - session-specific, re-detect on revival
     gaps_detected: list = field(default_factory=list)
     gaps_surfaced: list = field(default_factory=list)  # Already shown to user
 
-    # Ops scripts available
+    # [T2] Ops scripts available - cached, rebuild from filesystem
     ops_scripts: list = field(default_factory=list)
 
-    # Ops tool usage tracking (v3.9) - per-session counts for analytics
+    # [T3] Ops tool usage tracking (v3.9) - per-session analytics
     # Format: {tool_name: {count, last_turn, successes, failures}}
     ops_tool_usage: dict = field(default_factory=dict)
 
-    # Production verification tracking (v3.9) - files that passed audit+void
+    # [T2] Production verification tracking (v3.9) - files that passed audit+void
     # Format: {filepath: {audit_turn, void_turn}}
     verified_production_files: dict = field(default_factory=dict)
 
-    # Serena activation tracking (v3.12)
+    # ==========================================================================
+    # [T1] Serena activation - CRITICAL for semantic search state
+    # ==========================================================================
     serena_activated: bool = False
     serena_project: str = ""  # Project name passed to activate_project
 
-    # Synapse tracking (v3)
-    turn_count: int = 0
-    last_5_tools: list = field(default_factory=list)  # For iteration detection
-    ops_turns: dict = field(default_factory=dict)  # op_name -> last turn
-    directives_fired: int = 0
-    confidence: int = 70  # 0-100%, default to WORKING tier (floor)
+    # ==========================================================================
+    # [T1] Confidence & Gating - CRITICAL for permission decisions
+    # ==========================================================================
+    turn_count: int = 0  # [T2] - reconstructible from history
+    last_5_tools: list = field(default_factory=list)  # [T1] For iteration detection
+    ops_turns: dict = field(default_factory=dict)  # [T2] op_name -> last turn
+    directives_fired: int = 0  # [T2]
+    confidence: int = 70  # [T1] 0-100%, default to WORKING tier (floor)
     reputation_debt: int = (
-        0  # Trust debt: accumulates when hitting floor, constrains max tier
+        0  # [T2] Trust debt: accumulates when hitting floor, constrains max tier
     )
-    evidence_ledger: list = field(default_factory=list)  # Evidence items
-    _decay_accumulator: float = 0.0  # Fractional decay accumulator (persisted)
+    evidence_ledger: list = field(default_factory=list)  # [T3] Evidence items
+    _decay_accumulator: float = 0.0  # [T2] Fractional decay accumulator (persisted)
 
-    # Meta-cognition: Goal Anchor (v3.1)
+    # ==========================================================================
+    # [T1] Meta-cognition: Goal Anchor (v3.1) - CRITICAL for drift prevention
+    # ==========================================================================
     original_goal: str = ""  # First substantive user prompt
     goal_set_turn: int = 0  # Turn when goal was set
     goal_keywords: list = field(default_factory=list)  # Key terms from goal
@@ -92,14 +118,17 @@ class SessionState:
     )
     last_user_prompt: str = ""  # Most recent user prompt (for contradiction detection)
 
-    # Meta-cognition: Sunk Cost Detector (v3.1)
+    # [T1] PAL continuation pointer - second brain state (v3.16)
+    pal_continuation_id: str = ""  # Reuse across PAL calls for persistent context
+
+    # [T3] Meta-cognition: Sunk Cost Detector (v3.1) - debug state, discard on revival
     approach_history: list = field(
         default_factory=list
     )  # [{approach, turns, failures}]
     consecutive_failures: int = 0  # Same approach failures
     last_failure_turn: int = 0
 
-    # Batch Tracking (pattern detection only, no blocking)
+    # [T3] Batch Tracking (pattern detection only, no blocking)
     consecutive_single_reads: int = 0  # Sequential single Read/Grep/Glob messages
     pending_files: list = field(default_factory=list)  # Files mentioned but not read
     pending_searches: list = field(
@@ -107,11 +136,11 @@ class SessionState:
     )  # Searches mentioned but not run
     last_message_tool_count: int = 0  # Tools in last message
 
-    # Sequential Repetition Tracking (v4.1) - detect inefficient sequential same-tool usage
+    # [T3] Sequential Repetition Tracking (v4.1) - session-specific
     # Format: {tool_name, turn, bash_cmd (for Bash only)}
     last_tool_info: dict = field(default_factory=dict)
 
-    # Integration Blindness Prevention (v3.3)
+    # [T3] Integration Blindness Prevention (v3.3) - cleared on session end
     pending_integration_greps: list = field(
         default_factory=list
     )  # [{function, file, turn}]
@@ -119,7 +148,7 @@ class SessionState:
         default_factory=dict
     )  # {function_name: turn_grepped} - prevents re-add after grep
 
-    # Nudge Tracking (v3.4) - prevents repetitive warnings, enables escalation
+    # [T2] Nudge Tracking (v3.4) - prevents repetitive warnings, enables escalation
     # Format: {nudge_type: {last_turn, times_shown, times_ignored, last_content_hash}}
     nudge_history: dict = field(default_factory=dict)
 
@@ -306,34 +335,35 @@ class SessionState:
     context_guard_warned: bool = False
 
     # ==========================================================================
-    # RALPH-WIGGUM INTEGRATION (v4.23) - Task completion enforcement
+    # [T1] RALPH-WIGGUM INTEGRATION (v4.23) - Task completion enforcement
     # https://ghuntley.com/ralph/ - Persistent iteration until genuine completion
+    # CRITICAL: These fields gate session exit - MUST persist
     # ==========================================================================
 
-    # Separate completion confidence from general confidence
+    # [T1] Separate completion confidence from general confidence
     # Accumulates from test_pass, build_success, bead_close
     # Must reach threshold (default 80%) to allow session exit
     completion_confidence: int = 0  # 0-100%
 
-    # Task contract extracted from user prompt
+    # [T1] Task contract extracted from user prompt
     # Format: {goal: str, criteria: list, evidence_required: list, created_turn: int}
     task_contract: dict = field(default_factory=dict)
 
-    # Evidence accumulated during session
+    # [T3] Evidence accumulated during session - verbose, summarize on revival
     # Format: [{type: str, turn: int, details: str}]
     completion_evidence: list = field(default_factory=list)
 
-    # Ralph activation mode
+    # [T1] Ralph activation mode
     # "": not active (trivial tasks)
     # "auto": auto-detected non-trivial task
     # "explicit": user ran /ralph-loop
     ralph_mode: str = ""
 
-    # Strictness level for stop-blocking
+    # [T2] Strictness level for stop-blocking
     # "strict": block unless evidence >= threshold OR explicit blocker
     # "normal": soft reminder with nag budget, then allow
     # "loose": show what's incomplete but always allow exit
     ralph_strictness: str = "strict"
 
-    # Nag budget for non-strict modes (decrements on each reminder)
+    # [T2] Nag budget for non-strict modes (decrements on each reminder)
     ralph_nag_budget: int = 2
