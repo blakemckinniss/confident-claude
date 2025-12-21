@@ -16,7 +16,6 @@ from _confidence_reducers import (
     CascadeBlockReducer,
     SunkCostReducer,
     EditOscillationReducer,
-    GoalDriftReducer,
     BackupFileReducer,
     VersionFileReducer,
     ContradictionReducer,
@@ -27,7 +26,6 @@ from _confidence_reducers import (
     DebtBashReducer,
     LargeDiffReducer,
     MarkdownCreationReducer,
-    HookBlockReducer,
     UnresolvedAntiPatternReducer,
     SpottedIgnoredReducer,
     SequentialRepetitionReducer,
@@ -46,6 +44,7 @@ from _confidence_reducers import (
     BareRaiseReducer,
     CommentedCodeReducer,
 )
+from reducers._behavioral import RationalizationAfterFailureReducer
 from confidence import UserCorrectionReducer, apply_reducers
 
 
@@ -343,33 +342,51 @@ class TestSunkCostReducer:
         assert should_trigger is False
 
 
-class TestGoalDriftReducer:
-    """Tests for GoalDriftReducer - activity diverging from goal."""
+class TestRationalizationAfterFailureReducer:
+    """Tests for RationalizationAfterFailureReducer - dismissing failures."""
 
-    def test_does_not_trigger_without_original_goal(self):
+    def test_triggers_on_thats_fine_after_failure(self):
         # Arrange
-        reducer = GoalDriftReducer()
-        state = MockSessionState()
-        state.turn_count = 10
-        state.original_goal = ""
-        state.goal_keywords = set()
-        context = {"current_activity": "working on auth"}
-
-        # Act
-        should_trigger = reducer.should_trigger(context, state, 0)
-
-        # Assert
-        assert should_trigger is False
-
-    def test_does_not_trigger_when_goal_recently_set(self):
-        # Arrange
-        reducer = GoalDriftReducer()
+        reducer = RationalizationAfterFailureReducer()
         state = MockSessionState()
         state.turn_count = 5
-        state.goal_set_turn = 2  # Only 3 turns ago
-        state.original_goal = "implement auth"
-        state.goal_keywords = {"auth", "login", "user"}
-        context = {"current_activity": "working on database"}
+        context = {
+            "tool_failed": True,
+            "assistant_output": "That's fine, the changes are saved anyway.",
+        }
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_triggers_on_no_problem_after_exit_code(self):
+        # Arrange
+        reducer = RationalizationAfterFailureReducer()
+        state = MockSessionState()
+        state.turn_count = 5
+        context = {
+            "exit_code": 1,
+            "assistant_output": "No problem, let's move on.",
+        }
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_does_not_trigger_without_failure(self):
+        # Arrange
+        reducer = RationalizationAfterFailureReducer()
+        state = MockSessionState()
+        state.turn_count = 5
+        context = {
+            "tool_failed": False,
+            "exit_code": 0,
+            "assistant_output": "That's fine, everything worked.",
+        }
 
         # Act
         should_trigger = reducer.should_trigger(context, state, 0)
@@ -377,18 +394,52 @@ class TestGoalDriftReducer:
         # Assert
         assert should_trigger is False
 
-    def test_does_not_trigger_without_current_activity(self):
+    def test_does_not_trigger_without_rationalization(self):
         # Arrange
-        reducer = GoalDriftReducer()
+        reducer = RationalizationAfterFailureReducer()
         state = MockSessionState()
-        state.turn_count = 10
-        state.goal_set_turn = 0
-        state.original_goal = "implement auth"
-        state.goal_keywords = {"auth", "login"}
-        context = {}
+        state.turn_count = 5
+        context = {
+            "tool_failed": True,
+            "assistant_output": "The command failed. Let me fix the issue.",
+        }
 
         # Act
         should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is False
+
+    def test_triggers_on_moving_on_pattern(self):
+        # Arrange
+        reducer = RationalizationAfterFailureReducer()
+        state = MockSessionState()
+        state.turn_count = 5
+        context = {
+            "has_error": True,
+            "assistant_output": "Moving on to the next step.",
+        }
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, 0)
+
+        # Assert
+        assert should_trigger is True
+
+    def test_respects_cooldown(self):
+        # Arrange
+        reducer = RationalizationAfterFailureReducer()
+        state = MockSessionState()
+        state.turn_count = 5
+        state.confidence = 80
+        context = {
+            "tool_failed": True,
+            "assistant_output": "That's fine.",
+        }
+        last_trigger_turn = 4  # Just 1 turn ago, cooldown is 2
+
+        # Act
+        should_trigger = reducer.should_trigger(context, state, last_trigger_turn)
 
         # Assert
         assert should_trigger is False
@@ -868,46 +919,6 @@ class TestMarkdownCreationReducer:
         reducer = MarkdownCreationReducer()
         state = MockSessionState()
         context = {"file_path": "/home/user/project/script.py", "tool_name": "Write"}
-
-        # Act
-        should_trigger = reducer.should_trigger(context, state, 0)
-
-        # Assert
-        assert should_trigger is False
-
-
-class TestHookBlockReducer:
-    """Tests for HookBlockReducer - hook blocking actions."""
-
-    def test_triggers_when_hook_blocked_flag_set(self):
-        # Arrange
-        reducer = HookBlockReducer()
-        state = MockSessionState()
-        context = {"hook_blocked": True}
-
-        # Act
-        should_trigger = reducer.should_trigger(context, state, 0)
-
-        # Assert
-        assert should_trigger is True
-
-    def test_does_not_trigger_when_flag_false(self):
-        # Arrange
-        reducer = HookBlockReducer()
-        state = MockSessionState()
-        context = {"hook_blocked": False}
-
-        # Act
-        should_trigger = reducer.should_trigger(context, state, 0)
-
-        # Assert
-        assert should_trigger is False
-
-    def test_does_not_trigger_without_flag(self):
-        # Arrange
-        reducer = HookBlockReducer()
-        state = MockSessionState()
-        context = {}
 
         # Act
         should_trigger = reducer.should_trigger(context, state, 0)
@@ -1500,3 +1511,104 @@ def foo():
 """
         context = {"tool_name": "Write", "file_path": "test.py", "content": code}
         assert reducer.should_trigger(context, state, 0) is False
+
+
+# =============================================================================
+# PERPETUAL MOMENTUM REDUCERS (v4.24)
+# =============================================================================
+
+
+class TestDeadendResponseReducer:
+    """Tests for DeadendResponseReducer - enforces perpetual momentum."""
+
+    def test_triggers_on_deadend_pattern(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Classic deadend - "hope this helps"
+        context = {
+            "assistant_output": "I've made the changes to the file. Hope this helps!"
+        }
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_triggers_on_thats_all_pattern(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {"assistant_output": "That's all I have for now. Let me know if you need anything."}
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_triggers_on_passive_suggestion(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Passive "you could" without momentum
+        context = {
+            "assistant_output": "The implementation is complete. You could also consider adding tests."
+        }
+        assert reducer.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_with_momentum_pattern(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Has momentum - "I can now..."
+        context = {
+            "assistant_output": "The implementation is complete. I can now run the tests to verify."
+        }
+        assert reducer.should_trigger(context, state, 0) is False
+
+    def test_does_not_trigger_with_next_steps_section(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Has Next Steps section
+        context = {
+            "assistant_output": """Done with the refactor.
+
+## Next Steps
+- Run tests
+- Deploy to staging"""
+        }
+        assert reducer.should_trigger(context, state, 0) is False
+
+    def test_does_not_trigger_with_shall_i_question(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Has forward-driving question
+        context = {"assistant_output": "Changes complete. Shall I run the test suite?"}
+        assert reducer.should_trigger(context, state, 0) is False
+
+    def test_does_not_trigger_on_short_response(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Too short to evaluate
+        context = {"assistant_output": "Done."}
+        assert reducer.should_trigger(context, state, 0) is False
+
+    def test_respects_cooldown(self):
+        from reducers._language import DeadendResponseReducer
+
+        reducer = DeadendResponseReducer()
+        state = MockSessionState()
+        state.turn_count = 5
+        state.confidence = 75  # CERTAINTY zone = 1.0x cooldown
+        context = {"assistant_output": "That's all for now. Hope this helps!"}
+        # Cooldown is 2, triggered at turn 4
+        assert reducer.should_trigger(context, state, 4) is False
