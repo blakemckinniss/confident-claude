@@ -88,9 +88,22 @@ except ImportError:
 # Import schema cache for code-mode (v3.15)
 try:
     from _codemode_interfaces import load_cached_schemas
+
     SCHEMA_CACHE_AVAILABLE = True
 except ImportError:
     SCHEMA_CACHE_AVAILABLE = False
+
+# Import checkpoint recovery (v3.16 - session resilience)
+try:
+    from session_checkpoint import (
+        find_latest_checkpoint,
+        load_checkpoint_local,
+        MAX_CHECKPOINT_AGE_HOURS,
+    )
+
+    CHECKPOINT_RECOVERY_AVAILABLE = True
+except ImportError:
+    CHECKPOINT_RECOVERY_AVAILABLE = False
 
 # Scope's punch list file
 PUNCH_LIST_FILE = MEMORY_DIR / "punch_list.json"
@@ -242,6 +255,7 @@ def ensure_schema_cache():
         # Cache is expired/empty - populate from manifest
         # Import here to avoid circular imports and only when needed
         import subprocess
+
         subprocess.run(
             [
                 str(Path.home() / ".claude" / "hooks" / "py"),
@@ -308,6 +322,86 @@ def sync_beads_on_start():
         )
     except (OSError, IOError):
         pass  # Non-critical
+
+
+# =============================================================================
+# CHECKPOINT RECOVERY (v3.16 - session resilience)
+# =============================================================================
+
+
+def recover_from_checkpoint(state) -> dict | None:
+    """Attempt to recover state from the most recent checkpoint.
+
+    Returns recovery info dict if successful, None otherwise.
+    Recovery restores Tier1 (critical) state always, Tier2 if fresh enough.
+    """
+    if not CHECKPOINT_RECOVERY_AVAILABLE:
+        return None
+
+    try:
+        checkpoint_id = find_latest_checkpoint()
+        if not checkpoint_id:
+            return None
+
+        checkpoint = load_checkpoint_local(checkpoint_id)
+        if not checkpoint:
+            return None
+
+        # Check age - don't recover from stale checkpoints
+        age_hours = (time.time() - checkpoint.created_at) / 3600
+        if age_hours > MAX_CHECKPOINT_AGE_HOURS:
+            return None
+
+        tier1 = checkpoint.tier1
+        recovery_info = {
+            "checkpoint_id": tier1.checkpoint_id,
+            "trigger": checkpoint.trigger,
+            "age_hours": age_hours,
+            "restored": [],
+        }
+
+        # Restore Tier1 (critical state)
+        if tier1.original_goal:
+            state.original_goal = tier1.original_goal
+            state.goal_keywords = tier1.goal_keywords
+            recovery_info["restored"].append("goal")
+
+        if tier1.confidence:
+            state.confidence = tier1.confidence
+            recovery_info["restored"].append("confidence")
+
+        if tier1.serena_activated:
+            state.serena_activated = tier1.serena_activated
+            state.serena_project = tier1.serena_project
+            recovery_info["restored"].append("serena")
+
+        if tier1.ralph_mode:
+            state.ralph_mode = tier1.ralph_mode
+            state.task_contract = tier1.task_contract
+            recovery_info["restored"].append("ralph")
+
+        if tier1.pal_continuation_id:
+            state.pal_continuation_id = tier1.pal_continuation_id
+            recovery_info["restored"].append("pal")
+
+        # Restore Tier2 if checkpoint is fresh (<1 hour)
+        if checkpoint.tier2 and age_hours < 1:
+            tier2 = checkpoint.tier2
+            if tier2.files_read:
+                state.files_read = tier2.files_read
+            if tier2.files_edited:
+                state.files_edited = tier2.files_edited
+            if tier2.tool_counts:
+                state.tool_counts = tier2.tool_counts
+            if tier2.turn_count:
+                state.turn_count = tier2.turn_count
+            recovery_info["restored"].append("cache")
+
+        return recovery_info if recovery_info["restored"] else None
+
+    except Exception as e:
+        log_debug("session_init", f"checkpoint recovery failed: {e}")
+        return None
 
 
 # =============================================================================
@@ -854,6 +948,14 @@ def initialize_session(project_context=None) -> dict:
         state = reset_state()
         result["action"] = "reset"
         result["message"] = f"Fresh session (reason: {reason})"
+
+        # === CHECKPOINT RECOVERY (v3.16) ===
+        # Attempt to recover critical state from last checkpoint
+        recovery = recover_from_checkpoint(state)
+        if recovery:
+            result["recovery"] = recovery
+            restored = ", ".join(recovery["restored"])
+            result["message"] += f" | Recovered: {restored}"
 
         # === AUTONOMOUS AGENT: Restore work queue from progress file ===
         # Now project-scoped to load correct project's work queue

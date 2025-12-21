@@ -22,8 +22,15 @@ import subprocess
 from pathlib import Path
 
 from session_state import load_state
+from session_checkpoint import (
+    create_checkpoint,
+    save_checkpoint_local,
+    cleanup_old_checkpoints,
+)
+from token_budget import get_budget_manager, Phase
 
 MAX_OUTPUT_CHARS = 500
+CHECKPOINT_REF_CHARS = 30  # Space reserved for checkpoint reference
 
 # Canonical field order (highest priority first)
 FIELD_ORDER = [
@@ -191,6 +198,38 @@ def build_minimal_fallback(state) -> str:
     return " | ".join(parts)
 
 
+def create_session_checkpoint(state, trigger: str) -> str:
+    """Create and save a session checkpoint before compaction."""
+    try:
+        # Get current phase from budget manager
+        mgr = get_budget_manager()
+        phase = mgr.get_phase()
+        usage_pct = mgr.state.usage_percent
+
+        # Create checkpoint with appropriate tiers based on phase
+        include_tier2 = phase.value <= Phase.SIGNALS.value  # Include if not critical
+        include_tier3 = phase == Phase.VERBOSE  # Only at full verbosity
+
+        checkpoint = create_checkpoint(
+            state=state,
+            trigger=trigger,
+            context_usage_percent=usage_pct,
+            phase=phase.value,
+            include_tier2=include_tier2,
+            include_tier3=include_tier3,
+        )
+
+        # Save locally
+        save_checkpoint_local(checkpoint)
+
+        # Cleanup old checkpoints
+        cleanup_old_checkpoints()
+
+        return checkpoint.tier1.checkpoint_id
+    except Exception:
+        return ""
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -200,8 +239,16 @@ def main():
     trigger = data.get("trigger", "unknown")
     state = load_state()
 
+    # Create checkpoint before compaction
+    checkpoint_id = create_session_checkpoint(state, trigger)
+
     # Build context in priority order
     all_lines = []
+
+    # Add checkpoint reference first (highest priority for recovery)
+    if checkpoint_id:
+        all_lines.append(f"CP:{checkpoint_id[-12:]}")
+
     all_lines.extend(get_goal_context(state))
     all_lines.extend(get_confidence_context(state))
     all_lines.extend(get_serena_context(state))
