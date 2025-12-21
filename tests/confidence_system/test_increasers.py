@@ -1086,3 +1086,88 @@ class TestFarmableIncreasersConstant:
 
     def test_build_success_is_not_farmable(self):
         assert "build_success" not in FARMABLE_INCREASERS
+
+
+# =============================================================================
+# PERPETUAL MOMENTUM INCREASERS (v4.24)
+# =============================================================================
+
+
+class TestMomentumForwardIncreaser:
+    """Tests for MomentumForwardIncreaser - rewards forward motion."""
+
+    def test_triggers_on_i_can_pattern(self):
+        from _confidence_increasers import MomentumForwardIncreaser
+
+        increaser = MomentumForwardIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Padded to 50+ chars
+        context = {"assistant_output": "The changes have been applied successfully. I can now run the tests."}
+        assert increaser.should_trigger(context, state, 0) is True
+
+    def test_triggers_on_let_me_pattern(self):
+        from _confidence_increasers import MomentumForwardIncreaser
+
+        increaser = MomentumForwardIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Padded to 50+ chars
+        context = {"assistant_output": "The file has been updated with the new changes. Let me verify it compiles."}
+        assert increaser.should_trigger(context, state, 0) is True
+
+    def test_triggers_on_next_steps_section(self):
+        from _confidence_increasers import MomentumForwardIncreaser
+
+        increaser = MomentumForwardIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        context = {
+            "assistant_output": """Implementation complete.
+
+## Next Steps
+- Run tests
+- Deploy"""
+        }
+        assert increaser.should_trigger(context, state, 0) is True
+
+    def test_triggers_on_shall_i_question(self):
+        from _confidence_increasers import MomentumForwardIncreaser
+
+        increaser = MomentumForwardIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Padded to 50+ chars
+        context = {"assistant_output": "The code changes have been applied successfully. Shall I run the linter?"}
+        assert increaser.should_trigger(context, state, 0) is True
+
+    def test_does_not_trigger_without_momentum(self):
+        from _confidence_increasers import MomentumForwardIncreaser
+
+        increaser = MomentumForwardIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Padded to 50+ chars but no momentum pattern
+        context = {"assistant_output": "The implementation is complete and working. Hope this helps!"}
+        assert increaser.should_trigger(context, state, 0) is False
+
+    def test_does_not_trigger_on_passive_suggestion(self):
+        from _confidence_increasers import MomentumForwardIncreaser
+
+        increaser = MomentumForwardIncreaser()
+        state = MockSessionState()
+        state.turn_count = 10
+        # Passive "you could" is NOT momentum (padded to 50+ chars)
+        context = {"assistant_output": "The work is finished and tests pass. You could also add more tests."}
+        assert increaser.should_trigger(context, state, 0) is False
+
+    def test_respects_cooldown(self):
+        from _confidence_increasers import MomentumForwardIncreaser
+
+        increaser = MomentumForwardIncreaser()
+        state = MockSessionState()
+        state.turn_count = 5
+        # Padded to 50+ chars
+        context = {"assistant_output": "The implementation is done. I can now run the tests."}
+        # Cooldown is 1: turn 5, last trigger at 5 -> 5-5=0 < 1, should NOT trigger
+        assert increaser.should_trigger(context, state, 5) is False

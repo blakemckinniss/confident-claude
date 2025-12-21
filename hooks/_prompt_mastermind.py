@@ -668,6 +668,17 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         # Get routing info
         routing = result.get("routing_info", {})
 
+        # STATE COORDINATION: Set flags for downstream hooks (pal_mandate, etc.)
+        # This prevents duplicate PAL recommendations
+        if routing:
+            state.set("mastermind_routed", True)
+            state.set("mastermind_classification", routing.get("classification", "unknown"))
+            suggested_tool = routing.get("suggested_tool")
+            if suggested_tool:
+                state.set("mastermind_pal_suggested", suggested_tool)
+            if routing.get("pal_suggestion") or routing.get("inject_context"):
+                state.set("mastermind_pal_injected", True)
+
         # PRIORITY: Check for PAL mandate injection (^ override)
         # This MUST be injected for the pre_tool_use block to make sense
         inject_context = routing.get("inject_context") or result.get("inject_context")

@@ -33,6 +33,7 @@ from ._core import (
     EditOscillationReducer,
     ContradictionReducer,
     FollowUpQuestionReducer,
+    GoalDriftReducer,
 )
 
 # Behavioral reducers (bad patterns)
@@ -138,6 +139,7 @@ REDUCERS: list[ConfidenceReducer] = [
     EditOscillationReducer(),
     ContradictionReducer(),
     FollowUpQuestionReducer(),
+    GoalDriftReducer(),
     # Bad behavior reducers
     BackupFileReducer(),
     VersionFileReducer(),
@@ -232,6 +234,7 @@ __all__ = [
     "EditOscillationReducer",
     "ContradictionReducer",
     "FollowUpQuestionReducer",
+    "GoalDriftReducer",
     # Behavioral
     "BackupFileReducer",
     "VersionFileReducer",

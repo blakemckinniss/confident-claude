@@ -16,7 +16,7 @@ from .config import get_config
 
 # Groq API endpoint
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "moonshotai/kimi-k2-instruct"
+GROQ_MODEL = "moonshotai/kimi-k2-instruct-0905"
 
 # Classification prompt
 ROUTER_SYSTEM_PROMPT = """You are a task complexity classifier for an AI coding assistant.
@@ -326,6 +326,7 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        "User-Agent": "Claude-Code-Mastermind/1.0",
     }
 
     try:

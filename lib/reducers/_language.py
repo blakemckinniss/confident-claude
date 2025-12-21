@@ -221,7 +221,8 @@ class DeadendResponseReducer(ConfidenceReducer):
     momentum_patterns: list = field(
         default_factory=lambda: [
             r"\bi\s+(?:can|will|could)\s+(?:also\s+)?(?:now\s+)?(?:\w+)",
-            r"\blet\s+me\s+(?:now\s+)?(?:\w+)",
+            # "let me [verb]" but NOT "let me know" (that's a deadend)
+            r"\blet\s+me\s+(?:now\s+)?(?!know\b)(\w+)",
             r"\bnext\s+(?:i'?ll|step|steps?)[\s:]+",
             r"\b(?:shall|should)\s+i\s+(?:\w+)",
             r"\bwant\s+me\s+to\b",

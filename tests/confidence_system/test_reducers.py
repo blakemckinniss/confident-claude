@@ -1308,6 +1308,8 @@ class TestSequentialWhenParallelReducer:
         state = MockSessionState()
         state.consecutive_single_reads = 3
         state.turn_count = 10
+        state.files_edited = ["some_file.py"]  # Must have edited files (not exploratory)
+        state.original_goal = "fix the bug"  # Non-exploratory goal
 
         result = reducer.should_trigger({}, state, 0)
 
@@ -1339,6 +1341,8 @@ class TestSequentialWhenParallelReducer:
         state = MockSessionState()
         state.consecutive_single_reads = 5
         state.turn_count = 10
+        state.files_edited = ["some_file.py"]  # Must have edited files (not exploratory)
+        state.original_goal = "fix the bug"  # Non-exploratory goal
 
         # Triggered 5 turns ago, cooldown is 3
         result = reducer.should_trigger({}, state, 5)
@@ -1527,9 +1531,9 @@ class TestDeadendResponseReducer:
         reducer = DeadendResponseReducer()
         state = MockSessionState()
         state.turn_count = 10
-        # Classic deadend - "hope this helps"
+        # Classic deadend - "hope this helps" (padded to 100+ chars)
         context = {
-            "assistant_output": "I've made the changes to the file. Hope this helps!"
+            "assistant_output": "I've made the changes to the file as requested. The refactoring is now complete and all tests pass. Hope this helps!"
         }
         assert reducer.should_trigger(context, state, 0) is True
 
@@ -1539,7 +1543,8 @@ class TestDeadendResponseReducer:
         reducer = DeadendResponseReducer()
         state = MockSessionState()
         state.turn_count = 10
-        context = {"assistant_output": "That's all I have for now. Let me know if you need anything."}
+        # Pattern: "that's all for now" - padded to 100+ chars
+        context = {"assistant_output": "I've completed the implementation and verified it works correctly with all the test cases. That's all for now."}
         assert reducer.should_trigger(context, state, 0) is True
 
     def test_triggers_on_passive_suggestion(self):
@@ -1548,9 +1553,9 @@ class TestDeadendResponseReducer:
         reducer = DeadendResponseReducer()
         state = MockSessionState()
         state.turn_count = 10
-        # Passive "you could" without momentum
+        # Passive "you could consider" without momentum (padded to 100+ chars)
         context = {
-            "assistant_output": "The implementation is complete. You could also consider adding tests."
+            "assistant_output": "The implementation is complete and all edge cases have been handled properly and tested. You could consider adding more tests."
         }
         assert reducer.should_trigger(context, state, 0) is True
 

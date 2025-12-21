@@ -38,6 +38,7 @@ from reducers import (
     EditOscillationReducer,
     ContradictionReducer,
     FollowUpQuestionReducer,
+    GoalDriftReducer,
     # Behavioral
     BackupFileReducer,
     VersionFileReducer,
@@ -123,6 +124,7 @@ __all__ = [
     "EditOscillationReducer",
     "ContradictionReducer",
     "FollowUpQuestionReducer",
+    "GoalDriftReducer",
     # Behavioral
     "BackupFileReducer",
     "VersionFileReducer",

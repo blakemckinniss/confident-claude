@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastComputedDate": "2025-12-19",
+  "lastComputedDate": "2025-12-20",
   "dailyActivity": [
     {
       "date": "2025-11-12",
@@ -217,6 +217,12 @@
       "messageCount": 15135,
       "sessionCount": 828,
       "toolCallCount": 2920
+    },
+    {
+      "date": "2025-12-20",
+      "messageCount": 24549,
+      "sessionCount": 1111,
+      "toolCallCount": 4933
     }
   ],
   "dailyModelTokens": [
@@ -444,6 +450,13 @@
         "claude-sonnet-4-5-20250929": 761,
         "claude-haiku-4-5-20251001": 55559
       }
+    },
+    {
+      "date": "2025-12-20",
+      "tokensByModel": {
+        "claude-opus-4-5-20251101": 1210262,
+        "claude-haiku-4-5-20251001": 83403
+      }
     }
   ],
   "modelUsage": {
@@ -457,26 +470,26 @@
       "contextWindow": 0
     },
     "claude-opus-4-5-20251101": {
-      "inputTokens": 4759141,
-      "outputTokens": 9478542,
-      "cacheReadInputTokens": 8874447975,
-      "cacheCreationInputTokens": 578737892,
+      "inputTokens": 4969362,
+      "outputTokens": 10478583,
+      "cacheReadInputTokens": 10207104810,
+      "cacheCreationInputTokens": 657371179,
       "webSearchRequests": 0,
       "costUSD": 0,
       "contextWindow": 0
     },
     "claude-haiku-4-5-20251001": {
-      "inputTokens": 146188,
-      "outputTokens": 125417,
-      "cacheReadInputTokens": 370165955,
-      "cacheCreationInputTokens": 49082813,
+      "inputTokens": 194420,
+      "outputTokens": 160588,
+      "cacheReadInputTokens": 399354127,
+      "cacheCreationInputTokens": 58111201,
       "webSearchRequests": 0,
       "costUSD": 0,
       "contextWindow": 0
     }
   },
-  "totalSessions": 3317,
-  "totalMessages": 240614,
+  "totalSessions": 4428,
+  "totalMessages": 265163,
   "longestSession": {
     "sessionId": "0ae0f0e4-2b86-4d8d-8d42-f72d84b472f4",
     "duration": 92651158,
@@ -485,26 +498,26 @@
   },
   "firstSessionDate": "2025-11-12T17:36:43.318Z",
   "hourCounts": {
-    "0": 191,
-    "1": 55,
+    "0": 275,
+    "1": 86,
     "2": 23,
     "3": 5,
     "7": 128,
     "8": 182,
-    "9": 133,
-    "10": 80,
-    "11": 197,
-    "12": 116,
-    "13": 112,
-    "14": 71,
-    "15": 141,
-    "16": 176,
-    "17": 173,
+    "9": 168,
+    "10": 180,
+    "11": 314,
+    "12": 229,
+    "13": 189,
+    "14": 154,
+    "15": 254,
+    "16": 315,
+    "17": 195,
     "18": 241,
-    "19": 316,
-    "20": 322,
-    "21": 192,
-    "22": 176,
-    "23": 287
+    "19": 339,
+    "20": 365,
+    "21": 254,
+    "22": 213,
+    "23": 319
   }
 }

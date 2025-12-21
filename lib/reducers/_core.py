@@ -283,9 +283,74 @@ class FollowUpQuestionReducer(ConfidenceReducer):
         return False
 
 
-# =============================================================================
-# BAD BEHAVIOR REDUCERS (Anti-patterns we never want to see)
-# =============================================================================
+@dataclass
+class GoalDriftReducer(ConfidenceReducer):
+    """Triggers when current activity diverges from original goal.
+
+    Detection: Compare keywords from original goal (first substantive prompt)
+    with recent activity. If overlap drops below threshold, goal drift detected.
+    """
+
+    name: str = "goal_drift"
+    delta: int = -8
+    description: str = "Activity diverging from original goal"
+    remedy: str = "refocus on original task or explicitly pivot with user approval"
+    cooldown_turns: int = 8
+    overlap_threshold: float = 0.20  # < 20% keyword overlap = drift
+
+    def _extract_keywords(self, text: str) -> set:
+        """Extract meaningful keywords from text."""
+        if not text:
+            return set()
+        # Simple keyword extraction: lowercase words 4+ chars, no common words
+        stopwords = {
+            "that", "this", "with", "from", "have", "been", "were", "will",
+            "would", "could", "should", "their", "there", "what", "when",
+            "where", "which", "while", "about", "after", "before", "being",
+            "between", "both", "each", "into", "just", "like", "make", "more",
+            "most", "only", "other", "over", "some", "such", "than", "them",
+            "then", "these", "they", "through", "under", "very", "want",
+            "your", "also", "back", "because", "come", "does", "even", "first",
+            "give", "going", "good", "here", "know", "look", "made", "many",
+            "much", "need", "never", "work", "year", "take", "thing", "think",
+            "time", "well", "file", "code", "function", "class", "method",
+        }
+        words = re.findall(r"\b[a-z]{4,}\b", text.lower())
+        return {w for w in words if w not in stopwords}
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Get original goal from session state
+        original_goal = getattr(state, "original_goal", "") or ""
+        if not original_goal:
+            return False
+
+        # Get current activity description (recent context)
+        current_activity = context.get("current_activity", "")
+        if not current_activity:
+            # Fall back to recent files/tools as proxy for activity
+            recent_files = getattr(state, "files_edited", [])[-5:]
+            recent_tools = getattr(state, "tools_used", [])[-10:]
+            current_activity = " ".join(recent_files + recent_tools)
+
+        if not current_activity:
+            return False
+
+        # Compare keyword overlap
+        goal_keywords = self._extract_keywords(original_goal)
+        activity_keywords = self._extract_keywords(current_activity)
+
+        if not goal_keywords:
+            return False
+
+        overlap = len(goal_keywords & activity_keywords)
+        overlap_ratio = overlap / len(goal_keywords)
+
+        return overlap_ratio < self.overlap_threshold
 
 
 __all__ = [
@@ -296,4 +361,5 @@ __all__ = [
     "EditOscillationReducer",
     "ContradictionReducer",
     "FollowUpQuestionReducer",
+    "GoalDriftReducer",
 ]

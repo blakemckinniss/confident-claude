@@ -885,6 +885,11 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     if prompt.startswith("/"):
         return HookResult.allow()
 
+    # MASTERMIND COORDINATION: Skip if mastermind already injected PAL suggestion
+    # This prevents duplicate PAL recommendations from Groq + keyword matching
+    if state.get("mastermind_pal_injected"):
+        return HookResult.allow()
+
     # PRIORITY: Serena activation mandate (fires before PAL mandates)
     # Auto-activates Serena when project has memories but isn't activated
     if get_serena_activation_mandate is not None:
