@@ -291,6 +291,33 @@ Conditions that trigger **mandatory** PAL tool usage. Aggressive by design - pre
 | Extended debugging (3+ attempts) | `mcp__pal__debug` |
 | Pre-commit on significant changes | `mcp__pal__precommit` |
 
+### PAL Continuation IDs (Cross-Session Memory)
+
+**🔥 CRITICAL:** PAL tools support `continuation_id` for persistent reasoning context.
+
+When you use any `mcp__pal__*` tool, the response includes a `continuation_id`. **Always reuse this ID** in subsequent calls to preserve context:
+
+```python
+# First call - gets continuation_id
+mcp__pal__debug(prompt="...", ...)  # Returns continuation_id="abc123"
+
+# Later calls - REUSE the ID
+mcp__pal__debug(prompt="...", continuation_id="abc123", ...)  # Preserves context!
+```
+
+**Why this matters:**
+- PAL tools maintain reasoning state across calls
+- Without continuation_id, each call starts fresh (context loss)
+- With continuation_id, the external LLM remembers prior analysis
+- **Survives compaction** - IDs are preserved in handoff data
+- **Cross-session** - Resume reasoning in new sessions via `/resume`
+
+**Lifecycle integration:**
+- `pre_compact.py`: Surfaces `🔥PAL:` with active continuation_ids
+- `prepare_handoff()`: Includes `pal_continuations` in handoff.json
+- `generate_resume_prompt()`: Embeds continuation hints for new sessions
+- `session_init.py`: Shows available continuations at session start
+
 ### Code-Mode Integration
 
 PAL mandates can trigger code-mode plan generation when complex tool orchestration is needed. See `hooks/_prompt_codemode.py` for plan injection.

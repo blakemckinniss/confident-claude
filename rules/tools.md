@@ -91,6 +91,8 @@ See `confidence.md` for full reference.
 | API docs lookup | `mcp__pal__apilookup` |
 | External chat | `mcp__pal__chat` |
 
+**🔥 continuation_id:** All PAL tools return this - **reuse it** to preserve reasoning context across calls and sessions. Look for `🔥PAL:` after compaction.
+
 ## Integration Synergy
 
 | Need | Tool |
