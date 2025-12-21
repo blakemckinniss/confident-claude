@@ -435,6 +435,62 @@ _THINKING_SUGGESTIONS: List[Tuple[re.Pattern, Suggestion]] = [
             hint="Check recent context for what was done earlier",
         ),
     ),
+    # ==========================================================================
+    # SKILL SUGGESTIONS (v4.27) - Proactive skill nudges
+    # ==========================================================================
+    # Library documentation research → /docs skill
+    (
+        re.compile(
+            r"(how to use|docs for|documentation for|API for).{0,20}"
+            r"(react|nextjs|tailwind|typescript|fastapi|django|prisma|supabase)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="📖",
+            title="/docs Skill Available",
+            tools=["Skill"],
+            hint="Skill(skill='docs', args='<library>') uses Context7 for authoritative docs",
+        ),
+    ),
+    # Stuck debugging → /think skill
+    (
+        re.compile(
+            r"(stuck|struggling|can't figure|tried|attempt).{0,30}(debug|fix|issue|error|bug)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🧠",
+            title="/think Skill for Decomposition",
+            tools=["Skill"],
+            hint="Skill(skill='think', args='Debug: <problem>') forces structured reasoning",
+        ),
+    ),
+    # Ready to commit → /commit skill
+    (
+        re.compile(
+            r"(ready to|let me|should|need to).{0,15}(commit|git commit)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="📦",
+            title="/commit Skill Available",
+            tools=["Skill"],
+            hint="Skill(skill='commit') handles staging, message generation, verification",
+        ),
+    ),
+    # Claiming fixed → /verify skill
+    (
+        re.compile(
+            r"(should be|is now|that).{0,15}(fixed|working|resolved)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="✅",
+            title="/verify Skill for Proof",
+            tools=["Skill"],
+            hint="Skill(skill='verify', args='command_success \"<test>\"') proves the fix",
+        ),
+    ),
 ]
 
 # =============================================================================

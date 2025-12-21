@@ -217,6 +217,50 @@ class SessionState:
     # Background task tracking (for check-in reminders)
     background_tasks: list = field(default_factory=list)  # [{type, prompt, turn}]
 
+    # ==========================================================================
+    # AGENT DELEGATION TRACKING (v4.26) - Token economy enforcement
+    # Tracks when to suggest agents instead of direct tool calls
+    # ==========================================================================
+
+    # Exploration pattern tracking (5+ calls → suggest Explore agent)
+    consecutive_exploration_calls: int = 0  # Sequential Grep/Glob/Read without Task
+    recent_explore_agent_turn: int = -100  # Last turn Explore agent was spawned
+
+    # Debugging pattern tracking (3+ edits → suggest debugger agent)
+    debug_mode_active: bool = False  # Currently in debugging loop
+    consecutive_tool_failures: int = 0  # Sequential tool failures
+    recent_debugger_agent_turn: int = -100  # Last turn debugger agent was spawned
+
+    # Research pattern tracking (3+ web calls → suggest researcher agent)
+    consecutive_research_calls: int = 0  # Sequential WebSearch/crawl4ai calls
+    recent_researcher_agent_turn: int = -100  # Last turn researcher agent was spawned
+
+    # Review pattern tracking (5+ edits → suggest code-reviewer agent)
+    recent_reviewer_agent_turn: int = -100  # Last turn code-reviewer agent was spawned
+
+    # Planning pattern tracking (complex task → suggest Plan agent)
+    recent_plan_agent_turn: int = -100  # Last turn Plan agent was spawned
+    mastermind_classification: str = ""  # trivial/medium/complex from mastermind
+
+    # Refactoring pattern tracking (multi-file symbol changes → suggest refactorer)
+    recent_refactorer_agent_turn: int = -100  # Last turn refactorer agent was spawned
+
+    # SKILL USAGE TRACKING (v4.27)
+    recent_docs_skill_turn: int = -100  # Last turn /docs skill was used
+    recent_think_skill_turn: int = -100  # Last turn /think skill was used
+    recent_commit_skill_turn: int = -100  # Last turn /commit skill was used
+    recent_verify_skill_turn: int = -100  # Last turn /verify skill was used
+    recent_audit_turn: int = -100  # Last turn audit.py was run
+    recent_void_turn: int = -100  # Last turn void.py was run
+    research_for_library_docs: bool = False  # Detected library doc research pattern
+    consecutive_debug_attempts: int = 0  # Debug attempts without /think
+    consecutive_code_file_reads: int = 0  # Code reads without Serena
+    framework_files_edited: list = None  # Framework files edited this session
+    serena_active: bool = False  # Whether Serena is activated
+
+    # File edit counts for oscillation detection (reuse existing edit_counts)
+    # edit_counts: dict already exists above - tracks file -> count
+
     # Beads command batching
     recent_beads_commands: list = field(default_factory=list)  # [{cmd, turn}]
 

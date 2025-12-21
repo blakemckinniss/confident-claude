@@ -37,6 +37,29 @@ _RESEARCH_TOOLS = frozenset(
 _SEARCH_TOOLS = frozenset({"Grep", "Glob", "Task"})
 _DELEGATION_AGENTS = frozenset({"Explore", "scout", "Plan"})
 
+# Agent delegation tracking (v4.26) - tools that should trigger agent suggestions
+_EXPLORATION_TOOLS = frozenset(
+    {
+        "Grep",
+        "Glob",
+        "Read",
+        "mcp__serena__find_symbol",
+        "mcp__serena__search_for_pattern",
+        "mcp__serena__get_symbols_overview",
+        "mcp__serena__list_dir",
+    }
+)
+_AGENT_TYPE_MAP = {
+    "Explore": "recent_explore_agent_turn",
+    "explore": "recent_explore_agent_turn",
+    "debugger": "recent_debugger_agent_turn",
+    "researcher": "recent_researcher_agent_turn",
+    "code-reviewer": "recent_reviewer_agent_turn",
+    "Plan": "recent_plan_agent_turn",
+    "planner": "recent_plan_agent_turn",
+    "refactorer": "recent_refactorer_agent_turn",
+}
+
 # PAL tools that provide reasoning delegation (v4.19)
 _PAL_REASONING_TOOLS = frozenset(
     {
@@ -134,6 +157,68 @@ def _build_pal_signals(
 
 
 # =============================================================================
+# AGENT DELEGATION TRACKING (v4.26)
+# =============================================================================
+
+
+def _track_agent_delegation(
+    tool_name: str, tool_input: dict, state: SessionState
+) -> None:
+    """Track tool usage patterns for agent delegation suggestions.
+
+    Updates state counters that trigger reducers when agents should be used:
+    - consecutive_exploration_calls: 5+ → suggest Explore agent
+    - consecutive_research_calls: 3+ → suggest researcher agent
+    - recent_*_agent_turn: Records when specific agent types were spawned
+    """
+    # Track Task agent spawns by type
+    if tool_name == "Task":
+        subagent_type = tool_input.get("subagent_type", "")
+        if subagent_type in _AGENT_TYPE_MAP:
+            state_field = _AGENT_TYPE_MAP[subagent_type]
+            setattr(state, state_field, state.turn_count)
+            # Reset relevant counters when agent is used
+            if subagent_type in ("Explore", "explore"):
+                state.consecutive_exploration_calls = 0
+            elif subagent_type == "researcher":
+                state.consecutive_research_calls = 0
+        # Also track general agent delegation
+        context_field = "agent_delegation"
+        state.tool_debt.get(context_field, {})["last_used_turn"] = state.turn_count
+        return
+
+    # Track exploration tool calls (Grep, Glob, Read, serena searches)
+    if tool_name in _EXPLORATION_TOOLS:
+        state.consecutive_exploration_calls = (
+            getattr(state, "consecutive_exploration_calls", 0) + 1
+        )
+    else:
+        # Non-exploration tool resets counter (unless it's a Task)
+        if tool_name not in ("Task", "AskUserQuestion"):
+            state.consecutive_exploration_calls = 0
+
+    # Track research tool calls (WebSearch, crawl4ai)
+    if tool_name in _RESEARCH_TOOLS:
+        state.consecutive_research_calls = (
+            getattr(state, "consecutive_research_calls", 0) + 1
+        )
+    else:
+        if tool_name not in ("Task", "AskUserQuestion", "Read"):
+            state.consecutive_research_calls = 0
+
+    # Track debugging patterns (Edit after failure)
+    if tool_name == "Edit":
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            edit_counts = getattr(state, "edit_counts", {})
+            edit_counts[file_path] = edit_counts.get(file_path, 0) + 1
+            state.edit_counts = edit_counts
+            # 3+ edits to same file suggests debugging loop
+            if edit_counts[file_path] >= 3:
+                state.debug_mode_active = True
+
+
+# =============================================================================
 # NATURAL SIGNAL BUILDING
 # =============================================================================
 
@@ -191,6 +276,7 @@ def _build_bash_signals(tool_input: dict, data: dict, context: dict) -> None:
         "-m" in command or "--message" in command
     ):
         context["git_committed"] = True
+        context["manual_git_commit"] = True  # v4.27: For CommitWithoutSkillReducer
     if any(p.match(cmd_stripped) for p in _PRODUCTIVE_BASH):
         context["productive_bash"] = True
 
@@ -263,27 +349,33 @@ def _update_ralph_completion_confidence(
     # Check for objective signals and add evidence
     if context.get("tests_passed"):
         delta += 25
-        evidence_added.append({
-            "type": "test_pass",
-            "turn": state.turn_count,
-            "details": "Tests passed",
-        })
+        evidence_added.append(
+            {
+                "type": "test_pass",
+                "turn": state.turn_count,
+                "details": "Tests passed",
+            }
+        )
 
     if context.get("build_succeeded"):
         delta += 20
-        evidence_added.append({
-            "type": "build_success",
-            "turn": state.turn_count,
-            "details": "Build succeeded",
-        })
+        evidence_added.append(
+            {
+                "type": "build_success",
+                "turn": state.turn_count,
+                "details": "Build succeeded",
+            }
+        )
 
     if context.get("lint_passed"):
         delta += 10
-        evidence_added.append({
-            "type": "lint_pass",
-            "turn": state.turn_count,
-            "details": "Lint passed",
-        })
+        evidence_added.append(
+            {
+                "type": "lint_pass",
+                "turn": state.turn_count,
+                "details": "Lint passed",
+            }
+        )
 
     # Apply delta
     if delta > 0:
@@ -302,6 +394,126 @@ def _update_ralph_completion_confidence(
             messages.append("✅ Completion threshold (80%) reached - exit allowed")
 
     return messages
+
+
+# =============================================================================
+# SKILL USAGE TRACKING (v4.27)
+# =============================================================================
+
+# Library patterns that suggest /docs skill should be used
+_LIBRARY_DOC_PATTERNS = frozenset({
+    "react", "nextjs", "next.js", "tailwind", "typescript", "python",
+    "fastapi", "django", "express", "prisma", "supabase", "vercel",
+    "vite", "playwright", "jest", "pytest", "ruff", "numpy", "pandas",
+})
+
+# Framework paths that require audit/void
+_FRAMEWORK_PATHS = frozenset({
+    ".claude/ops/", ".claude/hooks/", ".claude/lib/", ".claude/rules/",
+})
+
+# Code file extensions for Serena tracking
+_CODE_EXTENSIONS = frozenset({
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".rb",
+})
+
+
+def _track_skill_usage(
+    tool_name: str, tool_input: dict, state: SessionState
+) -> None:
+    """Track skill usage patterns for skill enforcement reducers (v4.27).
+
+    Updates state fields that trigger reducers when skills should be used:
+    - recent_*_skill_turn: Records when specific skills were invoked
+    - research_for_library_docs: Detects library doc research without /docs
+    - consecutive_debug_attempts: Debug attempts without /think
+    - consecutive_code_file_reads: Code reads without Serena
+    - framework_files_edited: Framework files edited without audit/void
+    - serena_active: Whether Serena is activated
+    """
+    # Initialize framework_files_edited list if needed
+    if state.framework_files_edited is None:
+        state.framework_files_edited = []
+
+    # Track Skill tool invocations
+    if tool_name == "Skill":
+        skill_name = tool_input.get("skill", "").lower()
+
+        if skill_name == "docs":
+            state.recent_docs_skill_turn = state.turn_count
+            state.research_for_library_docs = False  # Reset detection
+        elif skill_name == "think":
+            state.recent_think_skill_turn = state.turn_count
+            state.consecutive_debug_attempts = 0  # Reset counter
+        elif skill_name == "commit":
+            state.recent_commit_skill_turn = state.turn_count
+        elif skill_name == "verify":
+            state.recent_verify_skill_turn = state.turn_count
+        elif skill_name in ("audit", "void"):
+            if skill_name == "audit":
+                state.recent_audit_turn = state.turn_count
+            else:
+                state.recent_void_turn = state.turn_count
+        return
+
+    # Track audit/void script executions
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if "audit.py" in command or "/audit " in command:
+            state.recent_audit_turn = state.turn_count
+        if "void.py" in command or "/void " in command:
+            state.recent_void_turn = state.turn_count
+        # Track manual git commit (for CommitWithoutSkillReducer)
+        if "git commit" in command and "-m" in command:
+            # Will be picked up by reducer via context
+            pass
+        return
+
+    # Track Serena activation
+    if tool_name == "mcp__serena__activate_project":
+        state.serena_active = True
+        state.consecutive_code_file_reads = 0  # Reset counter
+        return
+
+    # Detect library documentation research patterns
+    if tool_name in ("WebSearch", "WebFetch", "mcp__crawl4ai__crawl"):
+        query = tool_input.get("query", "") or tool_input.get("url", "")
+        query_lower = query.lower()
+
+        # Check if researching library docs
+        for lib in _LIBRARY_DOC_PATTERNS:
+            if lib in query_lower and any(
+                kw in query_lower for kw in ("docs", "documentation", "api", "reference", "guide")
+            ):
+                state.research_for_library_docs = True
+                break
+
+    # Track code file reads without Serena
+    if tool_name == "Read" and not state.serena_active:
+        file_path = tool_input.get("file_path", "")
+        if any(file_path.endswith(ext) for ext in _CODE_EXTENSIONS):
+            state.consecutive_code_file_reads = (
+                getattr(state, "consecutive_code_file_reads", 0) + 1
+            )
+
+    # Track framework file edits (for FrameworkEditWithoutAuditReducer)
+    if tool_name in ("Edit", "Write"):
+        file_path = tool_input.get("file_path", "")
+        for framework_path in _FRAMEWORK_PATHS:
+            if framework_path in file_path:
+                if file_path not in state.framework_files_edited:
+                    state.framework_files_edited.append(file_path)
+                break
+
+    # Track debug attempts (Edit after failure without /think)
+    if tool_name == "Edit":
+        recent_failures = len(getattr(state, "commands_failed", []))
+        recent_think = getattr(state, "recent_think_skill_turn", -100)
+
+        if recent_failures > 0 and (state.turn_count - recent_think) > 10:
+            state.consecutive_debug_attempts = (
+                getattr(state, "consecutive_debug_attempts", 0) + 1
+            )
 
 
 # =============================================================================
@@ -527,6 +739,12 @@ def check_confidence_increaser(
 
     # PAL tracking (v4.19) - track PAL usage for maximization signals
     _build_pal_signals(tool_name, tool_input, state, context)
+
+    # Agent delegation tracking (v4.26) - track for token economy enforcement
+    _track_agent_delegation(tool_name, tool_input, state)
+
+    # Skill usage tracking (v4.27) - track for skill enforcement reducers
+    _track_skill_usage(tool_name, tool_input, state)
 
     # Build signals from each category
     _build_natural_signals(tool_name, tool_input, data, state, context)

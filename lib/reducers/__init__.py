@@ -128,6 +128,24 @@ from ._mastermind import (
     MastermindApproachDriftReducer,
 )
 
+# Agent delegation reducers (v4.26) - enforce agent usage for token economy
+from ._delegation import (
+    ExplorationWithoutAgentReducer,
+    DebuggingWithoutAgentReducer,
+    ResearchWithoutAgentReducer,
+    ReviewWithoutAgentReducer,
+    PlanningWithoutAgentReducer,
+    RefactorWithoutAgentReducer,
+)
+from ._skills import (
+    ResearchWithoutDocsSkillReducer,
+    DebuggingWithoutThinkSkillReducer,
+    CommitWithoutSkillReducer,
+    FrameworkEditWithoutAuditReducer,
+    VerificationWithoutSkillReducer,
+    CodeExplorationWithoutSerenaReducer,
+)
+
 
 # Assemble the complete REDUCERS list (same order as original)
 REDUCERS: list[ConfidenceReducer] = [
@@ -215,6 +233,20 @@ REDUCERS: list[ConfidenceReducer] = [
     TestsExistNotRunReducer(),
     OrphanedTestCreationReducer(),
     PreCommitNoTestsReducer(),
+    # Agent delegation reducers (v4.26) - token economy enforcement
+    ExplorationWithoutAgentReducer(),
+    DebuggingWithoutAgentReducer(),
+    ResearchWithoutAgentReducer(),
+    ReviewWithoutAgentReducer(),
+    PlanningWithoutAgentReducer(),
+    RefactorWithoutAgentReducer(),
+    # Skill enforcement reducers (v4.27) - maximize framework leverage
+    ResearchWithoutDocsSkillReducer(),
+    DebuggingWithoutThinkSkillReducer(),
+    CommitWithoutSkillReducer(),
+    FrameworkEditWithoutAuditReducer(),
+    VerificationWithoutSkillReducer(),
+    CodeExplorationWithoutSerenaReducer(),
 ]
 
 
@@ -303,4 +335,18 @@ __all__ = [
     "MastermindFileDriftReducer",
     "MastermindTestDriftReducer",
     "MastermindApproachDriftReducer",
+    # Delegation
+    "ExplorationWithoutAgentReducer",
+    "DebuggingWithoutAgentReducer",
+    "ResearchWithoutAgentReducer",
+    "ReviewWithoutAgentReducer",
+    "PlanningWithoutAgentReducer",
+    "RefactorWithoutAgentReducer",
+    # Skill enforcement (v4.27)
+    "ResearchWithoutDocsSkillReducer",
+    "DebuggingWithoutThinkSkillReducer",
+    "CommitWithoutSkillReducer",
+    "FrameworkEditWithoutAuditReducer",
+    "VerificationWithoutSkillReducer",
+    "CodeExplorationWithoutSerenaReducer",
 ]
