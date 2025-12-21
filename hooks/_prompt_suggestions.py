@@ -32,6 +32,17 @@ from session_state import SessionState
 from context_builder import extract_keywords
 from _hooks_memory import get_memory_prompt_hint
 
+# Phase-aware gating (v3.16 - token budget optimization)
+try:
+    from phase_gate import HookTier, should_run_hook, compress_output
+
+    PHASE_GATE_AVAILABLE = True
+except ImportError:
+    PHASE_GATE_AVAILABLE = False
+    HookTier = None
+    should_run_hook = lambda tier: True  # noqa: E731
+    compress_output = lambda output, max_chars=None: output  # noqa: E731
+
 # Path constants
 SCRIPT_DIR = Path(__file__).parent
 CLAUDE_DIR = SCRIPT_DIR.parent
@@ -648,7 +659,14 @@ _OPS_SCRIPTS = {
 
 @register_hook("ops_awareness", priority=85)
 def check_ops_awareness(data: dict, state: SessionState) -> HookResult:
-    """Remind about existing ops scripts (fallback)."""
+    """Remind about existing ops scripts (fallback).
+
+    Phase gate: OPTIONAL (disabled at CONDENSED+).
+    """
+    # Phase gate: skip at high context usage
+    if PHASE_GATE_AVAILABLE and not should_run_hook(HookTier.OPTIONAL):
+        return HookResult.allow()
+
     prompt = data.get("prompt", "")
     if not prompt or len(prompt) < 10:
         return HookResult.allow()
@@ -678,6 +696,8 @@ def check_ops_awareness(data: dict, state: SessionState) -> HookResult:
 @register_hook("ops_audit_reminder", priority=86)
 def check_ops_audit_reminder(data: dict, state: SessionState) -> HookResult:
     """Periodic reminder about ops tool usage and unused tools.
+
+    Phase gate: VERBOSE only (disabled at CONDENSED+).
 
     DISABLED (2025-12-20): Identified as periodic noise.
     3-hour reminders about unused tools don't drive adoption - they annoy.
@@ -909,8 +929,9 @@ def check_pal_mandate(data: dict, state: SessionState) -> HookResult:
     if ralph_mode and task_contract:
         # Evidence required but not yet gathered = more aggressive PAL
         evidence_required = task_contract.get("evidence_required", [])
-        evidence_gathered = set(e.get("type") if isinstance(e, dict) else e
-                                for e in completion_evidence)
+        evidence_gathered = set(
+            e.get("type") if isinstance(e, dict) else e for e in completion_evidence
+        )
         missing_evidence = set(evidence_required) - evidence_gathered
 
         if missing_evidence and completion_confidence < 50:
@@ -1071,7 +1092,14 @@ _RE_TRIVIAL_RESOURCE = re.compile(
 
 @register_hook("resource_pointer", priority=90)
 def check_resource_pointer(data: dict, state: SessionState) -> HookResult:
-    """Surface sparse pointers to possibly relevant resources."""
+    """Surface sparse pointers to possibly relevant resources.
+
+    Phase gate: VERBOSE only (disabled at CONDENSED+).
+    """
+    # Phase gate: skip at high context usage
+    if PHASE_GATE_AVAILABLE and not should_run_hook(HookTier.VERBOSE):
+        return HookResult.allow()
+
     prompt = data.get("prompt", "")
     if not prompt or len(prompt) < 15 or _RE_TRIVIAL_RESOURCE.match(prompt):
         return HookResult.allow()
@@ -1149,7 +1177,14 @@ Each agent explores independently → synthesize into unified answer."""
 
 @register_hook("work_patterns", priority=91)
 def check_work_patterns(data: dict, state: SessionState) -> HookResult:
-    """Inject work behavior patterns - assumptions, rollback, confidence, integration."""
+    """Inject work behavior patterns - assumptions, rollback, confidence, integration.
+
+    Phase gate: OPTIONAL (disabled at CONDENSED+).
+    """
+    # Phase gate: skip at high context usage
+    if PHASE_GATE_AVAILABLE and not should_run_hook(HookTier.OPTIONAL):
+        return HookResult.allow()
+
     prompt = data.get("prompt", "")
     if not prompt or len(prompt) < 40:
         return HookResult.allow()
@@ -1185,7 +1220,14 @@ def check_work_patterns(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("quality_signals", priority=93)
 def check_quality_signals(data: dict, state: SessionState) -> HookResult:
-    """Inject quality signals - pattern smells, context decay."""
+    """Inject quality signals - pattern smells, context decay.
+
+    Phase gate: OPTIONAL (disabled at CONDENSED+).
+    """
+    # Phase gate: skip at high context usage
+    if PHASE_GATE_AVAILABLE and not should_run_hook(HookTier.OPTIONAL):
+        return HookResult.allow()
+
     prompt = data.get("prompt", "")
     parts = []
 

@@ -21,9 +21,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# Phase-aware loading (v3.16 - token budget optimization)
+try:
+    from phase_gate import get_current_phase, is_critical
+
+    PHASE_GATE_AVAILABLE = True
+except ImportError:
+    PHASE_GATE_AVAILABLE = False
+    get_current_phase = lambda: 1  # noqa: E731
+    is_critical = lambda: False  # noqa: E731
+
 # Paths
 CAPABILITIES_DIR = Path.home() / ".claude" / "capabilities"
 INDEX_PATH = CAPABILITIES_DIR / "capabilities_index.json"
+
+# Lazy-loading cache
+_capabilities_cache: dict[str, Any] | None = None
+_capabilities_mtime: float = 0.0
 
 # GPT routing system prompt
 ROUTING_SYSTEM_PROMPT = """You are a capability router for a Claude Code framework.
@@ -102,13 +116,63 @@ class ToolchainRecommendation:
         return len(self.steps) > 0 and self.error is None
 
 
-def load_capabilities_index() -> dict[str, Any]:
-    """Load the capabilities index JSON."""
+def load_capabilities_index(force_reload: bool = False) -> dict[str, Any]:
+    """Load the capabilities index JSON with caching and phase awareness.
+
+    Phase behavior:
+    - CRITICAL (>85%): Return minimal fallback, skip file I/O entirely
+    - SIGNALS (70-85%): Return cached if available, no refresh
+    - CONDENSED/VERBOSE: Normal caching with mtime invalidation
+
+    Args:
+        force_reload: Bypass cache and reload from disk
+
+    Returns:
+        Capabilities index dict, or minimal fallback at high context usage
+    """
+    global _capabilities_cache, _capabilities_mtime
+
+    # At CRITICAL phase, skip file I/O entirely - return fallback
+    if PHASE_GATE_AVAILABLE and is_critical():
+        if _capabilities_cache is not None:
+            return _capabilities_cache
+        return {"capabilities": [], "inventory_version": "critical_phase_fallback"}
+
     if not INDEX_PATH.exists():
         return {"capabilities": [], "inventory_version": "missing"}
 
+    # Check mtime for cache invalidation
+    try:
+        current_mtime = INDEX_PATH.stat().st_mtime
+    except OSError:
+        current_mtime = 0.0
+
+    # Return cached if valid and not forcing reload
+    if (
+        not force_reload
+        and _capabilities_cache is not None
+        and current_mtime == _capabilities_mtime
+    ):
+        return _capabilities_cache
+
+    # At SIGNALS phase, prefer stale cache over new read
+    if PHASE_GATE_AVAILABLE and get_current_phase() >= 3:
+        if _capabilities_cache is not None:
+            return _capabilities_cache
+
+    # Load and cache
     with open(INDEX_PATH) as f:
-        return json.load(f)
+        _capabilities_cache = json.load(f)
+        _capabilities_mtime = current_mtime
+
+    return _capabilities_cache
+
+
+def clear_capabilities_cache() -> None:
+    """Clear the capabilities index cache (for testing/reset)."""
+    global _capabilities_cache, _capabilities_mtime
+    _capabilities_cache = None
+    _capabilities_mtime = 0.0
 
 
 def build_compact_index(index: dict[str, Any], max_capabilities: int = 100) -> str:
