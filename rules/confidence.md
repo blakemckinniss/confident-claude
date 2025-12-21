@@ -381,6 +381,35 @@ Turn 10: Tests pass again → +2 more
 
 **Key insight**: You can't "undo" the mistake, but demonstrating you learned from it earns partial trust back.
 
+**Perpetual momentum reducer (v4.24) - enforces forward motion:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `deadend_response` | -8 | Response ends without forward motion | 2 turns |
+
+**Deadend patterns (trigger penalty if no momentum pattern present):**
+- `that's all for now`, `we're done/finished/complete`
+- `let me know if you need`, `hope this helps`
+- `feel free to ask/reach out`, `don't hesitate to`
+
+**Passive patterns (also trigger penalty):**
+- `you could/might/may consider/try` (user-actionable, not Claude-owned)
+- `you should/can also consider/look at/check`
+- `it might/could be worth`
+
+**Momentum exemptions (prevent penalty):**
+- `I can/will/could now...`, `Let me...`, `I'll proceed...`
+- `Shall/Should I...?`, `Want me to...?`
+- `## Next Steps` section with actionable items
+
+**Min length:** 100 chars (avoids FP on short responses)
+
+**Skin in the Game (v4.24):** Claude's success = User's success. Framework treats user outcomes as intrinsic rewards:
+- User frustration → confidence penalty (detected via correction patterns)
+- User success → confidence boost (detected via approval patterns)
+- Abandoned sessions → implicit failure signal
+- Continued engagement → implicit success signal
+
 ## Increasers (Automatic Rewards)
 
 **Due diligence rewards balance natural decay:**
@@ -414,6 +443,19 @@ Turn 10: Tests pass again → +2 more
 | `dead_code_removal` | +3 | Removing unused code/imports |
 | `scoped_change` | +2 | Changes stayed within requested scope |
 | `external_validation` | +5 | Using `mcp__pal__*` tools for validation |
+
+**Perpetual momentum increaser (v4.24):**
+
+| Increaser | Delta | Trigger | Cooldown |
+|-----------|-------|---------|----------|
+| `momentum_forward` | +2 | Response includes Claude-owned next steps | 1 turn |
+
+**Momentum patterns (trigger reward):**
+- `I can/will/could now...`, `Let me...`, `I'll proceed/continue/start...`
+- `Shall/Should I...?`, `Want me to...?`, `Next I'll...`
+- `## Next Steps` section with actionable items
+
+**Min length:** 50 chars (avoids noise on short responses)
 
 **Workflow signals (v4.5):**
 
