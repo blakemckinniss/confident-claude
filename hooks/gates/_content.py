@@ -241,7 +241,9 @@ def check_gap_detector(data: dict, state: SessionState) -> HookResult:
         file_exists = path_obj.exists()
         if file_exists:
             file_seen = (
-                was_file_read(state, file_path) or file_path in state.files_edited
+                was_file_read(state, file_path)
+                or file_path in state.files_edited
+                or file_path in getattr(state, "files_created", [])
             )
             if not file_seen:
                 filename = path_obj.name

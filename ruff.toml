@@ -1,0 +1,9 @@
+# Ruff configuration for .claude framework
+# Line length is noise - hook messages are naturally long
+
+[lint]
+ignore = ["E501"]  # Line too long - never enforced, clutters output
+
+[lint.per-file-ignores]
+"hooks/*" = ["E501"]
+"hooks/**/*" = ["E501"]
