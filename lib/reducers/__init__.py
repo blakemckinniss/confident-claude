@@ -143,6 +143,7 @@ from ._skills import (
     CommitWithoutSkillReducer,
     FrameworkEditWithoutAuditReducer,
     VerificationWithoutSkillReducer,
+    ContinuationIdWasteReducer,
     CodeExplorationWithoutSerenaReducer,
 )
 
@@ -247,6 +248,8 @@ REDUCERS: list[ConfidenceReducer] = [
     FrameworkEditWithoutAuditReducer(),
     VerificationWithoutSkillReducer(),
     CodeExplorationWithoutSerenaReducer(),
+    # PAL continuation enforcement (v4.28) - persistent second brain
+    ContinuationIdWasteReducer(),
 ]
 
 
@@ -348,5 +351,6 @@ __all__ = [
     "CommitWithoutSkillReducer",
     "FrameworkEditWithoutAuditReducer",
     "VerificationWithoutSkillReducer",
+    "ContinuationIdWasteReducer",
     "CodeExplorationWithoutSerenaReducer",
 ]

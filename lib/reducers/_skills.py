@@ -234,6 +234,53 @@ class VerificationWithoutSkillReducer(ConfidenceReducer):
 
 
 @dataclass
+class ContinuationIdWasteReducer(ConfidenceReducer):
+    """Triggers when calling PAL tools without reusing available continuation_id.
+
+    Pattern: PAL tool called when continuation_id exists for that tool type
+    Solution: Pass continuation_id parameter to preserve reasoning context
+
+    The continuation_id:
+    - Gives external LLM memory of prior analysis (FREE context)
+    - Survives compaction and session boundaries
+    - Avoids re-explaining problems each call
+    - Makes external LLM increasingly effective over session
+    """
+
+    name: str = "continuation_id_waste"
+    delta: int = -5
+    description: str = "PAL called without continuation_id - context wasted"
+    remedy: str = "Pass continuation_id from previous PAL response"
+    cooldown_turns: int = 3  # Low cooldown - this is important
+    impact_category: str = IMPACT_BEHAVIORAL
+
+    # PAL tools that support continuation_id
+    PAL_TOOLS = {
+        "mcp__pal__thinkdeep",
+        "mcp__pal__debug",
+        "mcp__pal__analyze",
+        "mcp__pal__codereview",
+        "mcp__pal__planner",
+        "mcp__pal__consensus",
+        "mcp__pal__precommit",
+        "mcp__pal__chat",
+    }
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Check if PAL tool was called without continuation_id when one exists
+        pal_called_without_continuation = context.get(
+            "pal_called_without_continuation", False
+        )
+
+        return pal_called_without_continuation
+
+
+@dataclass
 class CodeExplorationWithoutSerenaReducer(ConfidenceReducer):
     """Triggers when exploring code without Serena activation.
 
@@ -278,5 +325,6 @@ __all__ = [
     "CommitWithoutSkillReducer",
     "FrameworkEditWithoutAuditReducer",
     "VerificationWithoutSkillReducer",
+    "ContinuationIdWasteReducer",
     "CodeExplorationWithoutSerenaReducer",
 ]

@@ -119,7 +119,11 @@ class SessionState:
     last_user_prompt: str = ""  # Most recent user prompt (for contradiction detection)
 
     # [T1] PAL continuation pointer - second brain state (v3.16)
-    pal_continuation_id: str = ""  # Reuse across PAL calls for persistent context
+    # [T1] PAL continuation tracking (v4.28) - per-tool persistent context
+    # Format: {"debug": "abc123", "analyze": "def456", ...}
+    pal_continuations: dict = field(default_factory=dict)
+    pal_continuation_id: str = ""  # Legacy - single ID for backwards compat
+    last_pal_tool: str = ""  # Most recent PAL tool used (for waste detection)
 
     # [T3] Meta-cognition: Sunk Cost Detector (v3.1) - debug state, discard on revival
     approach_history: list = field(

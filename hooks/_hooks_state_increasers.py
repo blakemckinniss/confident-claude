@@ -104,10 +104,12 @@ _TEST_COMMANDS = ("pytest", "jest", "npm test", "cargo test", "go test")
 def _build_pal_signals(
     tool_name: str, tool_input: dict, state: SessionState, context: dict
 ) -> None:
-    """Build context for PAL maximization signals (v4.19).
+    """Build context for PAL maximization signals (v4.19, updated v4.28).
 
     Tracks PAL usage to reward offloading reasoning to external LLMs.
     PAL provides 'free' auxiliary context - using it preserves Claude's context.
+
+    v4.28: Tracks continuation_ids per tool type for waste detection.
     """
     # Initialize PAL tracking in session state if needed
     if not hasattr(state, "pal_tracking"):
@@ -117,6 +119,10 @@ def _build_pal_signals(
             "debug_attempts_since_pal": 0,
         }
 
+    # Initialize per-tool continuation tracking (v4.28)
+    if not hasattr(state, "pal_continuations") or state.pal_continuations is None:
+        state.pal_continuations = {}
+
     pal_tracking = state.pal_tracking
 
     # Track PAL tool usage
@@ -124,15 +130,29 @@ def _build_pal_signals(
         context["pal_used_this_turn"] = True
         pal_tracking["calls_this_turn"] = pal_tracking.get("calls_this_turn", 0) + 1
 
+        # Extract tool type (e.g., "debug" from "mcp__pal__debug")
+        tool_type = tool_name.replace("mcp__pal__", "")
+        state.last_pal_tool = tool_type
+
         # Track mcp__pal__debug specifically
         if tool_name == "mcp__pal__debug":
             pal_tracking["last_debug_turn"] = state.turn_count
             pal_tracking["debug_attempts_since_pal"] = 0  # Reset on PAL debug
 
-        # Check for continuation_id reuse
+        # Check for continuation_id usage (v4.28)
         continuation_id = tool_input.get("continuation_id", "")
+        existing_id = state.pal_continuations.get(tool_type, "")
+
         if continuation_id:
+            # Reusing continuation_id - good behavior
             context["continuation_reuse"] = True
+            # Update tracked ID (might be same or new)
+            state.pal_continuations[tool_type] = continuation_id
+        elif existing_id:
+            # PAL called without continuation_id when one exists - WASTE
+            context["pal_called_without_continuation"] = True
+            context["wasted_continuation_tool"] = tool_type
+            context["wasted_continuation_id"] = existing_id
 
     # Expose PAL call count for ParallelPalIncreaser
     context["pal_calls_this_turn"] = pal_tracking.get("calls_this_turn", 0)
@@ -154,6 +174,52 @@ def _build_pal_signals(
     context["debug_attempts_without_pal"] = pal_tracking.get(
         "debug_attempts_since_pal", 0
     )
+
+
+def _capture_pal_continuation_from_response(
+    tool_name: str, data: dict, state: SessionState
+) -> None:
+    """Capture continuation_id from PAL tool response (v4.28).
+
+    PAL tools return continuation_id in their response. We capture and store
+    these per tool type so we can detect waste when the next call doesn't reuse it.
+    """
+    if not tool_name.startswith("mcp__pal__"):
+        return
+
+    # Initialize storage if needed
+    if not hasattr(state, "pal_continuations") or state.pal_continuations is None:
+        state.pal_continuations = {}
+
+    tool_response = data.get("tool_response", {})
+    if not isinstance(tool_response, dict):
+        # Try parsing as string (some MCP responses are JSON strings)
+        if isinstance(tool_response, str):
+            try:
+                import json
+
+                tool_response = json.loads(tool_response)
+            except (json.JSONDecodeError, TypeError):
+                return
+        else:
+            return
+
+    # Extract continuation_id from response
+    continuation_id = tool_response.get("continuation_id", "")
+    if not continuation_id:
+        # Check nested content structure
+        content = tool_response.get("content", [])
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and "continuation_id" in item:
+                    continuation_id = item.get("continuation_id", "")
+                    break
+
+    if continuation_id:
+        tool_type = tool_name.replace("mcp__pal__", "")
+        state.pal_continuations[tool_type] = continuation_id
+        # Also set legacy field for backwards compat
+        state.pal_continuation_id = continuation_id
 
 
 # =============================================================================
@@ -401,26 +467,57 @@ def _update_ralph_completion_confidence(
 # =============================================================================
 
 # Library patterns that suggest /docs skill should be used
-_LIBRARY_DOC_PATTERNS = frozenset({
-    "react", "nextjs", "next.js", "tailwind", "typescript", "python",
-    "fastapi", "django", "express", "prisma", "supabase", "vercel",
-    "vite", "playwright", "jest", "pytest", "ruff", "numpy", "pandas",
-})
+_LIBRARY_DOC_PATTERNS = frozenset(
+    {
+        "react",
+        "nextjs",
+        "next.js",
+        "tailwind",
+        "typescript",
+        "python",
+        "fastapi",
+        "django",
+        "express",
+        "prisma",
+        "supabase",
+        "vercel",
+        "vite",
+        "playwright",
+        "jest",
+        "pytest",
+        "ruff",
+        "numpy",
+        "pandas",
+    }
+)
 
 # Framework paths that require audit/void
-_FRAMEWORK_PATHS = frozenset({
-    ".claude/ops/", ".claude/hooks/", ".claude/lib/", ".claude/rules/",
-})
+_FRAMEWORK_PATHS = frozenset(
+    {
+        ".claude/ops/",
+        ".claude/hooks/",
+        ".claude/lib/",
+        ".claude/rules/",
+    }
+)
 
 # Code file extensions for Serena tracking
-_CODE_EXTENSIONS = frozenset({
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".rb",
-})
+_CODE_EXTENSIONS = frozenset(
+    {
+        ".py",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+    }
+)
 
 
-def _track_skill_usage(
-    tool_name: str, tool_input: dict, state: SessionState
-) -> None:
+def _track_skill_usage(tool_name: str, tool_input: dict, state: SessionState) -> None:
     """Track skill usage patterns for skill enforcement reducers (v4.27).
 
     Updates state fields that trigger reducers when skills should be used:
@@ -483,7 +580,8 @@ def _track_skill_usage(
         # Check if researching library docs
         for lib in _LIBRARY_DOC_PATTERNS:
             if lib in query_lower and any(
-                kw in query_lower for kw in ("docs", "documentation", "api", "reference", "guide")
+                kw in query_lower
+                for kw in ("docs", "documentation", "api", "reference", "guide")
             ):
                 state.research_for_library_docs = True
                 break
@@ -739,6 +837,9 @@ def check_confidence_increaser(
 
     # PAL tracking (v4.19) - track PAL usage for maximization signals
     _build_pal_signals(tool_name, tool_input, state, context)
+
+    # Capture continuation_ids from PAL responses (v4.28)
+    _capture_pal_continuation_from_response(tool_name, data, state)
 
     # Agent delegation tracking (v4.26) - track for token economy enforcement
     _track_agent_delegation(tool_name, tool_input, state)

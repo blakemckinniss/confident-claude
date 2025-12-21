@@ -491,6 +491,48 @@ _THINKING_SUGGESTIONS: List[Tuple[re.Pattern, Suggestion]] = [
             hint="Skill(skill='verify', args='command_success \"<test>\"') proves the fix",
         ),
     ),
+    # ==========================================================================
+    # PAL CONTINUATION_ID AWARENESS (v4.28)
+    # ==========================================================================
+    # About to use PAL tools → remind about continuation_id
+    (
+        re.compile(
+            r"(use|call|try|invoke).{0,15}(pal|mcp__pal|thinkdeep|debug|analyze|codereview)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🔥",
+            title="PAL Continuation ID",
+            tools=["mcp__pal__debug", "mcp__pal__thinkdeep", "mcp__pal__analyze"],
+            hint="Pass continuation_id from previous PAL response to preserve context!",
+        ),
+    ),
+    # Continuing previous analysis → continuation_id critical
+    (
+        re.compile(
+            r"(continue|continuing|resume|pick up|follow up).{0,20}(analysis|debug|review|investigation)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🔥",
+            title="Reuse PAL continuation_id",
+            tools=["mcp__pal__debug", "mcp__pal__thinkdeep"],
+            hint="continuation_id preserves external LLM's memory - reuse it!",
+        ),
+    ),
+    # External LLM mention → reminder
+    (
+        re.compile(
+            r"(external|second).{0,10}(LLM|model|brain|opinion)",
+            re.I,
+        ),
+        Suggestion(
+            emoji="🔥",
+            title="PAL with continuation_id",
+            tools=["mcp__pal__chat", "mcp__pal__debug"],
+            hint="Always pass continuation_id to preserve reasoning context across calls",
+        ),
+    ),
 ]
 
 # =============================================================================

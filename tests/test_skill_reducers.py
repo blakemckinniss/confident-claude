@@ -160,6 +160,46 @@ class TestFrameworkEditWithoutAuditReducer:
         assert result is False
 
 
+class TestContinuationIdWasteReducer:
+    """Test ContinuationIdWasteReducer."""
+
+    def test_triggers_when_pal_called_without_continuation(self):
+        from reducers._skills import ContinuationIdWasteReducer
+
+        reducer = ContinuationIdWasteReducer()
+        state = MockSessionState(turn_count=20)
+
+        # Context indicating PAL was called without reusing available continuation_id
+        context = {"pal_called_without_continuation": True}
+
+        result = reducer.should_trigger(context, state, 0)
+        assert result is True
+
+    def test_no_trigger_when_continuation_reused(self):
+        from reducers._skills import ContinuationIdWasteReducer
+
+        reducer = ContinuationIdWasteReducer()
+        state = MockSessionState(turn_count=20)
+
+        # Context showing continuation was properly reused
+        context = {"pal_called_without_continuation": False}
+
+        result = reducer.should_trigger(context, state, 0)
+        assert result is False
+
+    def test_respects_cooldown(self):
+        from reducers._skills import ContinuationIdWasteReducer
+
+        reducer = ContinuationIdWasteReducer()
+        state = MockSessionState(turn_count=20)
+
+        context = {"pal_called_without_continuation": True}
+
+        # Just triggered on turn 19, cooldown is 3
+        result = reducer.should_trigger(context, state, 19)
+        assert result is False
+
+
 class TestCodeExplorationWithoutSerenaReducer:
     """Test CodeExplorationWithoutSerenaReducer."""
 
