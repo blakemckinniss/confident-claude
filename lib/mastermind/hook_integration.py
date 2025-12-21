@@ -63,17 +63,18 @@ PAL_MODELS_SUMMARY = """| Model | Score | Context | Best For |
 
 
 # Tool descriptions for the suggestion template
+# NOTE: thinkdeep uses `step` param, NOT `prompt` - common mistake!
 PAL_TOOL_DESCRIPTIONS = {
-    "debug": "mcp__pal__debug - Deep debugging analysis, root cause investigation",
-    "planner": "mcp__pal__planner - Strategic planning for multi-step implementations",
-    "codereview": "mcp__pal__codereview - Code quality, security, and architecture review",
-    "consensus": "mcp__pal__consensus - Multi-model consultation for architecture decisions",
-    "apilookup": "mcp__pal__apilookup - API documentation and library usage research",
-    "precommit": "mcp__pal__precommit - Pre-commit validation and change verification",
-    "chat": "mcp__pal__chat - General discussion and brainstorming",
-    "thinkdeep": "mcp__pal__thinkdeep - Complex problem decomposition",
-    "clink": "mcp__pal__clink - Spawn isolated CLI subagent (Gemini 1M context) for heavy analysis",
-    "clink_codex": "mcp__pal__clink(cli_name='codex') - Codex CLI for code generation with GPT-5.1-codex-max",
+    "debug": "mcp__pal__debug - Deep debugging analysis, root cause investigation. Uses `step` param (not `prompt`).",
+    "planner": "mcp__pal__planner - Strategic planning for multi-step implementations. Uses `step` param (not `prompt`).",
+    "codereview": "mcp__pal__codereview - Code quality, security, and architecture review. Uses `step` param (not `prompt`).",
+    "consensus": "mcp__pal__consensus - Multi-model consultation for architecture decisions. Uses `step` param (not `prompt`).",
+    "apilookup": "mcp__pal__apilookup - API documentation lookup. Uses `prompt` param.",
+    "precommit": "mcp__pal__precommit - Pre-commit validation. Uses `step` param (not `prompt`).",
+    "chat": "mcp__pal__chat - General discussion and brainstorming. Uses `prompt` param.",
+    "thinkdeep": "mcp__pal__thinkdeep - Complex problem decomposition. ⚠️ Uses `step` param, NOT `prompt`!",
+    "clink": "mcp__pal__clink - Spawn isolated CLI subagent (Gemini 1M context). Uses `prompt` param.",
+    "clink_codex": "mcp__pal__clink(cli_name='codex') - Codex CLI for code generation. Uses `prompt` param.",
 }
 
 # Alternatives mapping for each tool type

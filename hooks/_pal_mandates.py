@@ -73,6 +73,71 @@ P_MEDIUM = 60  # Recommended before major actions
 P_LOW = 40  # Suggested but optional
 P_PROACTIVE = 50  # Proactive consultation (new tier)
 
+# =============================================================================
+# PAL TOOL PARAMETER MAPPING (Bulletproof persistence)
+# =============================================================================
+# Tools use EITHER `step` OR `prompt` - NEVER both. Using wrong param = validation error.
+# This mapping ensures Claude always uses the correct parameter.
+
+PAL_STEP_TOOLS = frozenset(
+    {
+        "thinkdeep",
+        "debug",
+        "planner",
+        "codereview",
+        "consensus",
+        "precommit",
+        "analyze",
+    }
+)
+PAL_PROMPT_TOOLS = frozenset(
+    {
+        "chat",
+        "apilookup",
+        "challenge",
+        "clink",
+    }
+)
+
+
+def get_param_guard(tool_name: str) -> str:
+    """Generate parameter guard text for a PAL tool.
+
+    Ensures Claude uses the correct parameter and retries on validation error.
+    """
+    short_name = tool_name.replace("mcp__pal__", "")
+
+    if short_name in PAL_STEP_TOOLS:
+        return (
+            f"\n\n**PARAMETER GUARD** ⚠️\n"
+            f"- `{tool_name}` uses `step` parameter ONLY\n"
+            f"- Required: `step`, `step_number=1`, `total_steps=1`, "
+            f"`next_step_required=false`, `findings`, `model`\n"
+            f"- There is NO `prompt` parameter\n"
+            f"- If validation error: retry with `step` param - DO NOT ABANDON"
+        )
+    elif short_name in PAL_PROMPT_TOOLS:
+        return (
+            f"\n\n**PARAMETER GUARD** ⚠️\n"
+            f"- `{tool_name}` uses `prompt` parameter\n"
+            f"- Required: `prompt`, `model`, `working_directory_absolute_path`\n"
+            f"- There is NO `step` parameter\n"
+            f"- If validation error: retry with `prompt` param - DO NOT ABANDON"
+        )
+    return ""
+
+
+# Fallback chain for validation errors (progressively more permissive)
+PAL_FALLBACK_CHAIN = ["thinkdeep", "debug", "chat"]
+PAL_FALLBACK_GUIDANCE = """
+**ON VALIDATION ERROR - NEVER ABANDON:**
+1. Parse error message for parameter mismatch
+2. If "prompt was unexpected" → use `step` instead
+3. If "step was unexpected" → use `prompt` instead
+4. After 2 failed retries → escalate to `mcp__pal__chat` (most permissive)
+5. NEVER switch to non-PAL alternatives without user confirmation
+"""
+
 
 def _critical_mandates(
     confidence: int, cascade_failure: bool, sunk_cost: bool
@@ -86,7 +151,10 @@ def _critical_mandates(
                 tool="mcp__pal__thinkdeep",
                 directive=f"🚨 **MANDATORY**: Confidence below 50% ({confidence}%). "
                 "You MUST use `mcp__pal__thinkdeep` to analyze the situation "
-                "before ANY action. Do NOT proceed without external consultation.",
+                "before ANY action. Do NOT proceed without external consultation.\n\n"
+                "**Required parameters**: `step` (your investigation), `step_number=1`, "
+                "`total_steps=1`, `next_step_required=false`, `findings`, `model`.\n"
+                "⚠️ There is NO `prompt` parameter - put your analysis request in `step`.",
                 priority=P_CRITICAL,
                 reason=f"Low confidence: {confidence}%",
             )
@@ -97,7 +165,10 @@ def _critical_mandates(
                 tool="mcp__pal__thinkdeep",
                 directive="🚨 **MANDATORY**: Cascade failure detected - same block 3+ times. "
                 "You MUST use `mcp__pal__thinkdeep` to break the deadlock. "
-                "Current approach is failing repeatedly.",
+                "Current approach is failing repeatedly.\n\n"
+                "**Required parameters**: `step` (your investigation), `step_number=1`, "
+                "`total_steps=1`, `next_step_required=false`, `findings`, `model`.\n"
+                "⚠️ There is NO `prompt` parameter - put your analysis request in `step`.",
                 priority=P_CRITICAL,
                 reason="Cascade failure deadlock",
             )
@@ -108,7 +179,10 @@ def _critical_mandates(
                 tool="mcp__pal__thinkdeep",
                 directive="🚨 **MANDATORY**: Sunk cost detected - 3+ failures on same approach. "
                 "You MUST use `mcp__pal__thinkdeep` to reconsider strategy. "
-                "Stop trying the same thing.",
+                "Stop trying the same thing.\n\n"
+                "**Required parameters**: `step` (your investigation), `step_number=1`, "
+                "`total_steps=1`, `next_step_required=false`, `findings`, `model`.\n"
+                "⚠️ There is NO `prompt` parameter - put your analysis request in `step`.",
                 priority=P_CRITICAL,
                 reason="Sunk cost fallacy",
             )
@@ -128,7 +202,10 @@ def _high_mandates(
                 tool="mcp__pal__thinkdeep",
                 directive=f"⚠️ **REQUIRED**: Confidence is moderate ({confidence}%). "
                 "Use `mcp__pal__thinkdeep` before making significant changes. "
-                "External validation improves outcomes.",
+                "External validation improves outcomes.\n\n"
+                "**Required parameters**: `step` (your investigation), `step_number=1`, "
+                "`total_steps=1`, `next_step_required=false`, `findings`, `model`.\n"
+                "⚠️ There is NO `prompt` parameter - put your analysis request in `step`.",
                 priority=P_HIGH,
                 reason=f"Moderate confidence: {confidence}%",
             )
@@ -139,7 +216,8 @@ def _high_mandates(
                 tool="mcp__pal__codereview",
                 directive="⚠️ **REQUIRED**: Edit oscillation detected - thrashing on same file. "
                 "Use `mcp__pal__codereview` to get fresh perspective. "
-                "Stop editing until you understand the problem.",
+                "Stop editing until you understand the problem."
+                + get_param_guard("mcp__pal__codereview"),
                 priority=P_HIGH,
                 reason="Edit oscillation",
             )
@@ -150,7 +228,7 @@ def _high_mandates(
                 tool="mcp__pal__planner",
                 directive="⚠️ **REQUIRED**: Goal drift detected - straying from original task. "
                 "Use `mcp__pal__planner` to realign with the goal. "
-                "Refocus before continuing.",
+                "Refocus before continuing." + get_param_guard("mcp__pal__planner"),
                 priority=P_HIGH,
                 reason="Goal drift",
             )
@@ -162,7 +240,8 @@ def _high_mandates(
                 tool="mcp__pal__debug",
                 directive=f"⚠️ **REQUIRED**: {consecutive_failures} consecutive failures detected. "
                 "Use `mcp__pal__debug` to analyze what's going wrong. "
-                "Stop and diagnose before retrying.",
+                "Stop and diagnose before retrying."
+                + get_param_guard("mcp__pal__debug"),
                 priority=P_HIGH,
                 reason=f"{consecutive_failures} consecutive failures",
             )
@@ -359,6 +438,7 @@ def check_keyword_mandate(prompt: str, confidence: int) -> Optional[Mandate]:
                 "🏗️ **USE PAL**: Architecture/migration task detected. "
                 "Use `mcp__pal__consensus` for multi-model perspective. "
                 "Major changes REQUIRE external validation."
+                + get_param_guard("mcp__pal__consensus")
             ),
             priority=P_HIGH,
             reason="Architecture keywords",
@@ -372,6 +452,7 @@ def check_keyword_mandate(prompt: str, confidence: int) -> Optional[Mandate]:
                 "⚖️ **USE PAL**: Decision-making detected. "
                 "Use `mcp__pal__consensus` for balanced multi-model analysis. "
                 "Decisions benefit from diverse perspectives."
+                + get_param_guard("mcp__pal__consensus")
             ),
             priority=P_MEDIUM,
             reason="Decision keywords",
@@ -385,6 +466,7 @@ def check_keyword_mandate(prompt: str, confidence: int) -> Optional[Mandate]:
                 "🔧 **USE PAL**: Debug/fix task detected. "
                 "Use `mcp__pal__debug` for systematic root cause analysis. "
                 "External debugging perspective catches blind spots."
+                + get_param_guard("mcp__pal__debug")
             ),
             priority=P_MEDIUM,
             reason="Debug keywords",
@@ -397,7 +479,10 @@ def check_keyword_mandate(prompt: str, confidence: int) -> Optional[Mandate]:
             directive=(
                 "🤔 **USE PAL**: Uncertainty detected in request. "
                 "Use `mcp__pal__thinkdeep` to clarify the approach. "
-                "When uncertain, external analysis helps."
+                "When uncertain, external analysis helps.\n\n"
+                "**Required parameters**: `step` (your investigation), `step_number=1`, "
+                "`total_steps=1`, `next_step_required=false`, `findings`, `model`.\n"
+                "⚠️ There is NO `prompt` parameter - put your analysis request in `step`."
             ),
             priority=P_MEDIUM,
             reason="Uncertainty keywords",
