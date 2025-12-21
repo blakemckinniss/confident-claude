@@ -404,3 +404,83 @@ def get_threshold_effectiveness(session_id: str) -> dict[str, Any]:
         }
 
     return effectiveness
+
+
+# PAL Continuation Telemetry (v4.28.1)
+
+
+def log_pal_continuation_event(
+    session_id: str,
+    turn: int,
+    tool_type: str,
+    event: str,  # "captured", "reused", "wasted"
+    continuation_id: str = "",
+    available_id: str = "",
+) -> None:
+    """Log PAL continuation_id lifecycle events.
+
+    Events:
+        - captured: New continuation_id received from PAL response
+        - reused: Existing continuation_id passed to PAL call (good!)
+        - wasted: PAL called without continuation_id when one existed (bad!)
+
+    Args:
+        tool_type: PAL tool type (e.g., "debug", "planner")
+        event: Event type (captured, reused, wasted)
+        continuation_id: The continuation_id involved
+        available_id: For 'wasted' events, the ID that should have been used
+    """
+    log_event(
+        "pal_continuation",
+        session_id,
+        turn,
+        {
+            "tool_type": tool_type,
+            "event": event,
+            "continuation_id": continuation_id[:16] if continuation_id else "",
+            "available_id": available_id[:16] if available_id else "",
+        },
+    )
+
+
+def get_continuation_reuse_stats(session_id: str) -> dict[str, Any]:
+    """Get continuation_id reuse statistics for a session.
+
+    Returns:
+        Dict with reuse_rate, waste_count, capture_count, by_tool breakdown
+    """
+    events = read_session_telemetry(session_id)
+    cont_events = [e for e in events if e.event_type == "pal_continuation"]
+
+    if not cont_events:
+        return {"session_id": session_id, "total_events": 0}
+
+    by_event = {"captured": 0, "reused": 0, "wasted": 0}
+    by_tool: dict[str, dict[str, int]] = {}
+
+    for e in cont_events:
+        event_type = e.data.get("event", "unknown")
+        tool_type = e.data.get("tool_type", "unknown")
+
+        by_event[event_type] = by_event.get(event_type, 0) + 1
+
+        if tool_type not in by_tool:
+            by_tool[tool_type] = {"captured": 0, "reused": 0, "wasted": 0}
+        by_tool[tool_type][event_type] = by_tool[tool_type].get(event_type, 0) + 1
+
+    total_calls = by_event["reused"] + by_event["wasted"]
+    reuse_rate = by_event["reused"] / total_calls * 100 if total_calls > 0 else 0
+
+    return {
+        "session_id": session_id,
+        "total_events": len(cont_events),
+        "by_event": by_event,
+        "by_tool": by_tool,
+        "reuse_rate_pct": round(reuse_rate, 1),
+        "waste_count": by_event["wasted"],
+        "efficiency_grade": "A"
+        if reuse_rate >= 80
+        else "B"
+        if reuse_rate >= 50
+        else "C",
+    }

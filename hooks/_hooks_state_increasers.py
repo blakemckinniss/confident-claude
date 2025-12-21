@@ -23,6 +23,17 @@ from confidence import (
 from _hooks_state import _extract_result_string
 from _hooks_state_decay import _track_researched_libraries
 
+# PAL continuation telemetry (v4.28.1)
+try:
+    from mastermind.telemetry import log_pal_continuation_event
+
+    _TELEMETRY_AVAILABLE = True
+except ImportError:
+    _TELEMETRY_AVAILABLE = False
+
+    def log_pal_continuation_event(*args, **kwargs):
+        pass
+
 
 # =============================================================================
 # CONSTANTS
@@ -148,11 +159,27 @@ def _build_pal_signals(
             context["continuation_reuse"] = True
             # Update tracked ID (might be same or new)
             state.pal_continuations[tool_type] = continuation_id
+            # Log telemetry (v4.28.1)
+            log_pal_continuation_event(
+                state.session_id,
+                state.turn_count,
+                tool_type,
+                "reused",
+                continuation_id=continuation_id,
+            )
         elif existing_id:
             # PAL called without continuation_id when one exists - WASTE
             context["pal_called_without_continuation"] = True
             context["wasted_continuation_tool"] = tool_type
             context["wasted_continuation_id"] = existing_id
+            # Log telemetry (v4.28.1)
+            log_pal_continuation_event(
+                state.session_id,
+                state.turn_count,
+                tool_type,
+                "wasted",
+                available_id=existing_id,
+            )
 
     # Expose PAL call count for ParallelPalIncreaser
     context["pal_calls_this_turn"] = pal_tracking.get("calls_this_turn", 0)
@@ -220,6 +247,14 @@ def _capture_pal_continuation_from_response(
         state.pal_continuations[tool_type] = continuation_id
         # Also set legacy field for backwards compat
         state.pal_continuation_id = continuation_id
+        # Log telemetry (v4.28.1)
+        log_pal_continuation_event(
+            state.session_id,
+            state.turn_count,
+            tool_type,
+            "captured",
+            continuation_id=continuation_id,
+        )
 
 
 # =============================================================================
