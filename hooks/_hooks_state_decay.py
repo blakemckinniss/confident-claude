@@ -235,23 +235,29 @@ def _calculate_decay_penalty(
     """Calculate penalties for risky actions.
 
     Returns (penalty_value, penalty_reason).
+
+    AGILE v4.25: Also penalizes STAGNATION (not taking action).
     """
+    # AGILE v4.25: Track last productive action and penalize stagnation
+    productive_tools = {"Edit", "Write", "Bash", "MultiEdit"}
+    if tool_name in productive_tools:
+        state._last_productive_turn = state.turn_count
+    else:
+        last_productive = getattr(state, "_last_productive_turn", 0)
+        turns_idle = state.turn_count - last_productive
+        # Penalize stagnation: 5+ turns without productive action
+        if turns_idle >= 5 and turns_idle % 3 == 0:  # Every 3 turns after 5
+            return 3, "stagnation"
+
     if tool_name in ("Edit", "Write"):
         penalty = 0
         reason_parts = []
         file_path = tool_input.get("file_path", "")
 
-        # Base edit penalty with cooldown (max 1 per 3 turns)
-        edit_risk_key = "_edit_risk_last_turn"
-        last_edit_risk = getattr(state, edit_risk_key, 0)
-        if state.turn_count - last_edit_risk >= 3:
-            penalty = 1
-            reason_parts.append("edit-risk")
-            setattr(state, edit_risk_key, state.turn_count)
-
-        # Edit without reading first = extra penalty
+        # AGILE v4.25: Removed edit-risk penalty - action > caution
+        # Only penalize editing without reading (blind edits are still risky)
         if file_path and file_path not in state.files_read:
-            penalty += 2
+            penalty = 2
             reason_parts = ["edit-without-read"]
 
         # Check for stubs in new code
@@ -269,13 +275,8 @@ def _calculate_decay_penalty(
 
         return penalty, "+".join(reason_parts) if reason_parts else ""
 
-    # Bash commands are risky - cooldown prevents constant drain
-    if tool_name == "Bash":
-        bash_risk_key = "_bash_risk_last_turn"
-        last_bash_risk = getattr(state, bash_risk_key, 0)
-        if state.turn_count - last_bash_risk >= 3:
-            setattr(state, bash_risk_key, state.turn_count)
-            return 1, "bash-risk"
+    # AGILE v4.25: Removed bash-risk penalty - action > caution
+    # Taking action should not be penalized. Errors are better than stagnation.
 
     return 0, ""
 

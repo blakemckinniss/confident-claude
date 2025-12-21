@@ -205,17 +205,18 @@ def check_oracle_gate(data: dict, state: SessionState) -> HookResult:
     if min_turns <= 5:
         return HookResult.approve()
 
-    if failures == 2:
+    if failures == 3:
         return HookResult.approve(
-            "⚠️ **ORACLE NUDGE** (2 consecutive failures)\n"
-            'Consider: `think "Why is this failing?"` before attempt #3.'
+            "⚠️ **ORACLE NUDGE** (3 consecutive failures)\n"
+            'Consider: `think "Why is this failing?"` - but keep moving.'
         )
 
-    if failures >= 3:
-        return HookResult.deny(
-            f"**ORACLE GATE BLOCKED** (Three-Strike Rule)\n"
-            f"**{failures} failures** without oracle/think consultation.\n"
-            f'Run `think "Debug: <problem>"` or user says "SUDO CONTINUE".'
+    if failures >= 5:
+        # AGILE: Even at 5 failures, warn don't block - momentum > caution
+        return HookResult.approve(
+            f"⚠️ **ORACLE STRONG NUDGE** ({failures} failures)\n"
+            f"External perspective recommended: `mcp__pal__debug` or `think`.\n"
+            f"But: Loud errors > silent stagnation. Keep moving if you have a theory."
         )
     return HookResult.approve()
 
@@ -336,8 +337,9 @@ def check_error_suppression(data: dict, state: SessionState) -> HookResult:
     latest = recent_errors[-1]
     error_type = latest.get("type", "Unknown")[:60]
 
-    return HookResult.deny(
-        f"**ERROR SUPPRESSION BLOCKED**\n"
-        f"Unresolved: {error_type}\n"
-        f"Fix the error before continuing. Use Bash/Read/Grep to debug."
+    # AGILE: Warn about errors but don't block - loud errors > silent stagnation
+    return HookResult.approve(
+        f"⚠️ **UNRESOLVED ERROR** (not blocking)\n"
+        f"Error: {error_type}\n"
+        f"Fix it or push through - but errors that persist will compound."
     )

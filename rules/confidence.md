@@ -82,6 +82,20 @@ Special detection for **edit_oscillation** risk (zone-scaled, triggers -12 penal
 
 This is the "danger sense" - anticipating threats before they materialize.
 
+### AGILE Momentum (v4.25)
+
+**Philosophy shift:** Move fast. Loud errors > silent stagnation.
+
+| Change | Before | After | Rationale |
+|--------|--------|-------|-----------|
+| `bash-risk` | -1 per bash | **Removed** | Action should not be penalized |
+| `edit-risk` | -1 per edit | **Removed** | Action should not be penalized |
+| `stagnation` | (none) | **-3 every 3 turns** after 5 idle | Penalize NOT acting |
+| Oracle gate | Block at 3 failures | **Warn at 3, warn at 5** | More runway before friction |
+| Error suppression | Block writes | **Warn only** | Errors are fixable; stagnation compounds |
+
+**Core insight:** Technical debt from inaction is 100x worse than a fixable error. Amnesia (not persisting progress) is worse than broken code.
+
 ### Zone-Scaled Loop Detection (v4.13)
 
 Edit oscillation thresholds scale by confidence zone - lower confidence = less tolerance for iteration:
