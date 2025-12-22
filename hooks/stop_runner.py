@@ -700,6 +700,63 @@ def _has_blocker_or_deferral(transcript_path: str) -> tuple[bool, str]:
     return False, ""
 
 
+def _check_mastermind_escape_hatches(state: SessionState) -> tuple[bool, str]:
+    """
+    Check if Groq's escape_hatches abort conditions are satisfied.
+
+    v4.34: Integrates mastermind Phase 1 metadata for smarter abort detection.
+
+    Returns:
+        (should_abort, reason) tuple
+    """
+    escape_hatches = state.get("mastermind_escape_hatches")
+    if not escape_hatches:
+        return False, ""
+
+    abort_conditions = escape_hatches.get("abort_conditions", [])
+    max_attempts = escape_hatches.get("max_attempts", 3)
+
+    # Check each abort condition
+    for condition in abort_conditions:
+        condition_lower = condition.lower()
+
+        # Check for consecutive failures pattern
+        if "consecutive" in condition_lower and "fail" in condition_lower:
+            # Extract number (e.g., "3 consecutive failures")
+            import re
+
+            match = re.search(r"(\d+)\s*consecutive", condition_lower)
+            threshold = int(match.group(1)) if match else 3
+
+            # Check tool failure streak
+            failure_count = state.get("consecutive_tool_failures", 0)
+            if failure_count >= threshold:
+                return True, f"Abort: {condition} (failures: {failure_count})"
+
+        # Check for max attempts pattern
+        if "max" in condition_lower and "attempt" in condition_lower:
+            edit_counts = state.get("edit_counts_v2", {})
+            for file_path, info in edit_counts.items():
+                if isinstance(info, dict) and info.get("count", 0) >= max_attempts:
+                    return (
+                        True,
+                        f"Abort: max attempts ({max_attempts}) on {Path(file_path).name}",
+                    )
+
+        # Check for user stop pattern
+        if "user" in condition_lower and "stop" in condition_lower:
+            if state.get("user_requested_stop"):
+                return True, "Abort: User requested stop"
+
+        # Check for timeout pattern (session duration)
+        if "timeout" in condition_lower:
+            session_duration = state.get("session_duration_minutes", 0)
+            if session_duration > 60:  # 1 hour default timeout
+                return True, f"Abort: Session timeout ({session_duration}m)"
+
+    return False, ""
+
+
 def _get_missing_evidence(state: SessionState) -> list[str]:
     """Determine what evidence is still needed for completion."""
     missing = []
@@ -780,6 +837,14 @@ def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
     # Check for explicit blocker or deferral
     transcript_path = data.get("transcript_path", "")
     has_escape, escape_type = _has_blocker_or_deferral(transcript_path)
+
+    # v4.34: Check mastermind escape_hatches abort conditions
+    should_abort, abort_reason = _check_mastermind_escape_hatches(state)
+    if should_abort:
+        return StopHookResult.warn(
+            f"🛑 {abort_reason}\n"
+            f"Fallback: {state.get('mastermind_escape_hatches', {}).get('escalation_path', 'User review')}"
+        )
 
     if has_escape:
         if escape_type == "deferral":
