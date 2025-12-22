@@ -671,8 +671,23 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         # STATE COORDINATION: Set flags for downstream hooks (pal_mandate, etc.)
         # This prevents duplicate PAL recommendations
         if routing:
+            classification = routing.get("classification", "unknown")
             state.set("mastermind_routed", True)
-            state.set("mastermind_classification", routing.get("classification", "unknown"))
+            state.set("mastermind_classification", classification)  # Legacy
+            state.set("workflow_classification", classification)  # v4.32 workflow gates
+
+            # Set workflow prerequisite: groq_routed
+            prereqs = getattr(state, "workflow_prerequisites", None) or {
+                "groq_routed": False,
+                "pal_initialized": False,
+                "memory_searched": False,
+                "research_done": False,
+                "bead_claimed": False,
+                "active_beads_checked": False,
+            }
+            prereqs["groq_routed"] = True
+            state.workflow_prerequisites = prereqs
+
             suggested_tool = routing.get("suggested_tool")
             if suggested_tool:
                 state.set("mastermind_pal_suggested", suggested_tool)
@@ -767,9 +782,20 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         return HookResult(decision="allow", context=context)
 
     except Exception as e:
-        # Never block on mastermind errors - fail silently
-        print(f"[mastermind] Error: {e}", file=sys.stderr)
-        return HookResult(decision="allow", context=None)
+        # Hard block on mastermind errors - routing intelligence is critical
+        # User can bypass with MASTERMIND_BYPASS keyword if Groq is genuinely down
+        prompt = data.get("prompt", "")
+        if "MASTERMIND_BYPASS" in prompt.upper():
+            print(f"[mastermind] BYPASSED - Error: {e}", file=sys.stderr)
+            return HookResult(
+                decision="allow",
+                context="⚠️ **MASTERMIND BYPASSED** - routing intelligence unavailable",
+            )
+        print(f"[mastermind] BLOCKED - Error: {e}", file=sys.stderr)
+        return HookResult(
+            decision="block",
+            reason=f"🚨 Mastermind routing failed: {e}\n\nSay MASTERMIND_BYPASS to continue without routing.",
+        )
 
 
 @register_hook("mastermind_drift_check", priority=65)
