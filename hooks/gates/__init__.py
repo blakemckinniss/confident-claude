@@ -17,6 +17,7 @@ Modules:
 
 from ._common import HOOKS, register_hook, HookResult
 from ._serena import (
+    check_serena_universal_gate,
     check_serena_activation_gate,
     check_code_tools_require_serena,
 )
@@ -60,8 +61,13 @@ from ._bash import (
 from ._pal import (
     check_pal_mandate_enforcer,
     track_pal_tool_usage,
+    check_pal_proactive_consultation,
+    suggest_pal_continuation,
     check_pal_mandate_lock,
     clear_pal_mandate_lock,
+)
+from ._mastermind_mandate import (
+    check_mastermind_mandate,
 )
 from ._beads import (
     check_parallel_nudge,
@@ -91,12 +97,20 @@ from ._meta import (
     check_thinking_coach,
     check_thinking_suggester,
 )
+from ._workflow_enforcement import (
+    check_workflow_beads_check,
+    check_workflow_pal_gate,
+    check_workflow_memory_gate,
+    check_workflow_research_gate,
+    check_workflow_bead_gate,
+)
 
 __all__ = [
     "HOOKS",
     "register_hook",
     "HookResult",
     # Serena gates
+    "check_serena_universal_gate",
     "check_serena_activation_gate",
     "check_code_tools_require_serena",
     # Content gates
@@ -136,8 +150,12 @@ __all__ = [
     # PAL mandate gates
     "check_pal_mandate_enforcer",
     "track_pal_tool_usage",
+    "check_pal_proactive_consultation",
+    "suggest_pal_continuation",
     "check_pal_mandate_lock",
     "clear_pal_mandate_lock",
+    # Mastermind mandate gates
+    "check_mastermind_mandate",
     # Beads/parallel gates
     "check_parallel_nudge",
     "check_beads_parallel",
@@ -163,4 +181,10 @@ __all__ = [
     "check_sunk_cost",
     "check_thinking_coach",
     "check_thinking_suggester",
+    # Workflow enforcement gates
+    "check_workflow_beads_check",
+    "check_workflow_pal_gate",
+    "check_workflow_memory_gate",
+    "check_workflow_research_gate",
+    "check_workflow_bead_gate",
 ]

@@ -91,6 +91,7 @@ from _hook_registry import HOOKS, matches_tool
 # Import hook modules (triggers registration via decorators)
 import _hooks_cache  # noqa: F401 - Cache hooks (priority 5-6)
 import _hooks_state_pal  # noqa: F401 - PAL mandate hook (priority 5)
+import _hooks_workflow_tracking  # noqa: F401 - Workflow prerequisite tracking (priority 8)
 import _hooks_state  # noqa: F401 - State hooks (priority 9-10) + shared utilities
 import _hooks_state_decay  # noqa: F401 - Confidence decay (priority 11)
 import _hooks_state_reducers  # noqa: F401 - Confidence reducers (priority 12)

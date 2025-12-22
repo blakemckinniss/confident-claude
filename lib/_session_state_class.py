@@ -124,6 +124,7 @@ class SessionState:
     pal_continuations: dict = field(default_factory=dict)
     pal_continuation_id: str = ""  # Legacy - single ID for backwards compat
     last_pal_tool: str = ""  # Most recent PAL tool used (for waste detection)
+    last_pal_turn: int = 0  # [T2] Turn when PAL was last consulted (v4.31)
 
     # [T3] Meta-cognition: Sunk Cost Detector (v3.1) - debug state, discard on revival
     approach_history: list = field(
@@ -415,3 +416,28 @@ class SessionState:
 
     # [T2] Nag budget for non-strict modes (decrements on each reminder)
     ralph_nag_budget: int = 2
+
+    # ==========================================================================
+    # [T1] MANDATORY WORKFLOW ENFORCEMENT (v4.32) - Hard prerequisite gates
+    # CRITICAL: These fields control session-start workflow requirements
+    # ==========================================================================
+
+    # [T1] Task classification from Groq router
+    # Set by mastermind hook, consumed by workflow gates
+    workflow_classification: str = ""  # "trivial", "medium", "complex"
+
+    # [T1] Workflow prerequisites - tracks which MUST-do items are complete
+    # All gates check these flags; hooks set them when tools are used
+    workflow_prerequisites: dict = field(
+        default_factory=lambda: {
+            "groq_routed": False,       # Mastermind Groq classification done
+            "pal_initialized": False,    # PAL MCP called (required for non-trivial)
+            "memory_searched": False,    # claude-mem OR serena memories searched
+            "research_done": False,      # Web/code research done (complex only)
+            "bead_claimed": False,       # At least one in_progress bead exists
+            "active_beads_checked": False,  # Active beads surfaced to user
+        }
+    )
+
+    # [T2] SUDO bypass expiry - grace period after SUDO
+    workflow_bypass_until_turn: int = 0

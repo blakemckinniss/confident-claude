@@ -826,6 +826,111 @@ def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
 
 
 # =============================================================================
+# BEAD CLEARANCE GATE (v4.32)
+# =============================================================================
+# Ralph enforcement: Beads MUST be closed/synced before session exit.
+# =============================================================================
+
+
+def _get_in_progress_beads_for_stop() -> list:
+    """Get list of in_progress beads for stop gate (no caching needed)."""
+    try:
+        result = subprocess.run(
+            ["bd", "list", "--status=in_progress", "--format=json"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=str(CLAUDE_DIR),
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return json.loads(result.stdout)
+        return []
+    except (
+        subprocess.TimeoutExpired,
+        json.JSONDecodeError,
+        FileNotFoundError,
+        OSError,
+    ):
+        return []
+
+
+def _has_bead_escape(transcript_path: str) -> bool:
+    """Check if user has indicated they're leaving beads open intentionally."""
+    if not transcript_path or not Path(transcript_path).exists():
+        return False
+
+    escape_patterns = [
+        r"leaving\s+(?:beads?|work|tasks?)\s+open",
+        r"will\s+continue\s+(?:this|these|the\s+beads?)\s+later",
+        r"(?:i'?m|we're)\s+(?:stopping|pausing)\s+(?:for\s+now|here)",
+        r"continue\s+(?:this|in)\s+(?:the\s+)?next\s+session",
+    ]
+
+    try:
+        with open(transcript_path, "r", errors="replace") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 10000))
+            content = f.read().lower()
+
+        for pattern in escape_patterns:
+            if re.search(pattern, content):
+                return True
+    except (OSError, IOError):
+        pass
+
+    return False
+
+
+@register_hook("bead_clearance", priority=37)
+def check_bead_clearance(data: dict, state: SessionState) -> StopHookResult:
+    """
+    Ralph enforcement: Beads MUST be closed/synced before session exit.
+
+    Priority 37: After ralph_evidence (35), before momentum_gate (38).
+
+    Checks:
+    1. All in_progress beads are closed OR
+    2. User explicitly says "leaving work open" OR
+    3. ralph_mode not active (trivial tasks)
+    """
+    # Skip if ralph mode not active
+    if not state.ralph_mode:
+        return StopHookResult.ok()
+
+    # Check for open beads
+    in_progress = _get_in_progress_beads_for_stop()
+    if not in_progress:
+        return StopHookResult.ok()
+
+    # Check for escape patterns
+    transcript_path = data.get("transcript_path", "")
+    if _has_bead_escape(transcript_path):
+        bead_count = len(in_progress)
+        return StopHookResult.warn(
+            f"⚠️ {bead_count} bead(s) left open intentionally. "
+            "Remember to close them next session."
+        )
+
+    # Build bead list for message
+    bead_list = ", ".join(
+        f"`{b.get('id', '?')[:12]}` ({b.get('title', 'untitled')[:25]})"
+        for b in in_progress[:3]
+    )
+    if len(in_progress) > 3:
+        bead_list += f" (+{len(in_progress) - 3} more)"
+
+    return StopHookResult.block(
+        f"📿 **BEAD CLEARANCE REQUIRED**\n\n"
+        f"In-progress beads: {bead_list}\n\n"
+        f"**Required:**\n"
+        f"- Close completed: `bd close <id>`\n"
+        f"- Sync state: `bd sync`\n\n"
+        f"**Or say:** 'leaving work open' to defer to next session"
+    )
+
+
+# =============================================================================
 # PERPETUAL MOMENTUM GATE (v4.24)
 # =============================================================================
 # Core philosophy: "What can we do to make this even better?"
