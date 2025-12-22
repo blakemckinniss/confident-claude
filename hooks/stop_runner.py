@@ -487,34 +487,13 @@ def check_context_warning(data: dict, state: SessionState) -> StopHookResult:
 
 @register_hook("context_exhaustion", priority=4)
 def check_context_exhaustion(data: dict, state: SessionState) -> StopHookResult:
-    """Block session end at 150K tokens - prompt wrap-up actions.
+    """DISABLED: Claude naturally compacts when needed.
 
-    State is auto-persisted; `/resume` in the NEXT session recovers it.
-    This hook just ensures Claude wraps up cleanly before context dies.
+    Previously blocked at 150K tokens to prompt wrap-up, but this interferes
+    with Claude's native context management. Keeping hook registered but
+    always returning ok() to avoid blocking.
     """
-    # Skip if already shown this session
-    if state.nudge_history.get("context_exhaustion_shown"):
-        return StopHookResult.ok()
-
-    transcript_path = data.get("transcript_path", "")
-    context_window = data.get("model", {}).get("context_window", DEFAULT_CONTEXT_WINDOW)
-
-    used, total = get_context_usage(transcript_path, context_window)
-    if total == 0:
-        return StopHookResult.ok()
-
-    # Token-based threshold (absolute, not percentage)
-    if used < CONTEXT_EXHAUSTION_TOKENS:
-        return StopHookResult.ok()
-
-    # Mark as shown (only block once per session)
-    state.nudge_history["context_exhaustion_shown"] = True
-
-    # Extract next steps to include in wrap-up message
-    next_steps = _extract_next_steps(transcript_path)
-
-    pct = used / total
-    return StopHookResult.block(_format_exhaustion_block(pct, used, total, next_steps))
+    return StopHookResult.ok()
 
 
 def _has_sudo_bypass(transcript_path: str) -> bool:
