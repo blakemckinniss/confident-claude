@@ -283,6 +283,9 @@ def _track_agent_delegation(
                 state.consecutive_exploration_calls = 0
             elif subagent_type == "researcher":
                 state.consecutive_research_calls = 0
+            elif subagent_type == "debugger":
+                state.debug_mode_active = False
+                state.edit_counts = {}  # Fresh start after debugger agent
         # Also track general agent delegation
         context_field = "agent_delegation"
         state.tool_debt.get(context_field, {})["last_used_turn"] = state.turn_count

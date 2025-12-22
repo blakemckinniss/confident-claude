@@ -111,9 +111,9 @@ def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
     if not file_path:
         return HookResult.approve()
 
-    # Get edit counts per file
-    file_edit_counts = getattr(state, "file_edit_counts", {})
-    edits_to_this_file = file_edit_counts.get(file_path, 0)
+    # Get edit counts per file (tracked as 'edit_counts' in state)
+    edit_counts = getattr(state, "edit_counts", {})
+    edits_to_this_file = edit_counts.get(file_path, 0)
 
     # Check if debugger agent was used recently
     recent_debugger = getattr(state, "recent_debugger_agent_turn", -100)
