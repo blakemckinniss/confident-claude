@@ -344,6 +344,36 @@ def _fuzzy_match_reinvention(
 # =============================================================================
 
 
+# =============================================================================
+# MANDATORY WORKFLOW ENFORCEMENT REMINDER (v4.32)
+# =============================================================================
+
+_WORKFLOW_ENFORCEMENT_BANNER = """**[SYSTEM: MANDATORY WORKFLOW ENFORCEMENT v4.32]**
+⚠️ **HARD PRE-TOOL GATES ACTIVE.** You **WILL BE BLOCKED** from writing/editing until prerequisites are met.
+
+**NON-TRIVIAL REQUIREMENTS (Groq-Routed):**
+1.  **PAL:** MUST initialize (`mcp__pal__*`) immediately.
+2.  **MEM:** MUST search context (`claude-mem` OR `serena`) before action.
+3.  **BEAD:** MUST `bd create` and `claim` (status: `in_progress`) explicitly.
+4.  **RESEARCH:** MUST perform `WebSearch` or `Explore` agent if **Complex**.
+
+**CRITICAL PROTOCOLS:**
+*   **Continuity:** Reuse `continuation_id` on **EVERY** PAL call.
+*   **Exit:** Ralph **BLOCKS** `stop` until all beads are `closed` or `synced`.
+*   **Check:** Review generated Agents/Skills checklist.
+*   **Override:** Use SUDO only for emergency bypass."""
+
+
+@register_hook("workflow_enforcement_banner", priority=-1)
+def inject_workflow_enforcement_banner(data: dict, state: SessionState) -> HookResult:
+    """Inject mandatory workflow enforcement reminder on EVERY prompt.
+
+    Priority -1: Absolutely first, before any other processing.
+    Always returns the banner - no conditions, no cooldowns.
+    """
+    return HookResult.allow(_WORKFLOW_ENFORCEMENT_BANNER)
+
+
 @register_hook("confidence_override", priority=0)
 def check_confidence_override(data: dict, state: SessionState) -> HookResult:
     """Allow manual confidence override via SET_CONFIDENCE=X in prompt.
