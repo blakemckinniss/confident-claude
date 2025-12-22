@@ -172,6 +172,42 @@ class TestDebugCircuitBreaker:
         assert result.decision == "deny"
         assert "BLOCKED" in result.reason
 
+    def test_decay_resets_after_15_turns(self):
+        """Should reset edit count if 15+ turns since last edit (new task)."""
+        state = MockSessionState()
+        state.turn_count = 30  # Current turn
+        # v2 format: high count but last_turn was 15+ turns ago
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 10, "last_turn": 10, "failures": 5}
+        }
+        state.consecutive_tool_failures = 5
+
+        result = check_debug_circuit_breaker(
+            {"tool_name": "Edit", "tool_input": {"file_path": "/path/to/file.py"}},
+            state,
+        )
+
+        # Should NOT block - decay reset the count
+        assert result.decision != "deny"
+
+    def test_no_decay_within_15_turns(self):
+        """Should NOT reset if less than 15 turns since last edit."""
+        state = MockSessionState()
+        state.turn_count = 20  # Current turn
+        # v2 format: high count, last_turn was only 10 turns ago
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 5, "last_turn": 10, "failures": 2}
+        }
+        state.consecutive_tool_failures = 2
+
+        result = check_debug_circuit_breaker(
+            {"tool_name": "Edit", "tool_input": {"file_path": "/path/to/file.py"}},
+            state,
+        )
+
+        # Should still block - no decay
+        assert result.decision == "deny"
+
     def test_allows_after_debugger_agent(self):
         """Should allow if debugger agent was used recently."""
         state = MockSessionState()
