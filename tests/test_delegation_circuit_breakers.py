@@ -122,7 +122,10 @@ class TestDebugCircuitBreaker:
     def test_allows_first_edits(self):
         """First 2 edits to a file should be allowed."""
         state = MockSessionState()
-        state.edit_counts = {"/path/to/file.py": 2}
+        # v2 format: low edit count, no failures = allowed
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 2, "last_turn": 10, "failures": 0}
+        }
         state.consecutive_tool_failures = 0
 
         result = check_debug_circuit_breaker(
@@ -133,10 +136,13 @@ class TestDebugCircuitBreaker:
         assert result.decision != "deny"
 
     def test_warns_at_threshold_with_failures(self):
-        """Should warn at 2 edits with failures."""
+        """Should warn at 4 edits with failures (v2 thresholds)."""
         state = MockSessionState()
-        state.edit_counts = {"/path/to/file.py": 2}
-        state.consecutive_tool_failures = 1
+        # v2 format: {path: {count, last_turn, failures}}
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 4, "last_turn": 10, "failures": 2}
+        }
+        state.consecutive_tool_failures = 2
 
         result = check_debug_circuit_breaker(
             {"tool_name": "Edit", "tool_input": {"file_path": "/path/to/file.py"}},
@@ -147,9 +153,12 @@ class TestDebugCircuitBreaker:
         assert result.context and "edits" in result.context.lower()
 
     def test_blocks_debug_loop(self):
-        """Should BLOCK at 3+ edits with failures (debug loop)."""
+        """Should BLOCK at 5+ edits WITH failures (v2 - smarter detection)."""
         state = MockSessionState()
-        state.edit_counts = {"/path/to/file.py": 3}
+        # v2 format: requires BOTH high edit count AND failures
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 5, "last_turn": 10, "failures": 2}
+        }
         state.consecutive_tool_failures = 2
 
         result = check_debug_circuit_breaker(
@@ -163,7 +172,10 @@ class TestDebugCircuitBreaker:
     def test_allows_after_debugger_agent(self):
         """Should allow if debugger agent was used recently."""
         state = MockSessionState()
-        state.edit_counts = {"/path/to/file.py": 10}
+        # v2 format: would normally block (high count + failures)
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 10, "last_turn": 10, "failures": 5}
+        }
         state.consecutive_tool_failures = 5
         state.recent_debugger_agent_turn = 5  # 5 turns ago (within 10)
 
@@ -177,7 +189,10 @@ class TestDebugCircuitBreaker:
     def test_sudo_bypass(self):
         """SUDO DEBUG should bypass the block."""
         state = MockSessionState()
-        state.edit_counts = {"/path/to/file.py": 10}
+        # v2 format: would normally block (high count + failures)
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 10, "last_turn": 10, "failures": 5}
+        }
         state.consecutive_tool_failures = 5
         state.sudo_debug = True
 
