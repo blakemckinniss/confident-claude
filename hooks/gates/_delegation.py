@@ -8,11 +8,42 @@ Solution: After threshold, BLOCK the direct tool and REQUIRE agent delegation.
 Priority 3: Runs early, before most other gates.
 
 SUDO EXPLORE / SUDO DEBUG / SUDO RESEARCH to bypass.
+
+v4.30: Added telemetry logging for effectiveness tracking.
 """
 
 from session_state import SessionState
 from _hook_result import HookResult
 from ._common import register_hook
+
+# Lazy import to avoid circular deps
+_telemetry = None
+
+
+def _log_cb(
+    state: SessionState,
+    breaker: str,
+    action: str,
+    threshold: int,
+    current: int,
+    tool: str = "",
+    bypass: str = "",
+) -> None:
+    """Log circuit breaker event to telemetry."""
+    global _telemetry
+    if _telemetry is None:
+        try:
+            from lib.mastermind import telemetry as t
+
+            _telemetry = t
+        except ImportError:
+            return  # Telemetry not available
+
+    session_id = getattr(state, "session_id", "unknown")
+    turn = getattr(state, "turn_count", 0)
+    _telemetry.log_circuit_breaker_fire(
+        session_id, turn, breaker, action, threshold, current, tool, bypass
+    )
 
 
 # =============================================================================
@@ -31,11 +62,13 @@ def check_exploration_circuit_breaker(data: dict, state: SessionState) -> HookRe
 
     SUDO EXPLORE to bypass.
     """
+    tool_name = data.get("tool_name", "")
+
     # Check for SUDO bypass
     if data.get("_sudo_bypass") or getattr(state, "sudo_explore", False):
+        consecutive = getattr(state, "consecutive_exploration_calls", 0)
+        _log_cb(state, "exploration", "bypass", 4, consecutive, tool_name, "SUDO")
         return HookResult.approve()
-
-    tool_name = data.get("tool_name", "")
 
     # Whitelist: Reading specific known files is fine
     if tool_name == "Read":
@@ -67,6 +100,7 @@ def check_exploration_circuit_breaker(data: dict, state: SessionState) -> HookRe
 
     # THRESHOLD: 4+ exploration calls without agent
     if consecutive >= 4:
+        _log_cb(state, "exploration", "block", 4, consecutive, tool_name)
         return HookResult.deny(
             f"🚫 **EXPLORATION BLOCKED** ({consecutive} calls without agent)\n\n"
             f"You've made {consecutive} exploration calls. MUST delegate:\n"
@@ -79,6 +113,7 @@ def check_exploration_circuit_breaker(data: dict, state: SessionState) -> HookRe
 
     # Warning at 3
     if consecutive >= 3:
+        _log_cb(state, "exploration", "warn", 4, consecutive, tool_name)
         return HookResult.approve(
             f"⚠️ **{consecutive} exploration calls** - next one BLOCKED without Task(Explore)"
         )
@@ -104,12 +139,15 @@ def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
 
     SUDO DEBUG to bypass.
     """
-    # Check for SUDO bypass
-    if data.get("_sudo_bypass") or getattr(state, "sudo_debug", False):
-        return HookResult.approve()
-
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
+
+    # Check for SUDO bypass
+    if data.get("_sudo_bypass") or getattr(state, "sudo_debug", False):
+        edit_data = getattr(state, "edit_counts_v2", {})
+        file_data = edit_data.get(file_path, {"count": 0})
+        _log_cb(state, "debug", "bypass", 5, file_data.get("count", 0), "Edit", "SUDO")
+        return HookResult.approve()
 
     if not file_path:
         return HookResult.approve()
@@ -139,6 +177,7 @@ def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
     # THRESHOLD: 5+ edits to same file WITH failures (actual stuck loop)
     if edits_to_this_file >= 5 and in_debug_mode:
         short_path = file_path.split("/")[-1]
+        _log_cb(state, "debug", "block", 5, edits_to_this_file, "Edit")
         return HookResult.deny(
             f"🚫 **DEBUG LOOP BLOCKED** ({edits_to_this_file} edits + {failures_on_this_file} failures to `{short_path}`)\n\n"
             f"You're stuck. MUST spawn fresh perspective:\n"
@@ -152,6 +191,7 @@ def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
     # Warning at 4 edits with failures
     if edits_to_this_file >= 4 and in_debug_mode:
         short_path = file_path.split("/")[-1]
+        _log_cb(state, "debug", "warn", 5, edits_to_this_file, "Edit")
         return HookResult.approve(
             f"⚠️ **{edits_to_this_file} edits to `{short_path}` with failures** - consider Task(debugger)"
         )
@@ -178,8 +218,12 @@ def check_research_circuit_breaker(data: dict, state: SessionState) -> HookResul
 
     SUDO RESEARCH to bypass.
     """
+    tool_name = data.get("tool_name", "")
+
     # Check for SUDO bypass
     if data.get("_sudo_bypass") or getattr(state, "sudo_research", False):
+        consecutive = getattr(state, "consecutive_research_calls", 0)
+        _log_cb(state, "research", "bypass", 3, consecutive, tool_name, "SUDO")
         return HookResult.approve()
 
     # Check consecutive research calls
@@ -192,6 +236,7 @@ def check_research_circuit_breaker(data: dict, state: SessionState) -> HookResul
 
     # THRESHOLD: 3+ research calls without agent
     if consecutive >= 3:
+        _log_cb(state, "research", "block", 3, consecutive, tool_name)
         return HookResult.deny(
             f"🚫 **RESEARCH BLOCKED** ({consecutive} lookups without agent)\n\n"
             f"You've made {consecutive} research calls. MUST delegate:\n"
@@ -204,6 +249,7 @@ def check_research_circuit_breaker(data: dict, state: SessionState) -> HookResul
 
     # Warning at 2
     if consecutive >= 2:
+        _log_cb(state, "research", "warn", 3, consecutive, tool_name)
         return HookResult.approve(
             f"⚠️ **{consecutive} research calls** - next one BLOCKED without Task(researcher)"
         )
@@ -259,7 +305,11 @@ def check_docs_skill_circuit_breaker(data: dict, state: SessionState) -> HookRes
 
     SUDO DOCS to bypass.
     """
+    tool_name = data.get("tool_name", "")
+
     if data.get("_sudo_bypass") or getattr(state, "sudo_docs", False):
+        lib_doc_searches = getattr(state, "lib_doc_searches", 0)
+        _log_cb(state, "docs_skill", "bypass", 2, lib_doc_searches, tool_name, "SUDO")
         return HookResult.approve()
 
     tool_input = data.get("tool_input", {})
@@ -322,6 +372,7 @@ def check_docs_skill_circuit_breaker(data: dict, state: SessionState) -> HookRes
 
     # THRESHOLD: 2+ library doc searches without /docs
     if lib_doc_searches >= 2:
+        _log_cb(state, "docs_skill", "block", 2, lib_doc_searches, tool_name)
         return HookResult.deny(
             f"🚫 **DOCS BLOCKED** ({lib_doc_searches} library lookups without /docs)\n\n"
             f"Use the /docs skill for authoritative documentation:\n"
@@ -332,6 +383,7 @@ def check_docs_skill_circuit_breaker(data: dict, state: SessionState) -> HookRes
             f"Say `SUDO DOCS` to bypass (logged)."
         )
 
+    _log_cb(state, "docs_skill", "warn", 2, lib_doc_searches, tool_name)
     return HookResult.approve(
         "💡 **Library docs detected** - use `/docs <library>` for authoritative docs"
     )
@@ -347,14 +399,16 @@ def check_commit_skill_circuit_breaker(data: dict, state: SessionState) -> HookR
 
     SUDO COMMIT to bypass.
     """
-    if data.get("_sudo_bypass") or getattr(state, "sudo_commit", False):
-        return HookResult.approve()
-
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
 
     # Only check git commit commands
     if "git commit" not in command or "-m" not in command:
+        return HookResult.approve()
+
+    if data.get("_sudo_bypass") or getattr(state, "sudo_commit", False):
+        manual_commits = getattr(state, "manual_commits", 0)
+        _log_cb(state, "commit_skill", "bypass", 1, manual_commits, "Bash", "SUDO")
         return HookResult.approve()
 
     # Check if /commit was used recently
@@ -368,6 +422,7 @@ def check_commit_skill_circuit_breaker(data: dict, state: SessionState) -> HookR
 
     # THRESHOLD: Any manual commit without /commit (strict)
     if manual_commits >= 1:
+        _log_cb(state, "commit_skill", "block", 1, manual_commits, "Bash")
         return HookResult.deny(
             "🚫 **COMMIT BLOCKED** (manual git commit detected)\n\n"
             "Use the /commit skill for proper commit workflow:\n"

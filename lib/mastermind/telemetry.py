@@ -447,6 +447,117 @@ def log_pal_continuation_event(
     )
 
 
+# Circuit Breaker Telemetry (v4.30)
+
+
+def log_circuit_breaker_fire(
+    session_id: str,
+    turn: int,
+    breaker_name: str,
+    action: str,  # "block", "warn", "bypass"
+    threshold_value: int,
+    current_value: int,
+    tool_blocked: str = "",
+    bypass_reason: str = "",
+) -> None:
+    """Log circuit breaker activation.
+
+    Events:
+        - block: Hard block fired, tool denied
+        - warn: Warning threshold reached
+        - bypass: SUDO bypass used (logged for audit)
+
+    Args:
+        breaker_name: Circuit breaker name (exploration, debug, research, etc.)
+        action: What happened (block, warn, bypass)
+        threshold_value: Configured threshold
+        current_value: Current counter value
+        tool_blocked: Tool that was blocked
+        bypass_reason: If bypass, why (SUDO type)
+    """
+    log_event(
+        "circuit_breaker",
+        session_id,
+        turn,
+        {
+            "breaker_name": breaker_name,
+            "action": action,
+            "threshold_value": threshold_value,
+            "current_value": current_value,
+            "tool_blocked": tool_blocked,
+            "bypass_reason": bypass_reason,
+            "effectiveness": "blocked" if action == "block" else "allowed",
+        },
+    )
+
+
+def get_circuit_breaker_stats(session_id: str | None = None) -> dict[str, Any]:
+    """Get circuit breaker effectiveness statistics.
+
+    Returns breakdown of:
+    - Fire counts by breaker type
+    - Block vs warn vs bypass ratios
+    - Which tools most often hit breakers
+    - Suggestions for threshold tuning
+    """
+    if session_id:
+        events = read_session_telemetry(session_id)
+    else:
+        events = []
+        for path in TELEMETRY_DIR.glob("*.jsonl"):
+            events.extend(read_session_telemetry(path.stem))
+
+    cb_events = [e for e in events if e.event_type == "circuit_breaker"]
+
+    if not cb_events:
+        return {"total_events": 0, "message": "No circuit breaker events found"}
+
+    by_breaker: dict[str, dict[str, int]] = {}
+    by_action: dict[str, int] = {"block": 0, "warn": 0, "bypass": 0}
+    tools_blocked: dict[str, int] = {}
+
+    for e in cb_events:
+        breaker = e.data.get("breaker_name", "unknown")
+        action = e.data.get("action", "unknown")
+        tool = e.data.get("tool_blocked", "")
+
+        if breaker not in by_breaker:
+            by_breaker[breaker] = {"block": 0, "warn": 0, "bypass": 0}
+        by_breaker[breaker][action] = by_breaker[breaker].get(action, 0) + 1
+
+        by_action[action] = by_action.get(action, 0) + 1
+
+        if tool:
+            tools_blocked[tool] = tools_blocked.get(tool, 0) + 1
+
+    # Effectiveness score: blocks / (blocks + bypasses)
+    total_enforcement = by_action["block"] + by_action["bypass"]
+    effectiveness_pct = (
+        by_action["block"] / total_enforcement * 100 if total_enforcement else 100
+    )
+
+    # Suggestions
+    suggestions = []
+    for breaker, counts in by_breaker.items():
+        if counts.get("bypass", 0) > counts.get("block", 0):
+            suggestions.append(
+                f"{breaker}: More bypasses than blocks - threshold may be too aggressive"
+            )
+        if counts.get("warn", 0) > 0 and counts.get("block", 0) == 0:
+            suggestions.append(
+                f"{breaker}: Only warnings, no blocks - threshold effective as deterrent"
+            )
+
+    return {
+        "total_events": len(cb_events),
+        "by_breaker": by_breaker,
+        "by_action": by_action,
+        "tools_blocked": tools_blocked,
+        "effectiveness_pct": round(effectiveness_pct, 1),
+        "suggestions": suggestions,
+    }
+
+
 def get_continuation_reuse_stats(session_id: str) -> dict[str, Any]:
     """Get continuation_id reuse statistics for a session.
 
