@@ -424,6 +424,30 @@ def activate_context_guard(data: dict, state: SessionState) -> StopHookResult:
     return StopHookResult.ok()
 
 
+# =============================================================================
+# SESSION CLOSE REMINDER BANNER (v4.32)
+# =============================================================================
+
+_SESSION_CLOSE_BANNER = """**[SYSTEM: SESSION CLOSE PROTOCOL v4.32]**
+⚠️ Before claiming "done", verify:
+
+1. **BEADS:** All `in_progress` beads → `bd close <id>` or `bd sync`
+2. **COMMIT:** `git status` → `git add` → `/commit` (not raw `git commit`)
+3. **NEXT:** Surface 🌱 branching opportunities for user
+
+**Ralph BLOCKS exit** if beads remain open without explicit "leaving work open"."""
+
+
+@register_hook("session_close_banner", priority=0)
+def inject_session_close_banner(data: dict, state: SessionState) -> StopHookResult:
+    """Inject session close protocol reminder on every stop attempt.
+
+    Priority 0: Very first, surfaces protocol before other checks.
+    Always warns (never blocks) - actual enforcement is in later hooks.
+    """
+    return StopHookResult.warn(_SESSION_CLOSE_BANNER)
+
+
 @register_hook("context_warning", priority=3)
 def check_context_warning(data: dict, state: SessionState) -> StopHookResult:
     """Warn when context reaches 120K tokens - non-blocking heads up."""

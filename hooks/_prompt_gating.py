@@ -364,13 +364,32 @@ _WORKFLOW_ENFORCEMENT_BANNER = """**[SYSTEM: MANDATORY WORKFLOW ENFORCEMENT v4.3
 *   **Override:** Use SUDO only for emergency bypass."""
 
 
+# Trivial prompt patterns - skip banner for these
+_TRIVIAL_PROMPT_PATTERNS = [
+    r"^(hi|hello|hey|yo|sup)[\s!?.]*$",  # Greetings
+    r"^(yes|no|ok|okay|sure|thanks|ty|thx|k)[\s!?.]*$",  # Short affirmations
+    r"^(quit|exit|bye|goodbye|done)[\s!?.]*$",  # Exit signals
+    r"^\S+$",  # Single word (any)
+    r"^[\W\s]*$",  # Only punctuation/whitespace
+]
+_TRIVIAL_COMPILED = [re.compile(p, re.IGNORECASE) for p in _TRIVIAL_PROMPT_PATTERNS]
+
+
 @register_hook("workflow_enforcement_banner", priority=-1)
 def inject_workflow_enforcement_banner(data: dict, state: SessionState) -> HookResult:
-    """Inject mandatory workflow enforcement reminder on EVERY prompt.
+    """Inject mandatory workflow enforcement reminder on EVERY non-trivial prompt.
 
     Priority -1: Absolutely first, before any other processing.
-    Always returns the banner - no conditions, no cooldowns.
+    Skips banner for trivial prompts (greetings, single words, affirmations).
     """
+    prompt = data.get("prompt", "").strip()
+
+    # Skip banner for trivial prompts
+    if len(prompt) < 50:  # Only check short prompts
+        for pattern in _TRIVIAL_COMPILED:
+            if pattern.match(prompt):
+                return HookResult.allow()  # No banner for trivial
+
     return HookResult.allow(_WORKFLOW_ENFORCEMENT_BANNER)
 
 
