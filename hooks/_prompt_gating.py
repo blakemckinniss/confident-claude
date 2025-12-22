@@ -364,6 +364,12 @@ def check_confidence_override(data: dict, state: SessionState) -> HookResult:
     if "SUDO RESEARCH" in prompt_upper:
         state.sudo_research = True
         messages.append("🔓 SUDO RESEARCH: Research circuit breaker bypassed")
+    if "SUDO DOCS" in prompt_upper:
+        state.sudo_docs = True
+        messages.append("🔓 SUDO DOCS: Docs skill circuit breaker bypassed")
+    if "SUDO COMMIT" in prompt_upper:
+        state.sudo_commit = True
+        messages.append("🔓 SUDO COMMIT: Commit skill circuit breaker bypassed")
 
     match = re.search(r"\bSET_CONFIDENCE\s*=\s*(\d+)\b", prompt, re.IGNORECASE)
     if not match:

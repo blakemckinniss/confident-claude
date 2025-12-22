@@ -78,6 +78,9 @@ from ._delegation import (
     check_debug_circuit_breaker,
     check_research_circuit_breaker,
     check_review_circuit_breaker,
+    check_docs_skill_circuit_breaker,
+    check_commit_skill_circuit_breaker,
+    check_think_skill_circuit_breaker,
 )
 from ._meta import (
     check_fp_fix_enforcer,
@@ -148,6 +151,10 @@ __all__ = [
     "check_debug_circuit_breaker",
     "check_research_circuit_breaker",
     "check_review_circuit_breaker",
+    # Skill circuit breaker gates
+    "check_docs_skill_circuit_breaker",
+    "check_commit_skill_circuit_breaker",
+    "check_think_skill_circuit_breaker",
     # Meta/recovery gates
     "check_fp_fix_enforcer",
     "check_self_heal_enforcer",

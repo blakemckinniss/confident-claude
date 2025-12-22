@@ -230,9 +230,178 @@ def check_review_circuit_breaker(data: dict, state: SessionState) -> HookResult:
     return HookResult.approve()
 
 
+# =============================================================================
+# SKILL CIRCUIT BREAKERS (Priority 4)
+# =============================================================================
+
+
+@register_hook(
+    "docs_skill_circuit_breaker", "WebSearch|WebFetch|mcp__crawl4ai__*", priority=4
+)
+def check_docs_skill_circuit_breaker(data: dict, state: SessionState) -> HookResult:
+    """
+    HARD BLOCK library doc lookups after 2+ without /docs skill.
+
+    Pattern: WebSearch "react hooks docs" multiple times = inefficient
+    Solution: /docs skill uses Context7 for authoritative docs
+
+    SUDO DOCS to bypass.
+    """
+    if data.get("_sudo_bypass") or getattr(state, "sudo_docs", False):
+        return HookResult.approve()
+
+    tool_input = data.get("tool_input", {})
+    query = (
+        tool_input.get("query", "")
+        or tool_input.get("url", "")
+        or tool_input.get("prompt", "")
+    )
+    query_lower = query.lower()
+
+    # Detect library documentation patterns
+    doc_patterns = [
+        "docs",
+        "documentation",
+        "api reference",
+        "usage",
+        "example",
+        "how to use",
+        "getting started",
+        "tutorial",
+        "guide",
+    ]
+    lib_patterns = [
+        "react",
+        "vue",
+        "angular",
+        "next",
+        "nuxt",
+        "svelte",
+        "tailwind",
+        "express",
+        "fastapi",
+        "django",
+        "flask",
+        "prisma",
+        "drizzle",
+        "typescript",
+        "python",
+        "rust",
+        "node",
+        "npm",
+        "pip",
+        "cargo",
+    ]
+
+    is_doc_search = any(p in query_lower for p in doc_patterns)
+    is_lib_search = any(p in query_lower for p in lib_patterns)
+
+    if not (is_doc_search and is_lib_search):
+        return HookResult.approve()
+
+    # Check if /docs was used recently
+    recent_docs = getattr(state, "recent_docs_skill_turn", -100)
+    if state.turn_count - recent_docs < 10:
+        return HookResult.approve()
+
+    # Track library doc searches
+    lib_doc_searches = getattr(state, "lib_doc_searches", 0) + 1
+    state.lib_doc_searches = lib_doc_searches
+
+    # THRESHOLD: 2+ library doc searches without /docs
+    if lib_doc_searches >= 2:
+        return HookResult.deny(
+            f"🚫 **DOCS BLOCKED** ({lib_doc_searches} library lookups without /docs)\n\n"
+            f"Use the /docs skill for authoritative documentation:\n"
+            f"```\n"
+            f'Skill(skill="docs", args="<library-name>")\n'
+            f"```\n"
+            f"**Why:** Context7 provides versioned, accurate docs vs random web results.\n\n"
+            f"Say `SUDO DOCS` to bypass (logged)."
+        )
+
+    return HookResult.approve(
+        "💡 **Library docs detected** - use `/docs <library>` for authoritative docs"
+    )
+
+
+@register_hook("commit_skill_circuit_breaker", "Bash", priority=4)
+def check_commit_skill_circuit_breaker(data: dict, state: SessionState) -> HookResult:
+    """
+    HARD BLOCK manual git commit without /commit skill.
+
+    Pattern: Raw `git commit -m "..."` bypasses pre-commit validation
+    Solution: /commit skill runs upkeep, verification, proper message format
+
+    SUDO COMMIT to bypass.
+    """
+    if data.get("_sudo_bypass") or getattr(state, "sudo_commit", False):
+        return HookResult.approve()
+
+    tool_input = data.get("tool_input", {})
+    command = tool_input.get("command", "")
+
+    # Only check git commit commands
+    if "git commit" not in command or "-m" not in command:
+        return HookResult.approve()
+
+    # Check if /commit was used recently
+    recent_commit = getattr(state, "recent_commit_skill_turn", -100)
+    if state.turn_count - recent_commit < 5:
+        return HookResult.approve()
+
+    # Track manual commits
+    manual_commits = getattr(state, "manual_commits", 0) + 1
+    state.manual_commits = manual_commits
+
+    # THRESHOLD: Any manual commit without /commit (strict)
+    if manual_commits >= 1:
+        return HookResult.deny(
+            "🚫 **COMMIT BLOCKED** (manual git commit detected)\n\n"
+            "Use the /commit skill for proper commit workflow:\n"
+            "```\n"
+            'Skill(skill="commit")\n'
+            "```\n"
+            "**Why:** /commit runs upkeep, verifies changes, proper message format.\n\n"
+            "Say `SUDO COMMIT` to bypass (logged)."
+        )
+
+    return HookResult.approve()
+
+
+@register_hook("think_skill_circuit_breaker", "Edit", priority=4)
+def check_think_skill_circuit_breaker(data: dict, state: SessionState) -> HookResult:
+    """
+    NUDGE (not block) to use /think after extended debugging.
+
+    Pattern: Multiple edit attempts to fix same issue = stuck
+    Solution: /think skill forces structured problem decomposition
+
+    This is a nudge because blocking edits is too aggressive.
+    """
+    # Check if in debug mode with extended attempts
+    debug_attempts = getattr(state, "consecutive_debug_attempts", 0)
+    debug_mode = getattr(state, "debug_mode_active", False)
+
+    if not debug_mode or debug_attempts < 3:
+        return HookResult.approve()
+
+    # Check if /think was used recently
+    recent_think = getattr(state, "recent_think_skill_turn", -100)
+    if state.turn_count - recent_think < 8:
+        return HookResult.approve()
+
+    return HookResult.approve(
+        f'💡 **{debug_attempts} debug attempts** - use `/think "Debug: [issue]"` to decompose the problem'
+    )
+
+
 __all__ = [
     "check_exploration_circuit_breaker",
     "check_debug_circuit_breaker",
     "check_research_circuit_breaker",
     "check_review_circuit_breaker",
+    "check_docs_skill_circuit_breaker",
+    "check_commit_skill_circuit_breaker",
+    "check_think_skill_circuit_breaker",
 ]
