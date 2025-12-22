@@ -116,6 +116,31 @@ def delete_path(path: Path) -> bool:
         return False
 
 
+def get_lock_file_stats() -> dict:
+    """Get statistics about lock files in memory/projects/."""
+    projects_dir = CLAUDE_DIR / "memory" / "projects"
+    stats = {"total": 0, "session_state": 0, "other": 0, "stale": 0}
+
+    if not projects_dir.exists():
+        return stats
+
+    cutoff = time.time() - SECONDS_PER_HOUR  # 1 hour
+
+    for lock_file in projects_dir.rglob("*.lock"):
+        stats["total"] += 1
+        if lock_file.name == "session_state.lock":
+            stats["session_state"] += 1
+        else:
+            stats["other"] += 1
+        try:
+            if lock_file.stat().st_mtime < cutoff:
+                stats["stale"] += 1
+        except OSError:
+            pass
+
+    return stats
+
+
 def show_status():
     """Show current disk usage of managed directories."""
     print("=== .claude Directory Status ===\n")
@@ -147,6 +172,16 @@ def show_status():
             print(f"{dirname:20} {'N/A':>10}  (not found)")
 
     print(f"\n{'TOTAL':20} {format_size(total):>10}")
+
+    # Lock file metrics
+    lock_stats = get_lock_file_stats()
+    if lock_stats["total"] > 0:
+        print("\n=== Lock Files ===")
+        print(f"  Total: {lock_stats['total']} files")
+        print(f"  session_state.lock: {lock_stats['session_state']}")
+        print(f"  Other locks: {lock_stats['other']}")
+        if lock_stats["stale"] > 0:
+            print(f"  ⚠️  Stale (>1h): {lock_stats['stale']} (will auto-clean on session end)")
 
 
 def cleanup_mastermind_states(execute: bool = False) -> tuple[int, int]:

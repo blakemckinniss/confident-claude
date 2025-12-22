@@ -354,6 +354,73 @@ def cleanup_scratch():
     return cleaned
 
 
+STALE_LOCK_AGE = 3600  # 1 hour in seconds
+STALE_SESSION_AGE = 86400 * 7  # 7 days in seconds
+
+
+def cleanup_stale_locks() -> int:
+    """Clean up stale lock files from old sessions.
+
+    Lock files are created by fcntl.flock() but never deleted after release.
+    This cleans up lock files older than 1 hour (well past any active session).
+
+    Returns count of lock files removed.
+    """
+    projects_dir = MEMORY_DIR / "projects"
+    if not projects_dir.exists():
+        return 0
+
+    removed = 0
+    cutoff = time.time() - STALE_LOCK_AGE
+
+    for lock_file in projects_dir.rglob("*.lock"):
+        try:
+            if lock_file.stat().st_mtime < cutoff:
+                lock_file.unlink()
+                removed += 1
+        except (OSError, PermissionError):
+            pass
+
+    return removed
+
+
+def cleanup_empty_session_dirs() -> int:
+    """Clean up empty session directories after lock files removed.
+
+    Session directories in memory/projects/{project}/{session}/ can become
+    empty after lock cleanup. This removes directories that are:
+    - Empty (no files)
+    - Older than 7 days
+
+    Returns count of directories removed.
+    """
+    projects_dir = MEMORY_DIR / "projects"
+    if not projects_dir.exists():
+        return 0
+
+    removed = 0
+    cutoff = time.time() - STALE_SESSION_AGE
+
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+
+        for session_dir in project_dir.iterdir():
+            if not session_dir.is_dir():
+                continue
+
+            try:
+                # Check if empty and old
+                contents = list(session_dir.iterdir())
+                if not contents and session_dir.stat().st_mtime < cutoff:
+                    session_dir.rmdir()
+                    removed += 1
+            except (OSError, PermissionError):
+                pass
+
+    return removed
+
+
 def cleanup_session_env() -> int:
     """Clean up old session-env directories, keeping most recent N.
 
@@ -602,6 +669,12 @@ def main():
     # Clean up old session-env directories (keep last 20)
     removed_sessions = cleanup_session_env()
 
+    # Clean up stale lock files from old sessions
+    removed_locks = cleanup_stale_locks()
+
+    # Clean up empty session directories
+    removed_session_dirs = cleanup_empty_session_dirs()
+
     # Groom Serena memories (keep structural + last N session memories)
     serena_groom = groom_serena_memories()
 
@@ -626,6 +699,10 @@ def main():
         cleanup_parts.append(f"{len(cleaned_files)} scratch files")
     if removed_sessions:
         cleanup_parts.append(f"{removed_sessions} old sessions")
+    if removed_locks:
+        cleanup_parts.append(f"{removed_locks} stale lock files")
+    if removed_session_dirs:
+        cleanup_parts.append(f"{removed_session_dirs} empty session dirs")
     if serena_groom.get("pruned", 0) > 0:
         cleanup_parts.append(f"{serena_groom['pruned']} stale Serena memories")
     if thinking_groom.get("indexed", 0) > 0:
