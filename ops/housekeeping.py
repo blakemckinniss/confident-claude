@@ -141,6 +141,29 @@ def get_lock_file_stats() -> dict:
     return stats
 
 
+def cleanup_stale_locks() -> int:
+    """Clean up stale lock files from old sessions.
+
+    Returns count of lock files removed.
+    """
+    projects_dir = CLAUDE_DIR / "memory" / "projects"
+    if not projects_dir.exists():
+        return 0
+
+    removed = 0
+    cutoff = time.time() - SECONDS_PER_HOUR
+
+    for lock_file in projects_dir.rglob("*.lock"):
+        try:
+            if lock_file.stat().st_mtime < cutoff:
+                lock_file.unlink()
+                removed += 1
+        except (OSError, PermissionError):
+            pass
+
+    return removed
+
+
 def show_status():
     """Show current disk usage of managed directories."""
     print("=== .claude Directory Status ===\n")
@@ -260,6 +283,16 @@ def run_housekeeping(execute: bool = False):
         total_deleted += mm_bytes
     else:
         total_reclaimable += mm_bytes
+
+    # Clean stale lock files (>1 hour old)
+    lock_stats = get_lock_file_stats()
+    if lock_stats["stale"] > 0:
+        print(f"lock files - {lock_stats['stale']} stale (>1h)")
+        if execute:
+            removed = cleanup_stale_locks()
+            print(f"  x Removed {removed} stale lock files\n")
+        else:
+            print("  (will be cleaned on execute)\n")
 
     for dirname, max_days in RETENTION_DAYS.items():
         target = CLAUDE_DIR / dirname
