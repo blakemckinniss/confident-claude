@@ -346,10 +346,29 @@ def _fuzzy_match_reinvention(
 
 @register_hook("confidence_override", priority=0)
 def check_confidence_override(data: dict, state: SessionState) -> HookResult:
-    """Allow manual confidence override via SET_CONFIDENCE=X in prompt."""
+    """Allow manual confidence override via SET_CONFIDENCE=X in prompt.
+
+    Also handles SUDO EXPLORE/DEBUG/RESEARCH for delegation circuit breaker bypass.
+    """
     prompt = data.get("prompt", "")
+    messages = []
+
+    # Handle SUDO delegation bypasses (v4.28)
+    prompt_upper = prompt.upper()
+    if "SUDO EXPLORE" in prompt_upper:
+        state.sudo_explore = True
+        messages.append("🔓 SUDO EXPLORE: Exploration circuit breaker bypassed")
+    if "SUDO DEBUG" in prompt_upper:
+        state.sudo_debug = True
+        messages.append("🔓 SUDO DEBUG: Debug circuit breaker bypassed")
+    if "SUDO RESEARCH" in prompt_upper:
+        state.sudo_research = True
+        messages.append("🔓 SUDO RESEARCH: Research circuit breaker bypassed")
+
     match = re.search(r"\bSET_CONFIDENCE\s*=\s*(\d+)\b", prompt, re.IGNORECASE)
     if not match:
+        if messages:
+            return HookResult.allow("\n".join(messages))
         return HookResult.allow()
     try:
         new_confidence = int(match.group(1))

@@ -319,6 +319,35 @@ This catches cases where multiple small failures accumulate without triggering t
 | `inline_complex_reasoning` | -3 | 500+ chars reasoning without PAL delegation | 3 turns |
 | `debug_loop_no_pal` | -5 | 2+ debug attempts without `mcp__pal__debug` | 5 turns |
 
+**Agent delegation reducers (v4.26) - penalties for NOT using Task agents:**
+
+| Reducer | Delta | Trigger | Cooldown |
+|---------|-------|---------|----------|
+| `exploration_without_agent` | -8 | 3+ Grep/Glob/Read without Task(Explore) | 5 turns |
+| `debugging_without_agent` | -12 | 2+ edit attempts without Task(debugger) | 5 turns |
+| `research_without_agent` | -6 | 2+ WebSearch/crawl4ai without Task(researcher) | 4 turns |
+| `review_without_agent` | -6 | 3+ file edits without Task(code-reviewer) | 8 turns |
+| `planning_without_agent` | -8 | Complex task without Task(Plan) | 10 turns |
+| `refactor_without_agent` | -10 | Multi-file symbol changes without Task(refactorer) | 5 turns |
+
+**Delegation circuit breakers (v4.28) - HARD BLOCKS forcing agent usage:**
+
+| Gate | Trigger | Block |
+|------|---------|-------|
+| `exploration_circuit_breaker` | 4+ exploration calls | Blocks Grep/Glob/Read until Task(Explore) |
+| `debug_circuit_breaker` | 3+ edits to same file + failures | Blocks Edit until Task(debugger) |
+| `research_circuit_breaker` | 3+ research calls | Blocks WebSearch/crawl4ai until Task(researcher) |
+
+**Bypass:** `SUDO EXPLORE`, `SUDO DEBUG`, `SUDO RESEARCH` in prompt.
+
+**Token Economy Philosophy (v4.26):**
+- Master thread has 200k context limit
+- Each Task agent gets its own 200k context (free)
+- Offloading "dumb" subroutines to agents = context preservation
+- Agents can run in background = async progress
+
+**Quick-invoke skills:** `/explore-agent`, `/debug-agent`, `/review-agent`
+
 **Test enforcement reducers (v4.20) - ensure tests are always run:**
 
 | Reducer | Delta | Trigger | Cooldown |

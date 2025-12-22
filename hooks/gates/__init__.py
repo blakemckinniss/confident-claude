@@ -70,6 +70,15 @@ from ._beads import (
     check_parallel_bead_delegation,
     check_recursion_guard,
 )
+from ._agent_preflight import (
+    check_agent_preflight,
+)
+from ._delegation import (
+    check_exploration_circuit_breaker,
+    check_debug_circuit_breaker,
+    check_research_circuit_breaker,
+    check_review_circuit_breaker,
+)
 from ._meta import (
     check_fp_fix_enforcer,
     check_self_heal_enforcer,
@@ -132,6 +141,13 @@ __all__ = [
     "check_bead_enforcement",
     "check_parallel_bead_delegation",
     "check_recursion_guard",
+    # Agent preflight gates
+    "check_agent_preflight",
+    # Delegation circuit breaker gates
+    "check_exploration_circuit_breaker",
+    "check_debug_circuit_breaker",
+    "check_research_circuit_breaker",
+    "check_review_circuit_breaker",
     # Meta/recovery gates
     "check_fp_fix_enforcer",
     "check_self_heal_enforcer",
