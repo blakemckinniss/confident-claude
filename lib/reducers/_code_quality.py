@@ -573,7 +573,7 @@ class PathHardcodingReducer(ConfidenceReducer):
         if not new_content:
             return False
 
-        # Skip config/scratch/documentation files where paths are expected
+        # Skip config/scratch/documentation/test files where paths are expected
         if any(
             p in file_path
             for p in [
@@ -584,6 +584,10 @@ class PathHardcodingReducer(ConfidenceReducer):
                 "settings.",
                 "installed_plugins.json",  # Plugin registry requires absolute paths
                 ".md",
+                # Test files often use fixture paths (v4.31)
+                "test_",
+                "_test.py",
+                "/tests/",
                 # Shell config files legitimately contain hardcoded paths
                 ".bashrc",
                 ".zshrc",

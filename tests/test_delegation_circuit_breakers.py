@@ -118,9 +118,62 @@ class TestExplorationCircuitBreaker:
             )
             assert result.decision != "deny", f"Should allow reading {path}"
 
+    def test_subagent_bypass_inherited_state(self):
+        """Subagents with inherited blocked state should bypass circuit breaker (v4.31)."""
+        state = MockSessionState()
+        # Simulate subagent: low turn count but high inherited counter
+        state.turn_count = 0  # Fresh agent
+        state.consecutive_exploration_calls = 10  # Inherited from parent
+
+        result = check_exploration_circuit_breaker(
+            {"tool_name": "Grep", "tool_input": {}}, state
+        )
+
+        # Should approve because we're a subagent (turn 0 with high counter)
+        assert result.decision != "deny", "Subagent should bypass inherited block"
+
+    def test_subagent_bypass_at_turn_2(self):
+        """Subagent bypass works up to turn 2."""
+        state = MockSessionState()
+        state.turn_count = 2  # Still considered subagent
+        state.consecutive_exploration_calls = 5
+
+        result = check_exploration_circuit_breaker(
+            {"tool_name": "Read", "tool_input": {"file_path": "/some/code.py"}}, state
+        )
+
+        assert result.decision != "deny", "Turn 2 subagent should bypass"
+
+    def test_no_subagent_bypass_at_turn_3(self):
+        """After turn 2, normal circuit breaker applies."""
+        state = MockSessionState()
+        state.turn_count = 3  # No longer considered subagent
+        state.consecutive_exploration_calls = 5
+
+        result = check_exploration_circuit_breaker(
+            {"tool_name": "Read", "tool_input": {"file_path": "/some/code.py"}}, state
+        )
+
+        assert result.decision == "deny", "Turn 3+ should apply normal blocking"
+
 
 class TestDebugCircuitBreaker:
     """Tests for debug circuit breaker."""
+
+    def test_subagent_bypass_inherited_state(self):
+        """Subagents with inherited debug state should bypass (v4.31)."""
+        state = MockSessionState()
+        state.turn_count = 0  # Fresh agent
+        state.edit_counts_v2 = {
+            "/test/file.py": {"count": 10, "last_turn": 50, "failures": 5}
+        }
+        state.consecutive_tool_failures = 5
+
+        result = check_debug_circuit_breaker(
+            {"tool_name": "Edit", "tool_input": {"file_path": "/test/file.py"}}, state
+        )
+
+        assert result.decision != "deny", "Subagent should bypass inherited debug block"
 
     def test_allows_first_edits(self):
         """First 2 edits to a file should be allowed."""
@@ -262,6 +315,20 @@ class TestDebugCircuitBreaker:
 
 class TestResearchCircuitBreaker:
     """Tests for research circuit breaker."""
+
+    def test_subagent_bypass_inherited_state(self):
+        """Subagents with inherited research state should bypass (v4.31)."""
+        state = MockSessionState()
+        state.turn_count = 1  # Fresh agent
+        state.consecutive_research_calls = 10  # Inherited from parent
+
+        result = check_research_circuit_breaker(
+            {"tool_name": "WebSearch", "tool_input": {}}, state
+        )
+
+        assert result.decision != "deny", (
+            "Subagent should bypass inherited research block"
+        )
 
     def test_allows_first_calls(self):
         """First 2 research calls should be allowed."""

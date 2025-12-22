@@ -20,6 +20,22 @@ from ._common import register_hook
 _telemetry = None
 
 
+def _is_subagent(state: SessionState, counter_value: int, threshold: int = 3) -> bool:
+    """
+    Detect if we're running inside a subagent that inherited parent state.
+
+    Heuristic: If turn_count is very low (fresh agent) but circuit breaker
+    counter is already at/above threshold, we inherited blocked state.
+
+    Subagents ARE the solution to circuit breakers - they should bypass.
+
+    v4.31: Fix for agents inheriting parent's blocked state.
+    """
+    turn = getattr(state, "turn_count", 0)
+    # Fresh agent (turn 0-2) with already-high counter = inherited state
+    return turn <= 2 and counter_value >= threshold
+
+
 def _log_cb(
     state: SessionState,
     breaker: str,
@@ -93,6 +109,20 @@ def check_exploration_circuit_breaker(data: dict, state: SessionState) -> HookRe
     # Check consecutive exploration calls
     consecutive = getattr(state, "consecutive_exploration_calls", 0)
 
+    # Subagent bypass: If we're a fresh agent with inherited high counter,
+    # we ARE the delegation solution - don't block ourselves (v4.31)
+    if _is_subagent(state, consecutive, threshold=4):
+        _log_cb(
+            state,
+            "exploration",
+            "subagent_bypass",
+            4,
+            consecutive,
+            tool_name,
+            "inherited",
+        )
+        return HookResult.approve()
+
     # Check if Explore agent was used recently (within 8 turns)
     recent_explore = getattr(state, "recent_explore_agent_turn", -100)
     if state.turn_count - recent_explore < 8:
@@ -155,13 +185,27 @@ def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
     # Get edit counts per file with turn tracking for decay
     edit_data = getattr(state, "edit_counts_v2", {})
     file_data = edit_data.get(file_path, {"count": 0, "last_turn": 0, "failures": 0})
+    edits_to_this_file = file_data.get("count", 0)
+
+    # Subagent bypass: Fresh agent with inherited high counter (v4.31)
+    if _is_subagent(state, edits_to_this_file, threshold=5):
+        _log_cb(
+            state,
+            "debug",
+            "subagent_bypass",
+            5,
+            edits_to_this_file,
+            "Edit",
+            "inherited",
+        )
+        return HookResult.approve()
 
     # DECAY: If last edit was 15+ turns ago, reset count (new task likely)
     turns_since_last = state.turn_count - file_data.get("last_turn", 0)
     if turns_since_last >= 15:
         file_data = {"count": 0, "last_turn": state.turn_count, "failures": 0}
+        edits_to_this_file = 0  # Reset after decay
 
-    edits_to_this_file = file_data.get("count", 0)
     failures_on_this_file = file_data.get("failures", 0)
 
     # Check if debugger agent was used recently
@@ -228,6 +272,13 @@ def check_research_circuit_breaker(data: dict, state: SessionState) -> HookResul
 
     # Check consecutive research calls
     consecutive = getattr(state, "consecutive_research_calls", 0)
+
+    # Subagent bypass: Fresh agent with inherited high counter (v4.31)
+    if _is_subagent(state, consecutive, threshold=3):
+        _log_cb(
+            state, "research", "subagent_bypass", 3, consecutive, tool_name, "inherited"
+        )
+        return HookResult.approve()
 
     # Check if researcher agent was used recently
     recent_researcher = getattr(state, "recent_researcher_agent_turn", -100)
