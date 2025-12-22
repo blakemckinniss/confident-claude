@@ -208,6 +208,23 @@ class TestDebugCircuitBreaker:
         # Should still block - no decay
         assert result.decision == "deny"
 
+    def test_allows_iterative_development_without_failures(self):
+        """Iterative dev (many edits, no failures) should NOT block."""
+        state = MockSessionState()
+        # v2 format: high edit count but ZERO failures
+        state.edit_counts_v2 = {
+            "/path/to/file.py": {"count": 10, "last_turn": 10, "failures": 0}
+        }
+        state.consecutive_tool_failures = 0  # No failures!
+
+        result = check_debug_circuit_breaker(
+            {"tool_name": "Edit", "tool_input": {"file_path": "/path/to/file.py"}},
+            state,
+        )
+
+        # Should NOT block - iterative development is allowed
+        assert result.decision != "deny"
+
     def test_allows_after_debugger_agent(self):
         """Should allow if debugger agent was used recently."""
         state = MockSessionState()

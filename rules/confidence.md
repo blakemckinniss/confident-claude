@@ -332,13 +332,27 @@ This catches cases where multiple small failures accumulate without triggering t
 
 **Delegation circuit breakers (v4.28) - HARD BLOCKS forcing agent usage:**
 
-| Gate | Trigger | Block |
-|------|---------|-------|
-| `exploration_circuit_breaker` | 4+ exploration calls | Blocks Grep/Glob/Read until Task(Explore) |
-| `debug_circuit_breaker` | 3+ edits to same file + failures | Blocks Edit until Task(debugger) |
-| `research_circuit_breaker` | 3+ research calls | Blocks WebSearch/crawl4ai until Task(researcher) |
+| Gate | Trigger | Block | Bypass |
+|------|---------|-------|--------|
+| `exploration_circuit_breaker` | 4+ Grep/Glob/Read | Blocks until Task(Explore) | `SUDO EXPLORE` |
+| `debug_circuit_breaker` | 5+ edits + failures | Blocks Edit until Task(debugger) | `SUDO DEBUG` |
+| `research_circuit_breaker` | 3+ WebSearch/crawl4ai | Blocks until Task(researcher) | `SUDO RESEARCH` |
+| `review_circuit_breaker` | 5+ files edited | **Nudge only** (not block) | N/A |
 
-**Bypass:** `SUDO EXPLORE`, `SUDO DEBUG`, `SUDO RESEARCH` in prompt.
+**Debug v2 features (smarter detection):**
+- Requires BOTH high edit count AND actual failures (no FP on iterative dev)
+- 15-turn decay: If last edit was 15+ turns ago, count resets (new task)
+- Tracks `edit_counts_v2` with `{count, last_turn, failures}` per file
+
+**Skill circuit breakers (v4.29) - HARD BLOCKS forcing skill usage:**
+
+| Gate | Trigger | Block | Bypass |
+|------|---------|-------|--------|
+| `docs_skill_circuit_breaker` | 2+ library doc lookups | Blocks WebSearch until `/docs` | `SUDO DOCS` |
+| `commit_skill_circuit_breaker` | Any manual `git commit -m` | Blocks until `/commit` | `SUDO COMMIT` |
+| `think_skill_circuit_breaker` | 3+ debug attempts | **Nudge only** for `/think` | N/A |
+
+**Recent agent/skill usage resets blockers:** Circuit breakers check `recent_*_agent_turn` and allow if agent was used within threshold (8-20 turns depending on type).
 
 **Token Economy Philosophy (v4.26):**
 - Master thread has 200k context limit
