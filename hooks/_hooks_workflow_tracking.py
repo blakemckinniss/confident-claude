@@ -85,7 +85,7 @@ def _get_prerequisites(state) -> dict:
 
 
 @register_hook("workflow_pal_tracker", None, priority=8)
-def track_workflow_pal(data: dict, state) -> str | None:
+def track_workflow_pal(data: dict, state, runner_state: dict) -> str | None:
     """Track PAL tool usage to set pal_initialized flag."""
     tool_name = data.get("tool_name", "")
 
@@ -100,7 +100,7 @@ def track_workflow_pal(data: dict, state) -> str | None:
 
 
 @register_hook("workflow_memory_tracker", None, priority=8)
-def track_workflow_memory(data: dict, state) -> str | None:
+def track_workflow_memory(data: dict, state, runner_state: dict) -> str | None:
     """Track memory tool usage to set memory_searched flag."""
     tool_name = data.get("tool_name", "")
 
@@ -124,7 +124,7 @@ def track_workflow_memory(data: dict, state) -> str | None:
 
 
 @register_hook("workflow_research_tracker", None, priority=8)
-def track_workflow_research(data: dict, state) -> str | None:
+def track_workflow_research(data: dict, state, runner_state: dict) -> str | None:
     """Track research tool usage to set research_done flag."""
     tool_name = data.get("tool_name", "")
 
@@ -159,7 +159,7 @@ def track_workflow_research(data: dict, state) -> str | None:
 
 
 @register_hook("workflow_bead_tracker", None, priority=8)
-def track_workflow_bead(data: dict, state) -> str | None:
+def track_workflow_bead(data: dict, state, runner_state: dict) -> str | None:
     """Track bead tool usage to set bead_claimed flag."""
     tool_name = data.get("tool_name", "")
 

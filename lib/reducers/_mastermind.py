@@ -106,7 +106,7 @@ class FailureSignalDetectedReducer(ConfidenceReducer):
             return False
 
         # Get failure signals from mastermind success_criteria
-        success_criteria = state.get("mastermind_success_criteria")
+        success_criteria = getattr(state, "mastermind_success_criteria", None)
         if not success_criteria:
             return False
 
@@ -122,7 +122,7 @@ class FailureSignalDetectedReducer(ConfidenceReducer):
             signal_lower = signal.lower()
             if signal_lower in recent_output_lower:
                 # Store which signal triggered for messaging
-                state.set("last_failure_signal", signal)
+                setattr(state, "last_failure_signal", signal)
                 return True
 
         return False
