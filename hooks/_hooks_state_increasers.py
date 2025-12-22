@@ -310,15 +310,39 @@ def _track_agent_delegation(
         if tool_name not in ("Task", "AskUserQuestion", "Read"):
             state.consecutive_research_calls = 0
 
-    # Track debugging patterns (Edit after failure)
+    # Track debugging patterns (Edit after failure) - v2 with decay and failure tracking
     if tool_name == "Edit":
         file_path = tool_input.get("file_path", "")
         if file_path:
+            # Legacy format (still updated for backward compat)
             edit_counts = getattr(state, "edit_counts", {})
             edit_counts[file_path] = edit_counts.get(file_path, 0) + 1
             state.edit_counts = edit_counts
-            # 3+ edits to same file suggests debugging loop
-            if edit_counts[file_path] >= 3:
+
+            # v2 format: {path: {count, last_turn, failures}} - with decay support
+            edit_data = getattr(state, "edit_counts_v2", {})
+            file_data = edit_data.get(
+                file_path, {"count": 0, "last_turn": 0, "failures": 0}
+            )
+
+            # DECAY: If last edit was 15+ turns ago, reset (new task likely)
+            turns_since = state.turn_count - file_data.get("last_turn", 0)
+            if turns_since >= 15:
+                file_data = {"count": 0, "last_turn": state.turn_count, "failures": 0}
+
+            # Increment count and update turn
+            file_data["count"] = file_data.get("count", 0) + 1
+            file_data["last_turn"] = state.turn_count
+
+            # Track failures associated with this file
+            if getattr(state, "consecutive_tool_failures", 0) > 0:
+                file_data["failures"] = file_data.get("failures", 0) + 1
+
+            edit_data[file_path] = file_data
+            state.edit_counts_v2 = edit_data
+
+            # Only activate debug mode after actual failures (not just edits)
+            if file_data["count"] >= 3 and file_data["failures"] >= 2:
                 state.debug_mode_active = True
 
 

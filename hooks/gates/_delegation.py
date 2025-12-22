@@ -94,10 +94,13 @@ def check_exploration_circuit_breaker(data: dict, state: SessionState) -> HookRe
 @register_hook("debug_circuit_breaker", "Edit", priority=3)
 def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
     """
-    HARD BLOCK editing same file 3+ times without Task(debugger).
+    HARD BLOCK editing same file 5+ times WITH failures (actual debug loop).
 
     Pattern: Edit-test-fail-edit-test-fail loop = context waste
     Solution: Fresh debugger agent with 200k context finds it faster
+
+    v2: Smarter detection - requires ACTUAL failures, not just edits.
+    Iterative development (edit-edit-edit without failures) is allowed.
 
     SUDO DEBUG to bypass.
     """
@@ -111,24 +114,33 @@ def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
     if not file_path:
         return HookResult.approve()
 
-    # Get edit counts per file (tracked as 'edit_counts' in state)
-    edit_counts = getattr(state, "edit_counts", {})
-    edits_to_this_file = edit_counts.get(file_path, 0)
+    # Get edit counts per file with turn tracking for decay
+    edit_data = getattr(state, "edit_counts_v2", {})
+    file_data = edit_data.get(file_path, {"count": 0, "last_turn": 0, "failures": 0})
+
+    # DECAY: If last edit was 15+ turns ago, reset count (new task likely)
+    turns_since_last = state.turn_count - file_data.get("last_turn", 0)
+    if turns_since_last >= 15:
+        file_data = {"count": 0, "last_turn": state.turn_count, "failures": 0}
+
+    edits_to_this_file = file_data.get("count", 0)
+    failures_on_this_file = file_data.get("failures", 0)
 
     # Check if debugger agent was used recently
     recent_debugger = getattr(state, "recent_debugger_agent_turn", -100)
     if state.turn_count - recent_debugger < 10:
         return HookResult.approve()  # Recently used debugger, allow edits
 
-    # Check if in debug mode (tool failures indicate debugging)
+    # SMARTER DEBUG MODE: Requires ACTUAL consecutive failures, not just edit count
+    # This prevents false positives on iterative development
     consecutive_failures = getattr(state, "consecutive_tool_failures", 0)
-    in_debug_mode = consecutive_failures >= 1 or edits_to_this_file >= 2
+    in_debug_mode = consecutive_failures >= 2 or failures_on_this_file >= 2
 
-    # THRESHOLD: 3+ edits to same file while debugging
-    if edits_to_this_file >= 3 and in_debug_mode:
+    # THRESHOLD: 5+ edits to same file WITH failures (actual stuck loop)
+    if edits_to_this_file >= 5 and in_debug_mode:
         short_path = file_path.split("/")[-1]
         return HookResult.deny(
-            f"🚫 **DEBUG LOOP BLOCKED** ({edits_to_this_file} edits to `{short_path}`)\n\n"
+            f"🚫 **DEBUG LOOP BLOCKED** ({edits_to_this_file} edits + {failures_on_this_file} failures to `{short_path}`)\n\n"
             f"You're stuck. MUST spawn fresh perspective:\n"
             f"```\n"
             f'Task(subagent_type="debugger", prompt="Debug: [describe the issue]")\n'
@@ -137,11 +149,11 @@ def check_debug_circuit_breaker(data: dict, state: SessionState) -> HookResult:
             f"Say `SUDO DEBUG` to bypass (logged)."
         )
 
-    # Warning at 2 edits
-    if edits_to_this_file >= 2 and in_debug_mode:
+    # Warning at 4 edits with failures
+    if edits_to_this_file >= 4 and in_debug_mode:
         short_path = file_path.split("/")[-1]
         return HookResult.approve(
-            f"⚠️ **{edits_to_this_file} edits to `{short_path}`** - consider Task(debugger)"
+            f"⚠️ **{edits_to_this_file} edits to `{short_path}` with failures** - consider Task(debugger)"
         )
 
     return HookResult.approve()
