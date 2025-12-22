@@ -27,6 +27,7 @@ def _get_project_id() -> str:
 
     try:
         from project_detector import detect_project
+
         ctx = detect_project()
 
         if ctx and ctx.project_type != "ephemeral":
@@ -76,6 +77,8 @@ class RoutingDecision:
     user_override: str | None = None  # "!" for skip, "^" for force
     task_type: str = "general"  # debugging, planning, review, architecture, etc.
     suggested_tool: str = "chat"  # Groq's suggested PAL tool
+    mandates: list[dict] = field(default_factory=list)  # Mandatory tool directives
+    mandate_policy: str = "strict"  # strict = enforce, lenient = warn
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -268,12 +271,12 @@ def get_state_path(
     state_dir: Path | None = None,
 ) -> Path:
     """Get path for session state file with project isolation.
-    
+
     New path structure: {state_dir}/{project_id}/{session_id}/state.json
     """
     directory = state_dir or DEFAULT_STATE_DIR
     proj_id = project_id or _get_project_id()
-    
+
     # New isolated path: {dir}/{project_id}/{session_id}/state.json
     state_path = directory / proj_id / session_id
     state_path.mkdir(parents=True, exist_ok=True)
@@ -286,12 +289,12 @@ def load_state(
     state_dir: Path | None = None,
 ) -> MastermindState:
     """Load session state from disk with migration fallback.
-    
+
     Tries new isolated path first, falls back to legacy path for migration.
     """
     # Try new isolated path first
     path = get_state_path(session_id, project_id, state_dir)
-    
+
     if path.exists():
         try:
             with open(path) as f:
@@ -299,11 +302,11 @@ def load_state(
             return MastermindState.from_dict(data)
         except (json.JSONDecodeError, OSError):
             pass
-    
+
     # Fallback: try legacy path (~/.claude/tmp/mastermind_{session_id}.json)
     legacy_dir = state_dir or Path.home() / ".claude" / "tmp"
     legacy_path = legacy_dir / f"mastermind_{session_id}.json"
-    
+
     if legacy_path.exists():
         try:
             with open(legacy_path) as f:
@@ -311,7 +314,7 @@ def load_state(
             return MastermindState.from_dict(data)
         except (json.JSONDecodeError, OSError):
             pass
-    
+
     return MastermindState(session_id=session_id)
 
 
@@ -321,7 +324,7 @@ def save_state(
     state_dir: Path | None = None,
 ) -> Path:
     """Save session state to disk with project isolation.
-    
+
     Always writes to new isolated path structure.
     """
     path = get_state_path(state.session_id, project_id, state_dir)

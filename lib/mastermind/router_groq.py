@@ -32,6 +32,23 @@ IMPORTANT: If "Agent State" shows LOW confidence (<70%), bias toward escalating 
 - If would be medium but confidence LOW -> classify as complex
 - If confidence VERY LOW (<50%), always classify as complex and suggest PAL consultation
 
+STUCK LOOP HANDLING: If "Stuck Loop State" section is present:
+- circuit_breaker_active=true → MUST set needs_research=true and suggest mcp__pal__debug or mcp__crawl4ai
+- max_fix_attempts >= 3 → Suggest "/stuck" skill or mcp__pal__debug, classify as complex
+- "edits until circuit breaker" <= 2 → Add action_hint "research.crawl4ai" with priority p0
+- research_done=false → Strongly recommend research before more edits
+
+BEAD GOALS: If "Active Task Goals" section is present, use task descriptions to infer task_type:
+- Goals containing "fix", "bug", "error", "broken" → task_type=debugging
+- Goals containing "add", "implement", "create", "build" → task_type=planning
+- Goals containing "refactor", "clean", "improve", "update" → task_type=review
+- Goals containing "security", "auth", "password" → classify as complex + add policy.auth_review hint
+
+RECENT PENALTIES: If "Recent Penalties" section lists reducers that fired:
+- edit_oscillation, sunk_cost, stuck_loop → Force research, suggest mcp__pal__debug
+- goal_drift → Add discovery_question about original goal alignment
+- no_research_debug → needs_research=true, add research.apilookup hint
+
 Also identify the task TYPE and suggest the best PAL MCP tool:
 - debugging: Bug investigation, error tracing, fix attempts -> suggest "debug"
 - planning: New features, implementation design, multi-step work -> suggest "planner"
@@ -163,7 +180,57 @@ Reason codes (pick 1-3):
 - version_specific: Depends on specific version behavior
 - large_codebase: Analyzing entire directories or many files
 - context_heavy: Would benefit from isolated context or 1M token window
-- code_generation: Writing substantial new code or implementation"""
+- code_generation: Writing substantial new code or implementation
+
+## MANDATORY TOOL DIRECTIVES
+
+You MUST generate a `mandates` array specifying tools Claude MUST use. These are NOT suggestions - they are requirements that will be ENFORCED via hard blocks.
+
+### Mandate Schema
+{
+  "mandates": [
+    {
+      "type": "pal|research|agent|bead|ask_user|plan_mode|project_research|script",
+      "tool": "mcp__pal__debug",  // For pal, research - specific tool
+      "query": "search query",  // For research - what to search
+      "subagent": "Explore|debugger|researcher|code-reviewer|Plan|refactorer",  // For agent
+      "scope": "what to look for",  // For agent, project_research
+      "questions": ["q1"],  // For ask_user
+      "action": "create|claim",  // For bead
+      "reason": "why mandatory",
+      "priority": "p0|p1|p2",  // p0=critical, p1=important, p2=helpful
+      "blocking": true  // true = blocks ALL other tools until satisfied
+    }
+  ],
+  "mandate_policy": "strict"
+}
+
+### Mandate Rules
+
+For NON-TRIVIAL tasks (medium/complex), ALWAYS mandate:
+1. bead (blocking) - task tracking is mandatory
+2. pal with SPECIFIC tool (blocking) - pick the BEST one from the guide below
+3. research/agent as needed (blocking or not based on urgency)
+
+PAL Tool Selection (pick ONE best match):
+- thinkdeep: "why", "how does", understanding, complex reasoning
+- debug: bug, error, failure, fix, debugging
+- codereview: review, quality, refactor, code assessment
+- consensus: architecture, design, tradeoff, multi-perspective
+- apilookup: API, library, docs, version, external documentation
+- planner: plan, implement, steps, multi-step work
+- precommit: validate, pre-commit, verify changes
+- chat: brainstorm, discuss, general consultation
+- clink: external CLI needed (gemini, codex)
+
+For TRIVIAL tasks: Only recommend non-blocking agents if helpful.
+
+Example (debugging task):
+"mandates": [
+  {"type": "bead", "action": "create", "reason": "Bug fix tracking", "blocking": true, "priority": "p1"},
+  {"type": "pal", "tool": "debug", "reason": "External debug analysis", "blocking": true, "priority": "p0"},
+  {"type": "agent", "subagent": "Explore", "scope": "error patterns", "reason": "Map surface", "blocking": false, "priority": "p1"}
+]"""
 
 
 @dataclass
@@ -235,6 +302,8 @@ class RouterResponse:
     recommended: RecommendedCapabilities | None = None  # capability shortlist
     discovery: DiscoveryAids | None = None  # discovery aids (always populated)
     intent: IntentClarification | None = None  # prompt enhancement (clarified intent)
+    mandates: list[dict] | None = None  # MANDATORY tool directives from Groq
+    mandate_policy: str = "strict"  # strict = enforce all, lenient = warn only
     error: str | None = None
 
     @property
@@ -432,8 +501,7 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                 intent = IntentClarification(
                     inferred_goal=raw_intent.get("inferred_goal") or None,
                     inferred_scope=raw_intent.get("inferred_scope") or None,
-                    unstated_constraints=raw_intent.get("unstated_constraints")
-                    or None,
+                    unstated_constraints=raw_intent.get("unstated_constraints") or None,
                     ambiguity_detected=bool(
                         raw_intent.get("ambiguity_detected", False)
                     ),
@@ -445,6 +513,10 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
                     related_concepts=raw_intent.get("related_concepts") or None,
                     prior_art=raw_intent.get("prior_art") or None,
                 )
+
+        # Parse mandates (new v4.33 feature)
+        mandates = parsed.get("mandates") or []
+        mandate_policy = parsed.get("mandate_policy", "strict")
 
         return RouterResponse(
             classification=parsed.get("classification", "complex"),
@@ -460,6 +532,8 @@ def call_groq_router(prompt: str, timeout: float = 10.0) -> RouterResponse:
             recommended=recommended,
             discovery=discovery,
             intent=intent,
+            mandates=mandates if mandates else None,
+            mandate_policy=mandate_policy,
         )
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         # Parse error - default to complex (safe fallback)

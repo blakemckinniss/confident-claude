@@ -694,6 +694,19 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
             if routing.get("pal_suggestion") or routing.get("inject_context"):
                 state.set("mastermind_pal_injected", True)
 
+            # v4.33: Store mandates in session state for gate enforcement
+            mandates = routing.get("mandates", [])
+            if mandates:
+                state.set("pending_mandates", mandates)
+                state.set("mandate_policy", routing.get("mandate_policy", "strict"))
+
+                # Inject mandate checklist for visibility (top priority)
+                from lib.mastermind.mandates import format_mandate_checklist
+
+                checklist = format_mandate_checklist(mandates)
+                if checklist:
+                    context_parts.insert(0, checklist)
+
         # PRIORITY: Check for PAL mandate injection (^ override)
         # This MUST be injected for the pre_tool_use block to make sense
         inject_context = routing.get("inject_context") or result.get("inject_context")

@@ -622,7 +622,13 @@ def handle_session_start_routing(
             user_override=override,
             task_type=router_response.task_type,
             suggested_tool=router_response.suggested_tool,
+            mandates=router_response.mandates or [],
+            mandate_policy=router_response.mandate_policy,
         )
+
+        # Store mandates and result for gate enforcement
+        result["mandates"] = router_response.mandates or []
+        result["mandate_policy"] = router_response.mandate_policy
 
         # Apply routing decision
         policy = make_routing_decision(prompt, state.turn_count, router_response)
