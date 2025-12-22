@@ -80,12 +80,57 @@ class MastermindApproachDriftReducer(ConfidenceReducer):
 
 
 # =============================================================================
-# COVERAGE GAP REDUCERS (v4.18) - Anti-patterns that were detectable but missed
+# PHASE 1 METADATA REDUCERS (v4.34) - Groq success_criteria integration
 # =============================================================================
+
+
+@dataclass
+class FailureSignalDetectedReducer(ConfidenceReducer):
+    """Triggers when Groq-predicted failure patterns are detected in output.
+
+    v4.34: Uses success_criteria.failure_signals from mastermind metadata.
+    When tool output contains patterns Groq predicted would indicate failure
+    (e.g., "TypeError", "Import error"), this reducer fires.
+    """
+
+    name: str = "mm_failure_signal"
+    delta: int = -8
+    description: str = "Groq-predicted failure pattern detected"
+    remedy: str = "address the failure pattern before continuing"
+    cooldown_turns: int = 3
+
+    def should_trigger(
+        self, context: dict, state: "SessionState", last_trigger_turn: int
+    ) -> bool:
+        if state.turn_count - last_trigger_turn < self.get_effective_cooldown(state):
+            return False
+
+        # Get failure signals from mastermind success_criteria
+        success_criteria = state.get("mastermind_success_criteria")
+        if not success_criteria:
+            return False
+
+        failure_signals = success_criteria.get("failure_signals", [])
+        if not failure_signals:
+            return False
+
+        # Check recent tool output for failure patterns
+        recent_output = context.get("tool_output", "") or ""
+        recent_output_lower = recent_output.lower()
+
+        for signal in failure_signals:
+            signal_lower = signal.lower()
+            if signal_lower in recent_output_lower:
+                # Store which signal triggered for messaging
+                state.set("last_failure_signal", signal)
+                return True
+
+        return False
 
 
 __all__ = [
     "MastermindFileDriftReducer",
     "MastermindTestDriftReducer",
     "MastermindApproachDriftReducer",
+    "FailureSignalDetectedReducer",
 ]

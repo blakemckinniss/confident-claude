@@ -126,6 +126,7 @@ from ._mastermind import (
     MastermindFileDriftReducer,
     MastermindTestDriftReducer,
     MastermindApproachDriftReducer,
+    FailureSignalDetectedReducer,
 )
 
 # Agent delegation reducers (v4.26) - enforce agent usage for token economy
@@ -215,6 +216,8 @@ REDUCERS: list[ConfidenceReducer] = [
     MastermindFileDriftReducer(),
     MastermindTestDriftReducer(),
     MastermindApproachDriftReducer(),
+    # Phase 1 metadata reducers (v4.34)
+    FailureSignalDetectedReducer(),
     # Scripting escape hatch reducers (v4.11)
     ComplexBashChainReducer(),
     BashDataTransformReducer(),
