@@ -242,6 +242,10 @@ def check_confidence_external_suggestion(data: dict, state: SessionState) -> Hoo
     if state.confidence == 0 or state.confidence >= 50:
         return HookResult.approve()
 
+    # Subagent bypass: Fresh agents shouldn't be blocked by inherited low confidence (v4.32)
+    if _is_subagent_confidence(state):
+        return HookResult.approve()
+
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
 
