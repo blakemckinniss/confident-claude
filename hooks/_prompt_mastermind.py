@@ -739,6 +739,16 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
             if risk_signals:
                 state.set("mastermind_risk_signals", risk_signals)
 
+            # v4.34: Store success_criteria for ralph completion gate
+            success_criteria = routing.get("success_criteria")
+            if success_criteria:
+                state.set("mastermind_success_criteria", success_criteria)
+
+            # v4.34: Store escape_hatches for abort detection
+            escape_hatches = routing.get("escape_hatches")
+            if escape_hatches:
+                state.set("mastermind_escape_hatches", escape_hatches)
+
         # PRIORITY: Check for PAL mandate injection (^ override)
         # This MUST be injected for the pre_tool_use block to make sense
         inject_context = routing.get("inject_context") or result.get("inject_context")

@@ -218,11 +218,29 @@ def check_ralph_detection(data: dict, state: SessionState) -> HookResult:
 
     # Build task contract
     goal = extract_goal_summary(prompt)
+
+    # v4.34: Enhance contract with Groq's success_criteria if available
+    mastermind_criteria = state.get("mastermind_success_criteria")
+    if mastermind_criteria:
+        # Use Groq's analysis to enhance criteria
+        if mastermind_criteria.get("what_done_looks_like"):
+            goal = mastermind_criteria["what_done_looks_like"]
+        if mastermind_criteria.get("verification_steps"):
+            criteria = mastermind_criteria["verification_steps"]
+        evidence_required = mastermind_criteria.get(
+            "acceptance_signals", ["test_pass", "build_success"]
+        )
+    else:
+        evidence_required = ["test_pass", "build_success"]
+
     contract = {
         "goal": goal,
         "criteria": criteria,
-        "evidence_required": ["test_pass", "build_success"],
+        "evidence_required": evidence_required,
         "created_turn": state.turn_count,
+        "failure_signals": mastermind_criteria.get("failure_signals", [])
+        if mastermind_criteria
+        else [],
     }
 
     # Update state directly
