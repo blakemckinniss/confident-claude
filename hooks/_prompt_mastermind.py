@@ -734,6 +734,11 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
                 if checklist:
                     context_parts.insert(0, checklist)
 
+            # v4.34: Store risk_signals for blast_radius gate enforcement
+            risk_signals = routing.get("risk_signals")
+            if risk_signals:
+                state.set("mastermind_risk_signals", risk_signals)
+
         # PRIORITY: Check for PAL mandate injection (^ override)
         # This MUST be injected for the pre_tool_use block to make sense
         inject_context = routing.get("inject_context") or result.get("inject_context")

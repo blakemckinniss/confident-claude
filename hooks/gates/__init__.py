@@ -104,6 +104,9 @@ from ._workflow_enforcement import (
     check_workflow_research_gate,
     check_workflow_bead_gate,
 )
+from ._blast_radius import (
+    check_blast_radius_gate,
+)
 
 __all__ = [
     "HOOKS",
@@ -187,4 +190,6 @@ __all__ = [
     "check_workflow_memory_gate",
     "check_workflow_research_gate",
     "check_workflow_bead_gate",
+    # Blast radius gate
+    "check_blast_radius_gate",
 ]

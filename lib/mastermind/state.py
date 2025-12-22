@@ -67,6 +67,58 @@ class Blueprint:
 
 
 @dataclass
+class RiskSignals:
+    """Phase 1 metadata: Risk assessment from Groq router."""
+
+    blast_radius: str = "local"  # local, module, service, multi_service, prod_wide
+    reversibility: str = "easy"  # easy, moderate, hard, irreversible
+    requires_review: bool = False
+    confidence_override: float | None = None
+    risk_factors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RiskSignals:
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class SuccessCriteria:
+    """Phase 1 metadata: Success conditions from Groq router."""
+
+    what_done_looks_like: str = ""
+    verification_steps: list[str] = field(default_factory=list)
+    acceptance_signals: list[str] = field(default_factory=list)
+    failure_signals: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SuccessCriteria:
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class EscapeHatches:
+    """Phase 1 metadata: Fallback strategies from Groq router."""
+
+    abort_conditions: list[str] = field(default_factory=list)
+    fallback_strategies: list[str] = field(default_factory=list)
+    escalation_path: str | None = None
+    max_attempts: int = 3
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EscapeHatches:
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
 class RoutingDecision:
     """Record of router classification."""
 
@@ -79,13 +131,50 @@ class RoutingDecision:
     suggested_tool: str = "chat"  # Groq's suggested PAL tool
     mandates: list[dict] = field(default_factory=list)  # Mandatory tool directives
     mandate_policy: str = "strict"  # strict = enforce, lenient = warn
+    # v4.34: Phase 1 metadata
+    risk_signals: RiskSignals | None = None
+    success_criteria: SuccessCriteria | None = None
+    escape_hatches: EscapeHatches | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        # Serialize nested dataclasses
+        if self.risk_signals:
+            d["risk_signals"] = self.risk_signals.to_dict()
+        if self.success_criteria:
+            d["success_criteria"] = self.success_criteria.to_dict()
+        if self.escape_hatches:
+            d["escape_hatches"] = self.escape_hatches.to_dict()
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RoutingDecision:
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        # Extract nested dataclass data before passing to constructor
+        risk_signals = None
+        success_criteria = None
+        escape_hatches = None
+
+        if data.get("risk_signals"):
+            risk_signals = RiskSignals.from_dict(data["risk_signals"])
+        if data.get("success_criteria"):
+            success_criteria = SuccessCriteria.from_dict(data["success_criteria"])
+        if data.get("escape_hatches"):
+            escape_hatches = EscapeHatches.from_dict(data["escape_hatches"])
+
+        # Filter to valid fields, excluding nested ones we handle specially
+        filtered = {
+            k: v
+            for k, v in data.items()
+            if k in cls.__dataclass_fields__
+            and k not in ("risk_signals", "success_criteria", "escape_hatches")
+        }
+
+        return cls(
+            **filtered,
+            risk_signals=risk_signals,
+            success_criteria=success_criteria,
+            escape_hatches=escape_hatches,
+        )
 
 
 @dataclass

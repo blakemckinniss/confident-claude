@@ -17,7 +17,19 @@ import pytest
 from lib.mastermind.config import load_config, MastermindConfig, clear_cache
 from lib.mastermind.state import MastermindState
 from lib.mastermind.routing import parse_user_override, make_routing_decision
-from lib.mastermind.router_groq import RouterResponse, apply_risk_lexicon
+from lib.mastermind.router_groq import (
+    RouterResponse,
+    apply_risk_lexicon,
+    RiskSignals,
+    SuccessCriteria,
+    EscapeHatches,
+)
+from lib.mastermind.state import (
+    RiskSignals as StateRiskSignals,
+    SuccessCriteria as StateSuccessCriteria,
+    EscapeHatches as StateEscapeHatches,
+    RoutingDecision,
+)
 from lib.mastermind.context_packer import pack_for_router, pack_for_planner
 from lib.mastermind.drift import evaluate_drift
 from lib.mastermind.redaction import redact_text, is_safe_to_send
@@ -59,7 +71,9 @@ class TestRouting:
     def test_routing_disabled_by_default(self):
         # Prime cache with defaults (non-existent path = use defaults)
         clear_cache()
-        load_config(Path("/nonexistent/path.json"))  # Sets cache with router.enabled=False
+        load_config(
+            Path("/nonexistent/path.json")
+        )  # Sets cache with router.enabled=False
         policy = make_routing_decision("test", turn_count=0)
         assert policy.should_route is False
         assert policy.reason == "routing_disabled"
@@ -160,6 +174,151 @@ class TestState:
         assert state.escalation_count == 1
         assert state.last_escalation_turn == 5
         assert state.epoch_id == 1
+
+
+class TestPhase1Metadata:
+    """Test Phase 1 metadata parsing (RiskSignals, SuccessCriteria, EscapeHatches)."""
+
+    def test_risk_signals_dataclass(self):
+        """Test RiskSignals dataclass from router_groq."""
+        rs = RiskSignals(
+            blast_radius="service",
+            reversibility="hard",
+            requires_review=True,
+            confidence_override=0.85,
+            risk_factors=["database migration", "auth changes"],
+        )
+        assert rs.blast_radius == "service"
+        assert rs.reversibility == "hard"
+        assert rs.requires_review is True
+        assert rs.confidence_override == 0.85
+        assert len(rs.risk_factors) == 2
+
+    def test_success_criteria_dataclass(self):
+        """Test SuccessCriteria dataclass from router_groq."""
+        sc = SuccessCriteria(
+            what_done_looks_like="All tests pass and feature works",
+            verification_steps=["Run pytest", "Manual test"],
+            acceptance_signals=["Green CI"],
+            failure_signals=["TypeError", "Import error"],
+        )
+        assert "tests pass" in sc.what_done_looks_like
+        assert len(sc.verification_steps) == 2
+
+    def test_escape_hatches_dataclass(self):
+        """Test EscapeHatches dataclass from router_groq."""
+        eh = EscapeHatches(
+            abort_conditions=["3 consecutive failures", "User says stop"],
+            fallback_strategies=["Revert to main", "Ask for help"],
+            escalation_path="User review",
+            max_attempts=5,
+        )
+        assert len(eh.abort_conditions) == 2
+        assert eh.max_attempts == 5
+
+    def test_router_response_with_metadata(self):
+        """Test RouterResponse with Phase 1 metadata fields."""
+        rs = RiskSignals(blast_radius="module", reversibility="moderate")
+        sc = SuccessCriteria(what_done_looks_like="Feature complete")
+        eh = EscapeHatches(abort_conditions=["timeout"])
+
+        resp = RouterResponse(
+            classification="complex",
+            confidence=0.85,
+            reason_codes=["multi_file"],
+            task_type="planning",
+            latency_ms=100,
+            raw_response="{}",
+            risk_signals=rs,
+            success_criteria=sc,
+            escape_hatches=eh,
+        )
+        assert resp.risk_signals.blast_radius == "module"
+        assert resp.success_criteria.what_done_looks_like == "Feature complete"
+        assert resp.escape_hatches.abort_conditions == ["timeout"]
+
+    def test_risk_lexicon_preserves_metadata(self):
+        """Test that apply_risk_lexicon preserves Phase 1 metadata."""
+        rs = RiskSignals(blast_radius="local", reversibility="easy")
+        sc = SuccessCriteria(what_done_looks_like="Done")
+        eh = EscapeHatches(abort_conditions=["fail"])
+
+        resp = RouterResponse(
+            classification="trivial",
+            confidence=0.9,
+            reason_codes=["simple"],
+            task_type="general",
+            latency_ms=50,
+            raw_response="{}",
+            risk_signals=rs,
+            success_criteria=sc,
+            escape_hatches=eh,
+        )
+
+        # Risk lexicon should escalate but preserve metadata
+        overridden = apply_risk_lexicon("Add authentication to login", resp)
+        assert overridden.classification == "complex"
+        assert overridden.risk_signals is not None
+        assert overridden.risk_signals.blast_radius == "local"
+        assert overridden.success_criteria is not None
+        assert overridden.escape_hatches is not None
+
+    def test_state_risk_signals_serialization(self):
+        """Test RiskSignals serialization in state module."""
+        rs = StateRiskSignals(
+            blast_radius="prod_wide",
+            reversibility="irreversible",
+            requires_review=True,
+            risk_factors=["production database"],
+        )
+        d = rs.to_dict()
+        assert d["blast_radius"] == "prod_wide"
+        assert d["reversibility"] == "irreversible"
+
+        # Round-trip
+        rs2 = StateRiskSignals.from_dict(d)
+        assert rs2.blast_radius == rs.blast_radius
+        assert rs2.reversibility == rs.reversibility
+
+    def test_routing_decision_with_metadata(self):
+        """Test RoutingDecision with Phase 1 metadata."""
+        rs = StateRiskSignals(blast_radius="service")
+        sc = StateSuccessCriteria(what_done_looks_like="Deployed")
+        eh = StateEscapeHatches(abort_conditions=["rollback needed"])
+
+        rd = RoutingDecision(
+            classification="complex",
+            confidence=0.8,
+            task_type="architecture",
+            risk_signals=rs,
+            success_criteria=sc,
+            escape_hatches=eh,
+        )
+
+        # Serialize
+        d = rd.to_dict()
+        assert d["risk_signals"]["blast_radius"] == "service"
+        assert d["success_criteria"]["what_done_looks_like"] == "Deployed"
+
+        # Deserialize
+        rd2 = RoutingDecision.from_dict(d)
+        assert rd2.risk_signals.blast_radius == "service"
+        assert rd2.success_criteria.what_done_looks_like == "Deployed"
+        assert rd2.escape_hatches.abort_conditions == ["rollback needed"]
+
+    def test_routing_decision_without_metadata(self):
+        """Test RoutingDecision handles missing metadata gracefully."""
+        rd = RoutingDecision(
+            classification="trivial",
+            confidence=0.95,
+        )
+        d = rd.to_dict()
+
+        # Deserialize with None metadata
+        rd2 = RoutingDecision.from_dict(d)
+        assert rd2.risk_signals is None
+        assert rd2.success_criteria is None
+        assert rd2.escape_hatches is None
 
 
 if __name__ == "__main__":
