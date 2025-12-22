@@ -127,11 +127,20 @@ def check_threat_anticipation(data: dict, state: SessionState) -> HookResult:
 # =============================================================================
 
 
+def _is_subagent_confidence(state: SessionState) -> bool:
+    """Detect if we're a subagent (low turn count indicates fresh spawn)."""
+    return state.turn_count <= 3
+
+
 @register_hook("confidence_tool_gate", None, priority=18)
 def check_confidence_tool_gate(data: dict, state: SessionState) -> HookResult:
     """Gate tool usage based on confidence level."""
     # SUDO bypass
     if data.get("_sudo_bypass"):
+        return HookResult.approve()
+
+    # Subagent bypass: Fresh agents shouldn't be blocked by inherited low confidence (v4.32)
+    if _is_subagent_confidence(state):
         return HookResult.approve()
 
     tool_name = data.get("tool_name", "")
@@ -228,7 +237,7 @@ def check_oracle_gate(data: dict, state: SessionState) -> HookResult:
 
 @register_hook("confidence_external_suggestion", None, priority=32)
 def check_confidence_external_suggestion(data: dict, state: SessionState) -> HookResult:
-    """Suggest external consultation and alternatives at low confidence."""
+    """Enforce external consultation at low confidence - HARD BLOCK below threshold."""
     # Skip if confidence not initialized or high enough
     if state.confidence == 0 or state.confidence >= 50:
         return HookResult.approve()
@@ -236,37 +245,61 @@ def check_confidence_external_suggestion(data: dict, state: SessionState) -> Hoo
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
 
-    # Don't suggest for diagnostic/read-only tools
+    # SUDO bypass
+    if data.get("_sudo_bypass"):
+        return HookResult.approve("⚠️ External consultation mandate bypassed via SUDO")
+
+    # Don't block diagnostic/read-only tools (needed for research)
     read_only_tools = {"Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoRead"}
     if tool_name in read_only_tools:
         return HookResult.approve()
 
-    # Don't suggest for external consultation tools (that's what we're suggesting!)
+    # Don't block external consultation tools (that's what we're mandating!)
     if tool_name.startswith("mcp__pal__"):
         return HookResult.approve()
+
+    # Don't block Task agents (especially research/exploration types)
+    if tool_name == "Task":
+        subagent_type = tool_input.get("subagent_type", "").lower()
+        research_agents = {
+            "explore",
+            "researcher",
+            "plan",
+            "scout",
+            "claude-code-guide",
+        }
+        if subagent_type in research_agents:
+            return HookResult.approve()
 
     # Lazy import - only load confidence utilities when needed
     from confidence import should_mandate_external, suggest_alternatives, get_tier_info
 
-    parts = []
-
-    # Check if external consultation is mandatory
+    # Check if external consultation is MANDATORY
     mandatory, mandatory_msg = should_mandate_external(state.confidence)
     if mandatory:
-        parts.append(mandatory_msg)
+        tier_name, emoji, _ = get_tier_info(state.confidence)
+        # HARD BLOCK - deny the tool until PAL is consulted
+        track_block(state, "confidence_external_suggestion")
+        return HookResult.deny(
+            f"{emoji} **EXTERNAL CONSULTATION MANDATORY** ({state.confidence}% {tier_name})\n\n"
+            f"Confidence is too low for `{tool_name}`. You MUST consult an external LLM first.\n\n"
+            f"**Pick one:**\n"
+            f"1. `mcp__pal__thinkdeep` - Deep analysis\n"
+            f"2. `mcp__pal__debug` - Debugging analysis\n"
+            f"3. `mcp__pal__chat` - General discussion\n"
+            f"4. `Task(subagent_type='researcher')` - Web research\n\n"
+            f"**Or bypass:** Say `SUDO` (logged)"
+        )
 
-    # Suggest alternatives based on confidence
+    # Below 50% but above mandatory threshold - warn but allow
     task_desc = tool_input.get("description", "") or tool_input.get("prompt", "")[:50]
     alternatives = suggest_alternatives(state.confidence, task_desc)
     if alternatives:
-        parts.append(alternatives)
-
-    if parts:
         tier_name, emoji, _ = get_tier_info(state.confidence)
-        header = (
+        return HookResult.approve(
             f"{emoji} **Low Confidence Warning: {state.confidence}% ({tier_name})**\n"
+            f"{alternatives}"
         )
-        return HookResult.approve(header + "\n\n".join(parts))
 
     return HookResult.approve()
 
@@ -280,6 +313,10 @@ def check_confidence_external_suggestion(data: dict, state: SessionState) -> Hoo
 def check_integration_gate(data: dict, state: SessionState) -> HookResult:
     """Enforce grep after function edits."""
     from session_state import check_integration_blindness
+
+    # Subagent bypass: Fresh agents shouldn't inherit pending greps from parent (v4.32)
+    if _is_subagent_confidence(state):
+        return HookResult.approve()
 
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})

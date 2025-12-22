@@ -363,6 +363,20 @@ def check_docs_skill_circuit_breaker(data: dict, state: SessionState) -> HookRes
         _log_cb(state, "docs_skill", "bypass", 2, lib_doc_searches, tool_name, "SUDO")
         return HookResult.approve()
 
+    # Subagent bypass: Fresh agent with inherited high counter (v4.32)
+    lib_doc_searches = getattr(state, "lib_doc_searches", 0)
+    if _is_subagent(state, lib_doc_searches, threshold=2):
+        _log_cb(
+            state,
+            "docs_skill",
+            "subagent_bypass",
+            2,
+            lib_doc_searches,
+            tool_name,
+            "inherited",
+        )
+        return HookResult.approve()
+
     tool_input = data.get("tool_input", {})
     query = (
         tool_input.get("query", "")
@@ -455,6 +469,20 @@ def check_commit_skill_circuit_breaker(data: dict, state: SessionState) -> HookR
 
     # Only check git commit commands
     if "git commit" not in command or "-m" not in command:
+        return HookResult.approve()
+
+    # Subagent bypass: Fresh agent with inherited state (v4.32)
+    manual_commits = getattr(state, "manual_commits", 0)
+    if _is_subagent(state, manual_commits, threshold=1):
+        _log_cb(
+            state,
+            "commit_skill",
+            "subagent_bypass",
+            1,
+            manual_commits,
+            "Bash",
+            "inherited",
+        )
         return HookResult.approve()
 
     if data.get("_sudo_bypass") or getattr(state, "sudo_commit", False):
