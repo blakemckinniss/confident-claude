@@ -173,6 +173,10 @@ def check_god_component_gate(data: dict, state: SessionState) -> HookResult:
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
+    # Subagent bypass: Fresh agents shouldn't be blocked (v4.32)
+    if state.turn_count <= 3:
+        return HookResult.approve()
+
     if not file_path or ".claude/tmp/" in file_path or "/.claude/" in file_path:
         return HookResult.approve()
     if data.get("_sudo_bypass"):

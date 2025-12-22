@@ -122,6 +122,10 @@ def check_loop_detector(data: dict, state: SessionState) -> HookResult:
     if not command:
         return HookResult.approve()
 
+    # Subagent bypass: Fresh agents shouldn't be blocked (v4.32)
+    if state.turn_count <= 3:
+        return HookResult.approve()
+
     # SUDO bypass (pre-computed in run_hooks)
     if "SUDO LOOP" in description.upper() or "SUDO_LOOP" in description.upper():
         return HookResult.approve()
@@ -363,13 +367,51 @@ def check_inline_server_background(data: dict, state: SessionState) -> HookResul
 
 @register_hook("background_enforcer", "Bash", priority=15)
 def check_background_enforcer(data: dict, state: SessionState) -> HookResult:
-    """Enforce background execution for slow commands (unless truncated/fast)."""
+    """Enforce background execution for slow commands (unless truncated/fast).
+
+    EXCEPTION: When ralph_mode is active and completion_confidence is low,
+    allow foreground test runs so evidence can be captured for completion gate.
+    """
     tool_input = data.get("tool_input", {})
     command = tool_input.get("command", "")
     run_in_background = tool_input.get("run_in_background", False)
 
     if run_in_background:
         return HookResult.approve()
+
+    # RALPH EVIDENCE EXCEPTION: Allow foreground tests/builds when completion evidence needed
+    # This prevents circular block: stop_hook demands evidence, but pre_tool blocks foreground commands
+    if state.ralph_mode and state.completion_confidence < 80:
+        cmd_lower = command.lower()
+        # Test commands provide test_pass evidence (+25)
+        test_commands = [
+            "pytest",
+            "python -m pytest",
+            "npm test",
+            "yarn test",
+            "cargo test",
+            "go test",
+            "jest",
+            "vitest",
+        ]
+        if any(tc in cmd_lower for tc in test_commands):
+            return HookResult.approve(
+                "✅ Foreground test allowed (ralph evidence collection)"
+            )
+        # Build commands provide build_success evidence (+20)
+        build_commands = [
+            "npm run build",
+            "yarn build",
+            "cargo build",
+            "go build",
+            "tsc",
+            "webpack",
+            "vite build",
+        ]
+        if any(bc in cmd_lower for bc in build_commands):
+            return HookResult.approve(
+                "✅ Foreground build allowed (ralph evidence collection)"
+            )
 
     SLOW_COMMANDS = [
         "npm install",

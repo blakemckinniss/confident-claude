@@ -757,6 +757,10 @@ def check_ralph_evidence(data: dict, state: SessionState) -> StopHookResult:
 
     FIX (2025-12-20): Skip build evidence requirement for research/audit tasks.
     """
+    # Subagent bypass: Fresh agents shouldn't be blocked (v4.32)
+    if state.turn_count <= 3:
+        return StopHookResult.ok()
+
     # Skip if ralph mode not active
     if not state.ralph_mode:
         return StopHookResult.ok()
