@@ -130,6 +130,9 @@ class MastermindState:
     recent_prompts: list[str] = field(
         default_factory=list
     )  # Last N user prompts for conversation context (max 5)
+    # v4.33.1: Mandate persistence across session turns/compactions
+    pending_mandates: list[dict] = field(default_factory=list)
+    mandate_policy: str = "strict"  # strict = enforce, lenient = warn
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -209,6 +212,57 @@ class MastermindState:
             self.recent_prompts = self.recent_prompts[-max_prompts:]
         self.updated_at = time.time()
 
+    # v4.33.1: Mandate persistence methods
+    def set_mandates(self, mandates: list[dict], policy: str = "strict") -> None:
+        """Set pending mandates from router decision.
+
+        Args:
+            mandates: List of mandate dicts from Groq router
+            policy: Enforcement policy (strict/lenient)
+        """
+        self.pending_mandates = mandates
+        self.mandate_policy = policy
+        self.updated_at = time.time()
+
+    def mark_mandate_satisfied(self, mandate_type: str, tool_name: str) -> bool:
+        """Mark a mandate as satisfied by tool use.
+
+        Args:
+            mandate_type: The mandate type (pal, research, agent, etc.)
+            tool_name: The tool that satisfied the mandate
+
+        Returns:
+            True if a mandate was marked satisfied, False otherwise
+        """
+        for m in self.pending_mandates:
+            if m.get("type") == mandate_type and not m.get("satisfied"):
+                m["satisfied"] = True
+                m["satisfied_by"] = tool_name
+                m["satisfied_at"] = time.time()
+                self.updated_at = time.time()
+                return True
+        return False
+
+    def get_unsatisfied_mandates(self, blocking_only: bool = False) -> list[dict]:
+        """Get mandates that haven't been satisfied yet.
+
+        Args:
+            blocking_only: If True, only return blocking mandates
+        """
+        result = []
+        for m in self.pending_mandates:
+            if m.get("satisfied"):
+                continue
+            if blocking_only and not m.get("blocking"):
+                continue
+            result.append(m)
+        return result
+
+    def clear_mandates(self) -> None:
+        """Clear all pending mandates (e.g., on new task)."""
+        self.pending_mandates = []
+        self.updated_at = time.time()
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
@@ -229,6 +283,9 @@ class MastermindState:
             "pal_bootstrapped": self.pal_bootstrapped,
             "pal_consulted": self.pal_consulted,
             "recent_prompts": self.recent_prompts,
+            # v4.33.1: Mandate persistence
+            "pending_mandates": self.pending_mandates,
+            "mandate_policy": self.mandate_policy,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -249,6 +306,9 @@ class MastermindState:
             pal_bootstrapped=data.get("pal_bootstrapped", False),
             pal_consulted=data.get("pal_consulted", False),
             recent_prompts=data.get("recent_prompts", []),
+            # v4.33.1: Mandate persistence
+            pending_mandates=data.get("pending_mandates", []),
+            mandate_policy=data.get("mandate_policy", "strict"),
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
         )
@@ -326,12 +386,30 @@ def save_state(
     """Save session state to disk with project isolation.
 
     Always writes to new isolated path structure.
+    Uses file locking for concurrent session safety.
     """
+    import fcntl
+
     path = get_state_path(state.session_id, project_id, state_dir)
+    lock_path = path.with_suffix(".lock")
     state.updated_at = time.time()
 
-    with open(path, "w") as f:
-        json.dump(state.to_dict(), f, indent=2)
+    # Use file locking to prevent concurrent write corruption
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # Another process holds the lock - wait for it
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+        try:
+            # Atomic write: write to temp file then rename
+            tmp_path = path.with_suffix(".tmp")
+            with open(tmp_path, "w") as f:
+                json.dump(state.to_dict(), f, indent=2)
+            tmp_path.rename(path)
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     return path
 

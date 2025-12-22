@@ -605,6 +605,28 @@ def _get_current_session_id(data: dict) -> str | None:
     return data.get("session_id")
 
 
+def _recover_persisted_mandates(state, session_id: str) -> bool:
+    """Recover mandates from MastermindState after compaction/handoff.
+
+    v4.33.1: Ensures mandates survive session compaction.
+    Returns True if mandates were recovered, False otherwise.
+    """
+    try:
+        from lib.mastermind.state import load_state
+
+        mm_state = load_state(session_id)
+        if mm_state.pending_mandates:
+            state.set("pending_mandates", mm_state.pending_mandates)
+            state.set("mandate_policy", mm_state.mandate_policy)
+            return True
+    except (OSError, ImportError) as e:
+        # Log but don't block - mandate recovery is best-effort
+        import sys
+
+        print(f"[mandate-recover] Warning: {e}", file=sys.stderr)
+    return False
+
+
 from _prompt_registry import register_hook, HookResult  # noqa: E402
 
 try:
@@ -654,6 +676,11 @@ def mastermind_orchestrator(data: dict, state) -> HookResult:
         prompt = data.get("prompt", "")
         if not prompt:
             return HookResult(decision="allow", context=None)
+
+        # v4.33.1: Recover mandates from persisted state if not in session_state
+        # This handles resume after compaction/handoff
+        if not state.get("pending_mandates") and current_session_id:
+            _recover_persisted_mandates(state, current_session_id)
 
         result = process_user_prompt(
             prompt=prompt,

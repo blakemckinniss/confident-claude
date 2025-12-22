@@ -10,8 +10,42 @@ v4.33: Enhanced to support all mandate types (pal, research, agent, bead, ask_us
 Priority 1: Runs after PAL mandate (priority 0), before other gates.
 """
 
+import json
+
 from session_state import SessionState
 from ._common import register_hook, HookResult
+
+
+def _persist_mandate_satisfaction(
+    state: SessionState, mandates: list[dict], policy: str
+) -> None:
+    """Persist mandate state to MastermindState for cross-turn/compaction survival.
+
+    v4.33.1: Ensures mandates survive session compaction and handoff.
+    Uses session_id from state for proper isolation.
+    """
+    try:
+        session_id = state.get("session_id")
+        if not session_id:
+            return  # No session tracking, skip persistence
+
+        from lib.mastermind.state import load_state, save_state
+
+        # Load current state (with file locking)
+        mm_state = load_state(session_id)
+
+        # Update mandates
+        mm_state.pending_mandates = mandates
+        mm_state.mandate_policy = policy
+
+        # Persist (atomic write with lock)
+        save_state(mm_state)
+    except (OSError, ImportError, json.JSONDecodeError) as e:
+        # Fail-safe: persistence errors should not block tool execution
+        # This is intentional - mandate enforcement continues even if persistence fails
+        import sys
+
+        print(f"[mandate-persist] Warning: {e}", file=sys.stderr)
 
 
 def _is_pal_tool(tool_name: str) -> bool:
@@ -229,6 +263,10 @@ def check_mastermind_mandate(data: dict, state: SessionState) -> HookResult:
             m["satisfied"] = True
             m["satisfied_by"] = tool_name
             state.set("pending_mandates", mandates)
+
+            # v4.33.1: Persist to MastermindState for cross-turn/compaction survival
+            _persist_mandate_satisfaction(state, mandates, policy)
+
             return HookResult.approve(
                 f"✅ Mandate satisfied: {m.get('type', 'unknown').upper()}"
             )
